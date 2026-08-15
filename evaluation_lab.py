@@ -6,14 +6,18 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import sys
 import tempfile
+import time
+import uuid
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 Child = Mapping[str, str]
 Case = Mapping[str, object]
@@ -888,6 +892,204 @@ def render_report(result: Mapping[str, object], output_format: str) -> str:
     )
 
 
+STORE_SCHEMA_VERSION = 1
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def generate_run_id() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"RUN-{timestamp}-{uuid.uuid4().hex[:8]}"
+
+
+def _policy_accuracy(result: Mapping[str, object], key: str) -> float:
+    policy = result.get(key)
+    if not isinstance(policy, Mapping):
+        raise ValueError(f"result is missing {key!r} policy metrics")
+    accuracy = policy.get("accuracy")
+    if not isinstance(accuracy, (int, float)) or isinstance(accuracy, bool):
+        raise ValueError(f"result {key!r} accuracy must be numeric")
+    return float(accuracy)
+
+
+def _initialize_store(connection: sqlite3.Connection) -> None:
+    version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+    if version not in {0, STORE_SCHEMA_VERSION}:
+        raise ValueError(
+            f"unsupported experiment store schema version {version}"
+        )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS experiment_runs (
+            run_id TEXT PRIMARY KEY,
+            suite TEXT NOT NULL,
+            case_suite_version TEXT NOT NULL,
+            model TEXT NOT NULL,
+            prompt_version TEXT NOT NULL,
+            git_commit TEXT NOT NULL,
+            created_at_utc TEXT NOT NULL,
+            latency_ms REAL NOT NULL CHECK (latency_ms >= 0),
+            token_cost REAL NOT NULL CHECK (token_cost >= 0),
+            baseline_accuracy REAL NOT NULL,
+            treatment_accuracy REAL NOT NULL,
+            regression_status TEXT NOT NULL,
+            result_json TEXT NOT NULL
+        )
+        """
+    )
+    if version == 0:
+        connection.execute(f"PRAGMA user_version = {STORE_SCHEMA_VERSION}")
+
+
+def persist_experiment_run(
+    store_path: str | Path,
+    result: Mapping[str, object],
+    *,
+    suite: str,
+    model: str,
+    prompt_version: str,
+    git_commit: str,
+    latency_ms: float,
+    token_cost: float = 0.0,
+    created_at_utc: str | None = None,
+) -> dict[str, object]:
+    """Atomically persist one immutable experiment run in SQLite."""
+
+    path = Path(store_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    run_id = str(result.get("run_id", "")).strip()
+    if not run_id:
+        raise ValueError("result run_id must be a non-empty string")
+    if suite not in {"closure", "historical"}:
+        raise ValueError(f"unsupported suite {suite!r}")
+    for label, value in {
+        "model": model,
+        "prompt_version": prompt_version,
+        "git_commit": git_commit,
+    }.items():
+        if not value.strip():
+            raise ValueError(f"{label} must be a non-empty string")
+    if latency_ms < 0 or token_cost < 0:
+        raise ValueError("latency_ms and token_cost must be non-negative")
+
+    case_suite_version = str(
+        result.get("benchmark_id") or result.get("case_id") or ""
+    ).strip()
+    if not case_suite_version:
+        raise ValueError("result is missing case-suite identity")
+    regression = result.get("regression")
+    if not isinstance(regression, Mapping):
+        raise ValueError("result is missing regression status")
+    regression_status = str(regression.get("status", "")).strip()
+    if not regression_status:
+        raise ValueError("result regression status must be non-empty")
+    created = created_at_utc or _utc_timestamp()
+    canonical_result = json.dumps(
+        result,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+    values = (
+        run_id,
+        suite,
+        case_suite_version,
+        model.strip(),
+        prompt_version.strip(),
+        git_commit.strip(),
+        created,
+        float(latency_ms),
+        float(token_cost),
+        _policy_accuracy(result, "baseline"),
+        _policy_accuracy(result, "treatment"),
+        regression_status,
+        canonical_result,
+    )
+    try:
+        with sqlite3.connect(path) as connection:
+            _initialize_store(connection)
+            connection.execute(
+                """
+                INSERT INTO experiment_runs (
+                    run_id, suite, case_suite_version, model, prompt_version,
+                    git_commit, created_at_utc, latency_ms, token_cost,
+                    baseline_accuracy, treatment_accuracy, regression_status,
+                    result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(f"experiment run {run_id!r} already exists") from exc
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"experiment store error: {exc}") from exc
+
+    return {
+        "run_id": run_id,
+        "suite": suite,
+        "case_suite_version": case_suite_version,
+        "model": model.strip(),
+        "prompt_version": prompt_version.strip(),
+        "git_commit": git_commit.strip(),
+        "created_at_utc": created,
+        "latency_ms": float(latency_ms),
+        "token_cost": float(token_cost),
+        "baseline_accuracy": _policy_accuracy(result, "baseline"),
+        "treatment_accuracy": _policy_accuracy(result, "treatment"),
+        "regression_status": regression_status,
+    }
+
+
+def list_experiment_runs(
+    store_path: str | Path, limit: int = 20
+) -> list[dict[str, object]]:
+    """Return newest experiment metadata without exposing stored result payloads."""
+
+    if limit < 1 or limit > 1000:
+        raise ValueError("run list limit must be between 1 and 1000")
+    path = Path(store_path)
+    if not path.exists():
+        raise ValueError(f"experiment store does not exist: {path}")
+    try:
+        with sqlite3.connect(path) as connection:
+            _initialize_store(connection)
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT run_id, suite, case_suite_version, model,
+                       prompt_version, git_commit, created_at_utc,
+                       latency_ms, token_cost, baseline_accuracy,
+                       treatment_accuracy, regression_status
+                FROM experiment_runs
+                ORDER BY created_at_utc DESC, run_id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"experiment store error: {exc}") from exc
+    return [dict(row) for row in rows]
+
+
+def emit_json_log(enabled: bool, event: str, **fields: object) -> None:
+    if not enabled:
+        return
+    print(
+        json.dumps(
+            {"timestamp": _utc_timestamp(), "event": event, **fields},
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+
+
 def write_report(path: str | Path, content: str) -> None:
     """Write a report atomically, creating its parent directory when needed."""
 
@@ -924,6 +1126,47 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("closure", "historical"),
         default="closure",
         help="evaluation suite to run (default: closure)",
+    )
+    parser.add_argument(
+        "--store",
+        type=Path,
+        help="persist immutable experiment metadata and result JSON in SQLite",
+    )
+    parser.add_argument(
+        "--run-id",
+        help="execution run ID; generated automatically when --store is used",
+    )
+    parser.add_argument(
+        "--model",
+        default="deterministic-reference",
+        help="model or policy identity recorded with a stored run",
+    )
+    parser.add_argument(
+        "--prompt-version",
+        default="none",
+        help="prompt version recorded with a stored run",
+    )
+    parser.add_argument(
+        "--git-commit",
+        default=os.environ.get("GITHUB_SHA", "unknown"),
+        help="git commit recorded with a stored run (defaults to GITHUB_SHA)",
+    )
+    parser.add_argument(
+        "--token-cost",
+        type=float,
+        default=0.0,
+        help="token or provider cost recorded with a stored run (default: 0)",
+    )
+    parser.add_argument(
+        "--log-json",
+        action="store_true",
+        help="emit structured run lifecycle events to stderr",
+    )
+    parser.add_argument(
+        "--list-runs",
+        type=int,
+        metavar="N",
+        help="list the newest N runs from --store instead of evaluating",
     )
     parser.add_argument(
         "--cases",
@@ -964,7 +1207,37 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    started_at_utc = _utc_timestamp()
+    started = time.perf_counter()
     try:
+        if args.list_runs is not None:
+            if args.store is None:
+                raise ValueError("--list-runs requires --store")
+            runs = list_experiment_runs(args.store, args.list_runs)
+            content = json.dumps(
+                runs, ensure_ascii=False, indent=2, sort_keys=True
+            ) + "\n"
+            if args.output:
+                write_report(args.output, content)
+            else:
+                print(content, end="")
+            emit_json_log(
+                args.log_json,
+                "runs_listed",
+                store=str(args.store),
+                count=len(runs),
+            )
+            return 0
+
+        effective_run_id = args.run_id or (
+            generate_run_id() if args.store is not None else None
+        )
+        emit_json_log(
+            args.log_json,
+            "run_started",
+            suite=args.suite,
+            run_id=effective_run_id,
+        )
         case_path = args.cases or DEFAULT_CASE_PATH
         if args.suite == "historical":
             if not case_path.exists():
@@ -1000,12 +1273,61 @@ def main(argv: Sequence[str] | None = None) -> int:
                     + "\n",
                 )
             result = run_experiment(suite, mitigation_spec)
+        latency_ms = (time.perf_counter() - started) * 1000
+        if effective_run_id is not None:
+            result = dict(result)
+            result["run_id"] = effective_run_id
+            result["experiment"] = {
+                "model": args.model,
+                "prompt_version": args.prompt_version,
+                "git_commit": args.git_commit,
+                "created_at_utc": started_at_utc,
+                "latency_ms": latency_ms,
+                "token_cost": args.token_cost,
+            }
+        regression = result.get("regression")
+        regression_status = (
+            regression.get("status") if isinstance(regression, Mapping) else None
+        )
+        emit_json_log(
+            args.log_json,
+            "run_completed",
+            suite=args.suite,
+            run_id=result.get("run_id"),
+            latency_ms=latency_ms,
+            regression_status=regression_status,
+        )
+        if args.store is not None:
+            record = persist_experiment_run(
+                args.store,
+                result,
+                suite=args.suite,
+                model=args.model,
+                prompt_version=args.prompt_version,
+                git_commit=args.git_commit,
+                latency_ms=latency_ms,
+                token_cost=args.token_cost,
+                created_at_utc=started_at_utc,
+            )
+            emit_json_log(
+                args.log_json,
+                "run_persisted",
+                store=str(args.store),
+                run_id=record["run_id"],
+                case_suite_version=record["case_suite_version"],
+            )
         report = render_report(result, args.format)
         if args.output:
             write_report(args.output, report)
         else:
             print(report, end="")
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
+        emit_json_log(
+            args.log_json,
+            "run_failed",
+            suite=args.suite,
+            error=str(exc),
+        )
         print(f"llm-eval: error: {exc}", file=sys.stderr)
         return 2
 

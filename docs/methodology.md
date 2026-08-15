@@ -23,3 +23,17 @@ label. A new mechanism can use the same gate when it exposes evidence state and
 explicit constraint statuses.
 
 Future model-based runs will keep the same separation between case owner, policy under test, grader, mitigation and checked-in result.
+
+## Experiment records
+
+An experiment run is immutable evidence, not a mutable dashboard row. The SQLite
+store uses `run_id` as the primary key and rejects duplicate IDs. Every record
+keeps the case-suite identity, model or policy, prompt version, git commit, UTC
+timestamp, latency, token cost, baseline and treatment accuracy, regression
+status, and canonical result JSON. Listing returns indexed metadata without
+dumping the stored result payload.
+
+Structured lifecycle logs use one JSON object per line and remain separate from
+the report channel: `run_started`, `run_completed`, `run_persisted`, or
+`run_failed`. This preserves machine-readable observability without changing the
+deterministic report contract when tracking is not requested.

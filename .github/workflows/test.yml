@@ -14,6 +14,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      EVAL_GIT_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Check out evaluation repository
         uses: actions/checkout@v4
@@ -73,6 +75,12 @@ jobs:
             --suite historical \
             --cases cases/anonymized/premature-parent-closure.md \
             --format json \
+            --store /tmp/eval-runs.sqlite3 \
+            --run-id "CI-HFB-${EVAL_GIT_COMMIT}" \
+            --model deterministic-reference \
+            --prompt-version hfb-v1 \
+            --git-commit "$EVAL_GIT_COMMIT" \
+            --log-json \
             --output /tmp/HISTORICAL-FAILURE-BENCHMARK-v1.json
           llm-eval \
             --suite historical \
@@ -81,3 +89,9 @@ jobs:
             --output /tmp/HISTORICAL-FAILURE-BENCHMARK-v1.md
           test -s /tmp/HISTORICAL-FAILURE-BENCHMARK-v1.json
           test -s /tmp/HISTORICAL-FAILURE-BENCHMARK-v1.md
+          test -s /tmp/eval-runs.sqlite3
+          llm-eval \
+            --store /tmp/eval-runs.sqlite3 \
+            --list-runs 1 \
+            --output /tmp/experiment-runs.json
+          python -c 'import json; rows=json.load(open("/tmp/experiment-runs.json")); assert len(rows)==1; assert rows[0]["regression_status"]=="PASS"; assert rows[0]["git_commit"]'

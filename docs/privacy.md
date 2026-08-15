@@ -12,3 +12,8 @@ CI checks the checked fixture for known private locator patterns. This check is 
 release guard, not a claim that automated scanning can replace human review.
 
 No file may expose or link to private Raw/L0, relationship or family records, adult material, medical/financial data, accounts, platform assessments, client material, unpublished manuscripts or internal archive/control documents. Uncertain material remains private.
+
+SQLite stores and JSON logs may contain experiment metadata and full public-safe
+result payloads. They are runtime evidence, not repository fixtures: database
+files are ignored by git, and operators must not pass private prompts, credentials
+or archive locations through model, prompt-version, git-commit or run-ID fields.

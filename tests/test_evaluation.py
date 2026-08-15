@@ -1,5 +1,6 @@
 import json
 import io
+import sqlite3
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -20,8 +21,10 @@ from evaluation_lab import (
     load_case_suite,
     load_historical_benchmark,
     load_mitigation_spec,
+    list_experiment_runs,
     main,
     naive_any_done,
+    persist_experiment_run,
     render_report,
     run_experiment,
     run_historical_benchmark,
@@ -141,6 +144,133 @@ class EvaluationHarnessTest(unittest.TestCase):
                 "| Confidence-only baseline | 50% | 100% | 12 |",
                 markdown_output.read_text(encoding="utf-8"),
             )
+
+    def test_sqlite_store_persists_complete_experiment_metadata(self) -> None:
+        result = run_historical_benchmark(
+            load_historical_benchmark(DEFAULT_CASE_PATH)
+        )
+        result["run_id"] = "RUN-STORE-001"
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            record = persist_experiment_run(
+                store,
+                result,
+                suite="historical",
+                model="deterministic-reference",
+                prompt_version="hfb-v1",
+                git_commit="abc123",
+                latency_ms=12.5,
+                token_cost=0.0,
+                created_at_utc="2026-08-15T19:00:00Z",
+            )
+            self.assertEqual(record["run_id"], "RUN-STORE-001")
+            self.assertEqual(record["case_suite_version"], "HISTORICAL-FAILURE-BENCHMARK-v1")
+            self.assertEqual(record["treatment_accuracy"], 1.0)
+            listed = list_experiment_runs(store, 1)
+            self.assertEqual(listed, [record])
+            with sqlite3.connect(store) as connection:
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+                payload = connection.execute(
+                    "SELECT result_json FROM experiment_runs WHERE run_id = ?",
+                    ("RUN-STORE-001",),
+                ).fetchone()[0]
+            self.assertEqual(version, 1)
+            self.assertEqual(json.loads(payload)["fixture_count"], 24)
+
+    def test_sqlite_store_is_immutable_by_run_id(self) -> None:
+        result = run_historical_benchmark(
+            load_historical_benchmark(DEFAULT_CASE_PATH)
+        )
+        result["run_id"] = "RUN-DUPLICATE"
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            kwargs = {
+                "suite": "historical",
+                "model": "deterministic-reference",
+                "prompt_version": "hfb-v1",
+                "git_commit": "abc123",
+                "latency_ms": 1.0,
+            }
+            persist_experiment_run(store, result, **kwargs)
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                persist_experiment_run(store, result, **kwargs)
+            self.assertEqual(len(list_experiment_runs(store)), 1)
+
+    def test_sqlite_store_accepts_runtime_closure_suite(self) -> None:
+        result = run_experiment(load_case_suite(DEFAULT_CASE_PATH))
+        result["run_id"] = "RUN-CLOSURE-001"
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            persist_experiment_run(
+                store,
+                result,
+                suite="closure",
+                model="companion-mind-closure-guard",
+                prompt_version="none",
+                git_commit="abc123",
+                latency_ms=2.0,
+            )
+            row = list_experiment_runs(store, 1)[0]
+            self.assertEqual(row["case_suite_version"], "EVAL-CASE-001")
+            self.assertEqual(row["baseline_accuracy"], 0.2)
+            self.assertEqual(row["treatment_accuracy"], 1.0)
+
+    def test_cli_persists_lists_and_emits_structured_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            report = Path(temporary) / "run.json"
+            listing = Path(temporary) / "runs.json"
+            error = io.StringIO()
+            with redirect_stderr(error):
+                exit_code = main(
+                    [
+                        "--suite",
+                        "historical",
+                        "--cases",
+                        str(DEFAULT_CASE_PATH),
+                        "--store",
+                        str(store),
+                        "--run-id",
+                        "RUN-CLI-001",
+                        "--model",
+                        "deterministic-reference",
+                        "--prompt-version",
+                        "hfb-v1",
+                        "--git-commit",
+                        "abc123",
+                        "--log-json",
+                        "--output",
+                        str(report),
+                    ]
+                )
+            self.assertEqual(exit_code, 0)
+            events = [json.loads(line)["event"] for line in error.getvalue().splitlines()]
+            self.assertEqual(events, ["run_started", "run_completed", "run_persisted"])
+            persisted = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["run_id"], "RUN-CLI-001")
+            self.assertEqual(persisted["experiment"]["git_commit"], "abc123")
+            self.assertEqual(
+                main(
+                    [
+                        "--store",
+                        str(store),
+                        "--list-runs",
+                        "1",
+                        "--output",
+                        str(listing),
+                    ]
+                ),
+                0,
+            )
+            rows = json.loads(listing.read_text(encoding="utf-8"))
+            self.assertEqual(rows[0]["run_id"], "RUN-CLI-001")
+
+    def test_cli_rejects_list_without_store(self) -> None:
+        error = io.StringIO()
+        with redirect_stderr(error):
+            exit_code = main(["--list-runs", "1"])
+        self.assertEqual(exit_code, 2)
+        self.assertIn("requires --store", error.getvalue())
 
     def test_mitigation_document_loads_and_matches_packaged_fallback(self) -> None:
         spec = load_mitigation_spec(DEFAULT_MITIGATION_PATH)

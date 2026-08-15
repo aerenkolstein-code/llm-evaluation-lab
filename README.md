@@ -11,7 +11,7 @@
 | Baseline accuracy | 20% |
 | With Closure Guard | 100% |
 | Known regression failures caught | 4/4 |
-| Evaluation tests | 22/22 |
+| Evaluation tests | 27/27 |
 | Executable MitigationSpec | Runtime-validated |
 
 **Status:** Experimental / reproducible artifact  
@@ -84,6 +84,33 @@ grades every variant, calculates metrics, enforces the regression gate, and emit
 stable JSON or Markdown report. Exit code `1` means regression failure; invalid input
 or missing runtime dependencies return `2`.
 
+## Persistent experiment tracking v0.5
+
+Runs can now be written atomically to a dependency-free SQLite store. The store
+keeps immutable execution identity, suite version, model/policy, prompt version,
+metrics, latency, token cost, git commit, UTC timestamp and the canonical result
+JSON. A duplicate `run_id` is rejected instead of silently overwriting evidence.
+
+```bash
+llm-eval \
+  --suite historical \
+  --cases cases/anonymized/premature-parent-closure.md \
+  --store /tmp/eval-runs.sqlite3 \
+  --model deterministic-reference \
+  --prompt-version hfb-v1 \
+  --git-commit "$(git rev-parse HEAD)" \
+  --log-json \
+  --output /tmp/historical-run.json
+
+llm-eval \
+  --store /tmp/eval-runs.sqlite3 \
+  --list-runs 10
+```
+
+Structured lifecycle events are emitted to `stderr`, leaving the JSON or
+Markdown report on `stdout` or in `--output`. SQLite files are runtime evidence
+and are ignored by git; they are not checked into the public repository.
+
 ## Executable integration v0.3
 
 The experiment now owns a complete `mitigation-spec/v1` contract, validates it,
@@ -106,6 +133,8 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - checked result artifact and known-bad regression gate.
 - validated 12-cluster, 24-case Historical Failure Benchmark;
 - one uniform evidence-and-constraint gate with zero per-observation rules.
+- immutable SQLite experiment-run persistence and metadata query;
+- structured JSON lifecycle logging.
 
 ### Measured in the current demonstration
 
@@ -113,12 +142,13 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - guarded accuracy: **100%**;
 - premature closure rate: **100% → 0%**;
 - known recurrence variants caught: **4/4**;
-- evaluation tests: **15/15**;
 - runtime integration status: **PASS**.
 - historical benchmark baseline: **50%**;
 - uniform constraint gate: **100%**;
 - historical traps caught: **12/12**;
-- evaluation tests: **22/22**.
+- evaluation tests: **27/27**;
+- SQLite persistence and readback: **PASS**;
+- duplicate run protection: **PASS**.
 
 ### Not claimed
 
@@ -139,7 +169,7 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 
 ## Roadmap
 
-**Operationalization** — planned SQL/FastAPI/Docker, observability and experiment tracking after the current benchmark contract is stable.
+**Operationalization** — SQLite experiment tracking and structured logging are implemented. Next: a read-only FastAPI query surface, followed by Docker reproducibility.
 
 ## Privacy
 

@@ -12,6 +12,7 @@
 | With Closure Guard | 100% |
 | Known regression failures caught | 4/4 |
 | Evaluation tests | 32/32 |
+| Container CLI/API smoke | PASS |
 | Executable MitigationSpec | Runtime-validated |
 
 **Status:** Experimental / reproducible artifact  
@@ -130,6 +131,39 @@ stored public-safe canonical result. There is no create, update or delete API,
 no authentication layer, and no claim that this local demonstration is ready for
 network or production exposure.
 
+## Docker reproducibility v0.7
+
+The repository includes one minimal Dockerfile. It pins the Companion-Mind runtime
+to commit `c6a2128271532746a5570b99ce0ccdea4618db4e`, installs the evaluation
+package, and runs as an unprivileged user.
+
+```bash
+docker build -t llm-evaluation-lab:0.7 .
+
+docker run --rm llm-evaluation-lab:0.7 \
+  --suite historical \
+  --cases cases/anonymized/premature-parent-closure.md
+```
+
+To query a previously created store, mount it read-only and publish only to host
+loopback:
+
+```bash
+docker run --rm \
+  -p 127.0.0.1:8000:8000 \
+  -v /absolute/path/to/data:/data:ro \
+  --entrypoint llm-eval-api \
+  llm-evaluation-lab:0.7 \
+  --store /data/eval-runs.sqlite3 \
+  --host 0.0.0.0 \
+  --allow-network
+```
+
+CI builds the image from a clean checkout, verifies version `0.7.0`, executes the
+24-case historical regression, creates a mounted SQLite record, then queries the
+containerized API over HTTP. This is reproducible local packaging, not a published
+registry image or production deployment.
+
 ## Executable integration v0.3
 
 The experiment now owns a complete `mitigation-spec/v1` contract, validates it,
@@ -155,6 +189,7 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - immutable SQLite experiment-run persistence and metadata query;
 - structured JSON lifecycle logging.
 - loopback-first read-only FastAPI health, list and detail endpoints.
+- non-root Docker packaging with pinned Companion-Mind runtime commit.
 
 ### Measured in the current demonstration
 
@@ -171,6 +206,8 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - duplicate run protection: **PASS**.
 - API route write methods exposed: **0**;
 - read-only query mutation check: **PASS**.
+- Docker image build: **PASS**;
+- containerized CLI/API smoke: **PASS**.
 
 ### Not claimed
 
@@ -180,6 +217,7 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - enterprise-grade reliability;
 - live-LLM effectiveness or statistical significance.
 - authenticated or production-ready API deployment.
+- bit-for-bit dependency or base-image reproducibility.
 
 ## Artifact map
 
@@ -189,11 +227,13 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - `results/EVAL-CASE-001.json` — checked deterministic result
 - `tests/test_evaluation.py` — loader, reproducibility, reporting, and regression assertions
 - `schemas/` — shared evaluation and mitigation contracts
+- `Dockerfile` — non-root container build for CLI and read-only API reproduction
 
 ## Roadmap
 
-**Operationalization** — SQLite experiment tracking, structured logging and a
-read-only FastAPI query surface are implemented. Next: Docker reproducibility.
+**Operationalization baseline complete** — SQLite experiment tracking, structured
+logging, a read-only FastAPI query surface, and Docker CLI/API reproduction are
+implemented. Further infrastructure expansion requires a separate scope decision.
 
 ## Privacy
 

@@ -128,3 +128,63 @@ jobs:
           assert len(runs) == 1
           assert runs[0]['regression_status'] == 'PASS'
           PY
+
+      - name: Build and smoke-test Docker image
+        run: |
+          docker build \
+            --tag llm-evaluation-lab:ci \
+            --build-arg COMPANION_MIND_COMMIT=c6a2128271532746a5570b99ce0ccdea4618db4e \
+            llm-evaluation-lab
+
+          docker run --rm llm-evaluation-lab:ci --version \
+            > /tmp/docker-version.txt
+          grep --quiet '^llm-eval 0.7.0$' /tmp/docker-version.txt
+
+          docker run --rm llm-evaluation-lab:ci \
+            --suite historical \
+            --cases cases/anonymized/premature-parent-closure.md \
+            > /tmp/docker-historical.json
+          python -c 'import json; result=json.load(open("/tmp/docker-historical.json")); assert result["regression"]["status"]=="PASS"; assert result["fixture_count"]==24'
+
+          mkdir -p /tmp/llm-eval-docker-data
+          chmod 0777 /tmp/llm-eval-docker-data
+          docker run --rm \
+            --volume /tmp/llm-eval-docker-data:/data \
+            llm-evaluation-lab:ci \
+            --suite historical \
+            --cases cases/anonymized/premature-parent-closure.md \
+            --store /data/eval-runs.sqlite3 \
+            --run-id CONTAINER-HFB-001 \
+            --git-commit "$EVAL_GIT_COMMIT" \
+            --output /data/container-run.json
+
+          trap 'docker rm --force llm-eval-api-ci 2>/dev/null || true' EXIT
+          docker run --rm --detach \
+            --name llm-eval-api-ci \
+            --publish 127.0.0.1:8766:8000 \
+            --volume /tmp/llm-eval-docker-data:/data:ro \
+            --entrypoint llm-eval-api \
+            llm-evaluation-lab:ci \
+            --store /data/eval-runs.sqlite3 \
+            --host 0.0.0.0 \
+            --allow-network \
+            --port 8000 \
+            --log-level warning
+          API_READY=false
+          for attempt in $(seq 1 20); do
+            if curl --silent --show-error --fail \
+              http://127.0.0.1:8766/healthz \
+              > /tmp/docker-api-health.json; then
+              API_READY=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$API_READY" != true ]; then
+            docker logs llm-eval-api-ci
+            exit 1
+          fi
+          curl --silent --show-error --fail \
+            'http://127.0.0.1:8766/v1/runs?limit=1' \
+            > /tmp/docker-api-runs.json
+          python -c 'import json; health=json.load(open("/tmp/docker-api-health.json")); runs=json.load(open("/tmp/docker-api-runs.json")); assert health["read_only"] is True; assert runs[0]["run_id"]=="CONTAINER-HFB-001"'

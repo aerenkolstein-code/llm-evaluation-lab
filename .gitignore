@@ -12,4 +12,5 @@ dist/
 /l0/
 /credentials/
 *.env
-
+*.sqlite
+*.sqlite3

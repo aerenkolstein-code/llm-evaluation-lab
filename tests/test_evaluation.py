@@ -7,16 +7,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 from evaluation_lab import (
+    BUILTIN_MITIGATION_SPEC,
     BUILTIN_SUITE,
     CASES,
     DEFAULT_CASE_PATH,
+    DEFAULT_MITIGATION_PATH,
     closure_guard_policy,
     evaluate_policy,
     load_case_suite,
+    load_mitigation_spec,
     main,
     naive_any_done,
     render_report,
     run_experiment,
+    validate_mitigation_spec,
 )
 
 
@@ -35,6 +39,23 @@ class EvaluationHarnessTest(unittest.TestCase):
         self.assertEqual(suite.case_id, "EVAL-CASE-001")
         self.assertEqual(suite.privacy, "PUBLIC_SAFE")
         self.assertEqual(suite.cases, BUILTIN_SUITE.cases)
+
+    def test_mitigation_document_loads_and_matches_packaged_fallback(self) -> None:
+        spec = load_mitigation_spec(DEFAULT_MITIGATION_PATH)
+        self.assertEqual(spec, validate_mitigation_spec(BUILTIN_MITIGATION_SPEC))
+        self.assertEqual(spec["schema_version"], "mitigation-spec/v1")
+
+    def test_mitigation_validation_rejects_unsupported_guard(self) -> None:
+        spec = json.loads(json.dumps(BUILTIN_MITIGATION_SPEC))
+        spec["runtime"]["guard_type"] = "arbitrary_code"
+        with self.assertRaisesRegex(ValueError, "unsupported guard_type"):
+            validate_mitigation_spec(spec)
+
+    def test_mitigation_validation_rejects_status_overlap(self) -> None:
+        spec = json.loads(json.dumps(BUILTIN_MITIGATION_SPEC))
+        spec["runtime"]["blocking_statuses"].append("DONE")
+        with self.assertRaisesRegex(ValueError, "overlap"):
+            validate_mitigation_spec(spec)
 
     def test_loader_rejects_duplicate_variant_ids(self) -> None:
         document = {
@@ -80,6 +101,12 @@ class EvaluationHarnessTest(unittest.TestCase):
         self.assertEqual(result["regression"]["status"], "PASS")
         self.assertEqual(result["regression"]["known_bad_failures_detected"], 4)
         self.assertEqual(result["regression"]["guard_failures"], 0)
+        self.assertEqual(result["integration"]["status"], "PASS")
+        self.assertEqual(
+            result["integration"]["runtime"],
+            "companion_mind.runtime.ClosureGuard",
+        )
+        self.assertEqual(len(result["integration"]["spec_fingerprint"]), 64)
 
     def test_json_report_matches_checked_result(self) -> None:
         result = run_experiment(load_case_suite(DEFAULT_CASE_PATH))
@@ -97,6 +124,7 @@ class EvaluationHarnessTest(unittest.TestCase):
     def test_cli_writes_an_atomic_markdown_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "reports" / "evaluation.md"
+            mitigation = Path(temporary) / "reports" / "mitigation.json"
             exit_code = main(
                 [
                     "--cases",
@@ -105,11 +133,21 @@ class EvaluationHarnessTest(unittest.TestCase):
                     "markdown",
                     "--output",
                     str(output),
+                    "--emit-mitigation",
+                    str(mitigation),
                 ]
             )
             self.assertEqual(exit_code, 0)
             self.assertTrue(output.is_file())
             self.assertIn("EVAL-CASE-001", output.read_text(encoding="utf-8"))
+            emitted = json.loads(mitigation.read_text(encoding="utf-8"))
+            self.assertEqual(emitted, load_mitigation_spec(DEFAULT_MITIGATION_PATH))
+
+    def test_runtime_rejects_spec_case_identity_mismatch(self) -> None:
+        spec = json.loads(json.dumps(BUILTIN_MITIGATION_SPEC))
+        spec["regression_cases"] = ["EVAL-CASE-999"]
+        with self.assertRaisesRegex(ValueError, "not registered"):
+            run_experiment(BUILTIN_SUITE, spec)
 
     def test_cli_returns_2_for_invalid_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -4,10 +4,8 @@ on:
   push:
     branches:
       - main
-      - agent/first-closed-loop
+      - "agent/**"
   pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -26,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: aerenkolstein-code/Companion-Mind
-          ref: main
+          ref: c6a2128271532746a5570b99ce0ccdea4618db4e
           path: Companion-Mind
 
       - name: Set up Python
@@ -54,6 +52,7 @@ jobs:
           llm-eval \
             --cases cases/anonymized/premature-parent-closure.md \
             --format json \
+            --emit-mitigation /tmp/MIT-CLOSURE-GUARD-001.json \
             --output /tmp/EVAL-CASE-001.json
           llm-eval \
             --cases cases/anonymized/premature-parent-closure.md \
@@ -61,3 +60,8 @@ jobs:
             --output /tmp/EVAL-CASE-001.md
           test -s /tmp/EVAL-CASE-001.json
           test -s /tmp/EVAL-CASE-001.md
+          test -s /tmp/MIT-CLOSURE-GUARD-001.json
+          companion-mind validate-mitigation \
+            --mitigation-spec /tmp/MIT-CLOSURE-GUARD-001.json \
+            > /tmp/MIT-CLOSURE-GUARD-001.validated.json
+          test -s /tmp/MIT-CLOSURE-GUARD-001.validated.json

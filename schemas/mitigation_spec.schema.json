@@ -1,52 +1,71 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.org/schemas/mitigation-spec.schema.json",
-  "title": "Mitigation Experiment Specification",
+  "title": "Executable Mitigation Specification",
   "type": "object",
+  "additionalProperties": false,
   "required": [
+    "schema_version",
     "mitigation_id",
     "target_failure",
     "intervention",
     "control",
     "treatment",
     "metrics",
-    "decision_rule"
+    "decision_rule",
+    "regression_cases",
+    "runtime"
   ],
   "properties": {
-    "mitigation_id": {
-      "type": "string"
-    },
-    "target_failure": {
-      "type": "string"
-    },
-    "intervention": {
-      "type": "string"
-    },
-    "control": {
-      "type": "string"
-    },
-    "treatment": {
-      "type": "string"
-    },
+    "schema_version": {"const": "mitigation-spec/v1"},
+    "mitigation_id": {"type": "string", "minLength": 1},
+    "target_failure": {"const": "premature_parent_closure"},
+    "intervention": {"type": "string", "minLength": 1},
+    "control": {"type": "string", "minLength": 1},
+    "treatment": {"type": "string", "minLength": 1},
     "metrics": {
       "type": "array",
-      "items": {
-        "type": "string"
-      }
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
     },
-    "cost_metrics": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "decision_rule": {
-      "type": "string"
-    },
+    "decision_rule": {"type": "string", "minLength": 1},
     "regression_cases": {
       "type": "array",
-      "items": {
-        "type": "string"
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "guard_type",
+        "safeguard_id",
+        "terminal_statuses",
+        "blocking_statuses",
+        "empty_evidence_decision",
+        "non_terminal_decision",
+        "all_terminal_decision"
+      ],
+      "properties": {
+        "guard_type": {"const": "closure_guard"},
+        "safeguard_id": {"type": "string", "minLength": 1},
+        "terminal_statuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "blocking_statuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "empty_evidence_decision": {"const": "HOLD"},
+        "non_terminal_decision": {"const": "REJECT"},
+        "all_terminal_decision": {"const": "ACCEPT"}
       }
     }
   }

@@ -11,7 +11,8 @@
 | Baseline accuracy | 20% |
 | With Closure Guard | 100% |
 | Known regression failures caught | 4/4 |
-| Evaluation tests | 11/11 |
+| Evaluation tests | 15/15 |
+| Executable MitigationSpec | Runtime-validated |
 
 **Status:** Experimental / reproducible artifact  
 **Evidence level:** E3 — reproducible public-safe evaluation
@@ -43,8 +44,9 @@ python -m unittest discover -s tests -v
 llm-eval --cases cases/anonymized/premature-parent-closure.md
 llm-eval \
   --cases cases/anonymized/premature-parent-closure.md \
-  --format markdown \
-  --output evaluation-report.md
+  --emit-mitigation /tmp/mitigation.json \
+  --output /tmp/evaluation.json
+companion-mind validate-mitigation --mitigation-spec /tmp/mitigation.json
 ```
 
 The command validates the public-safe case contract, executes baseline and treatment,
@@ -52,12 +54,22 @@ grades every variant, calculates metrics, enforces the regression gate, and emit
 stable JSON or Markdown report. Exit code `1` means regression failure; invalid input
 or missing runtime dependencies return `2`.
 
+## Executable integration v0.3
+
+The experiment now owns a complete `mitigation-spec/v1` contract, validates it,
+emits canonical JSON, and instantiates Companion-Mind's real `ClosureGuard` from
+that document. The evaluation report records the runtime-loaded mitigation ID,
+safeguard ID, schema version, and canonical SHA-256 fingerprint. This makes the
+boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
+
 ## Evidence boundary
 
 ### Implemented
 
 - dependency-free `llm-eval` CLI and deterministic evaluation harness;
 - validated public-safe `EvaluationCase` loader;
+- validated and emitted executable `MitigationSpec`;
+- real Companion-Mind runtime loading with shared spec fingerprint;
 - baseline and mitigation comparison;
 - accuracy and premature-closure metrics;
 - JSON and Markdown report output;
@@ -69,7 +81,8 @@ or missing runtime dependencies return `2`.
 - guarded accuracy: **100%**;
 - premature closure rate: **100% → 0%**;
 - known recurrence variants caught: **4/4**;
-- evaluation tests: **11/11**.
+- evaluation tests: **15/15**;
+- runtime integration status: **PASS**.
 
 ### Not claimed
 
@@ -83,7 +96,7 @@ or missing runtime dependencies return `2`.
 
 - `evaluation_lab.py` — loader, policies, grader, metrics, regression gate, and CLI
 - `cases/anonymized/premature-parent-closure.md` — human-readable case card plus executable JSON fixture
-- `experiments/closure-guard-mitigation.md` — mitigation and decision rule
+- `experiments/closure-guard-mitigation.md` — mitigation, decision rule, and executable JSON contract
 - `results/EVAL-CASE-001.json` — checked deterministic result
 - `tests/test_evaluation.py` — loader, reproducibility, reporting, and regression assertions
 - `schemas/` — shared evaluation and mitigation contracts

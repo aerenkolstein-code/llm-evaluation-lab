@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-evaluation-lab"
-version = "0.6.0"
-description = "Public-safe LLM evaluation harness with persistent experiment tracking and a read-only API"
+version = "0.7.0"
+description = "Container-reproducible LLM evaluation harness with experiment tracking and a read-only API"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",

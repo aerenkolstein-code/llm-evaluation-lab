@@ -46,3 +46,15 @@ metadata-list, and single-run-detail GET routes. List responses omit the stored
 result payload; detail responses return the canonical result for one run. Tests
 hash the database before and after all three queries to prove the query path does
 not mutate the evidence file.
+
+## Container reproduction
+
+The Docker image fixes the Companion-Mind runtime to an explicit commit, copies
+only the executable public-safe fixture and schema directories, installs the lab
+in editable mode so checked fixtures remain addressable, and drops privileges to
+UID 10001. CI treats the image as a black box: it verifies the version, executes
+the historical regression, writes one SQLite run through a mounted directory,
+then starts the API with that directory mounted read-only and queries it over HTTP.
+
+The Python base tag and transitive package resolution are not locked by digest;
+this is repeatable functional packaging, not bit-for-bit image reproducibility.

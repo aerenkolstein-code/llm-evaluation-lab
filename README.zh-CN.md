@@ -57,4 +57,20 @@ llm-eval \
 该接口只适合本地、public-safe 实验记录查询。当前没有认证、授权、限流、
 公网部署或生产可靠性声明；操作方不得把私密提示词、档案定位符或账号信息写入实验元数据。
 
+## Docker Reproducibility v0.7
+
+仓库新增唯一一个受控文件 `Dockerfile`，将 Companion-Mind runtime 固定在
+`c6a2128271532746a5570b99ce0ccdea4618db4e`，容器以非 root 用户运行。
+
+```bash
+docker build -t llm-evaluation-lab:0.7 .
+docker run --rm llm-evaluation-lab:0.7 \
+  --suite historical \
+  --cases cases/anonymized/premature-parent-closure.md
+```
+
+GitHub Actions 会从 clean checkout 构建镜像、核验 `0.7.0`、复跑 24 案例历史基准、
+在挂载目录中生成 SQLite 记录，并通过真实 HTTP 查询容器化 API。它证明本地容器复跑能力，
+不代表已经发布 registry image、完成云部署或达到生产可靠性。
+
 第三仓仍保留 concept growth、prior lock-in、world-model drift、longitudinal evolution 与 experimental timeline；failure taxonomy 只是公开接口，不取代纵向评估内核。

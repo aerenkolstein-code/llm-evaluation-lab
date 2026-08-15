@@ -23,3 +23,9 @@ result payload. It therefore defaults to loopback and ships without any write
 route. This is not an authentication boundary: operators must not expose it to a
 network or populate it with non-public evidence without adding deployment-specific
 access controls outside this artifact.
+
+The image contains only repository public-safe files and a pinned public
+Companion-Mind runtime commit. No database, log, credential, environment file or
+private archive path is copied into the image. Runtime evidence must enter through
+an explicit volume; read-only API use should mount that volume with `:ro` and bind
+the published host port to loopback.

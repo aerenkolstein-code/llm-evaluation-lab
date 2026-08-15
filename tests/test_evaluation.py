@@ -13,13 +13,18 @@ from evaluation_lab import (
     DEFAULT_CASE_PATH,
     DEFAULT_MITIGATION_PATH,
     closure_guard_policy,
+    confidence_only_baseline,
+    constraint_gate_policy,
+    evaluate_historical_policy,
     evaluate_policy,
     load_case_suite,
+    load_historical_benchmark,
     load_mitigation_spec,
     main,
     naive_any_done,
     render_report,
     run_experiment,
+    run_historical_benchmark,
     validate_mitigation_spec,
 )
 
@@ -39,6 +44,103 @@ class EvaluationHarnessTest(unittest.TestCase):
         self.assertEqual(suite.case_id, "EVAL-CASE-001")
         self.assertEqual(suite.privacy, "PUBLIC_SAFE")
         self.assertEqual(suite.cases, BUILTIN_SUITE.cases)
+
+    def test_historical_benchmark_has_declared_public_safe_scope(self) -> None:
+        suite = load_historical_benchmark(DEFAULT_CASE_PATH)
+        self.assertEqual(suite.benchmark_id, "HISTORICAL-FAILURE-BENCHMARK-v1")
+        self.assertEqual(suite.privacy, "PUBLIC_SAFE")
+        self.assertEqual(suite.source_observations, 89)
+        self.assertEqual(suite.source_categories, 18)
+        self.assertEqual(len(suite.mechanisms), 12)
+        self.assertEqual(len(suite.cases), 24)
+
+    def test_historical_mechanisms_have_minimal_pairs(self) -> None:
+        suite = load_historical_benchmark(DEFAULT_CASE_PATH)
+        pairs: dict[str, set[str]] = {}
+        for case in suite.cases:
+            pairs.setdefault(str(case["mechanism_id"]), set()).add(
+                str(case["variant"])
+            )
+        self.assertEqual(set(pairs), {item["mechanism_id"] for item in suite.mechanisms})
+        self.assertTrue(all(variants == {"TRAP", "CONTROL"} for variants in pairs.values()))
+
+    def test_historical_baseline_reproduces_twelve_traps(self) -> None:
+        suite = load_historical_benchmark(DEFAULT_CASE_PATH)
+        result = evaluate_historical_policy(
+            "baseline", confidence_only_baseline, suite.cases
+        )
+        self.assertEqual(result.accuracy, 0.5)
+        self.assertEqual(result.false_accept_rate, 1.0)
+        self.assertEqual(len(result.failures), 12)
+
+    def test_uniform_constraint_gate_mitigates_without_case_rules(self) -> None:
+        suite = load_historical_benchmark(DEFAULT_CASE_PATH)
+        result = evaluate_historical_policy(
+            "gate", constraint_gate_policy, suite.cases
+        )
+        self.assertEqual(result.accuracy, 1.0)
+        self.assertEqual(result.false_accept_rate, 0.0)
+        self.assertEqual(result.failures, ())
+        unseen = {
+            "mechanism_id": "UNSEEN",
+            "surface_confidence": "HIGH",
+            "evidence_state": "SUPPORTED",
+            "constraints": ({"constraint_id": "new_gate", "status": "FAIL"},),
+        }
+        self.assertFalse(constraint_gate_policy(unseen))
+
+    def test_historical_run_reports_no_per_observation_rules(self) -> None:
+        result = run_historical_benchmark(
+            load_historical_benchmark(DEFAULT_CASE_PATH)
+        )
+        self.assertEqual(result["regression"]["status"], "PASS")
+        self.assertEqual(result["regression"]["known_bad_failures_detected"], 12)
+        self.assertEqual(result["architecture"]["mechanism_specific_branches"], 0)
+        self.assertEqual(result["architecture"]["per_observation_rules"], 0)
+
+    def test_historical_fixture_contains_no_private_locator(self) -> None:
+        text = DEFAULT_CASE_PATH.read_text(encoding="utf-8")
+        for marker in ("drive.google.com", "docs.google.com", "PRIVATE CANDIDATE", "L0_"):
+            self.assertNotIn(marker, text)
+
+    def test_historical_cli_emits_json_and_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            json_output = Path(temporary) / "historical.json"
+            markdown_output = Path(temporary) / "historical.md"
+            self.assertEqual(
+                main(
+                    [
+                        "--suite",
+                        "historical",
+                        "--cases",
+                        str(DEFAULT_CASE_PATH),
+                        "--output",
+                        str(json_output),
+                    ]
+                ),
+                0,
+            )
+            self.assertEqual(
+                main(
+                    [
+                        "--suite",
+                        "historical",
+                        "--cases",
+                        str(DEFAULT_CASE_PATH),
+                        "--format",
+                        "markdown",
+                        "--output",
+                        str(markdown_output),
+                    ]
+                ),
+                0,
+            )
+            result = json.loads(json_output.read_text(encoding="utf-8"))
+            self.assertEqual(result["fixture_count"], 24)
+            self.assertIn(
+                "| Confidence-only baseline | 50% | 100% | 12 |",
+                markdown_output.read_text(encoding="utf-8"),
+            )
 
     def test_mitigation_document_loads_and_matches_packaged_fallback(self) -> None:
         spec = load_mitigation_spec(DEFAULT_MITIGATION_PATH)

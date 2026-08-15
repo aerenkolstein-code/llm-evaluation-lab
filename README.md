@@ -11,7 +11,7 @@
 | Baseline accuracy | 20% |
 | With Closure Guard | 100% |
 | Known regression failures caught | 4/4 |
-| Evaluation tests | 15/15 |
+| Evaluation tests | 22/22 |
 | Executable MitigationSpec | Runtime-validated |
 
 **Status:** Experimental / reproducible artifact  
@@ -33,6 +33,32 @@ LLM Evaluation Lab proves whether a protection works. The paired [Companion-Mind
 
 > In the current reproducible first-closed-loop evaluation, the implemented Closure Guard improved the tested cases from 20% baseline accuracy to 100%; broader generalization has not yet been established.
 
+## Historical Failure Benchmark v0.4
+
+The second executable suite compresses longitudinal error observations into a
+small mechanism benchmark without publishing the private source material or
+encoding one rule per historical correction.
+
+| Benchmark signal | Measured value |
+|---|---:|
+| Source observations reviewed | 89 |
+| Raw failure categories | 18 |
+| Mechanism clusters | 12 |
+| Synthetic public-safe cases | 24 |
+| Confidence-only baseline | 50% |
+| Uniform constraint gate | 100% |
+| Known-bad traps caught | 12/12 |
+| Per-observation rules | 0 |
+
+Each cluster contains a minimal pair: one fluent but structurally invalid `TRAP`
+and one matched `CONTROL`. The reference gate accepts only supported candidates
+whose explicit constraints all pass. It is the same policy for all 24 cases—there
+are no mechanism-specific branches and no 89-item `if/else` table.
+
+These figures describe a deterministic, mechanism-preserving synthetic benchmark.
+They do not establish live-model effectiveness, corpus representativeness or
+scientific benchmark validity.
+
 ## Reproduce
 
 Clone both repositories as siblings. Requires Python 3.11 or later; no model API, network call, or private dataset is used by the experiment.
@@ -46,6 +72,10 @@ llm-eval \
   --cases cases/anonymized/premature-parent-closure.md \
   --emit-mitigation /tmp/mitigation.json \
   --output /tmp/evaluation.json
+llm-eval \
+  --suite historical \
+  --cases cases/anonymized/premature-parent-closure.md \
+  --output /tmp/historical-benchmark.json
 companion-mind validate-mitigation --mitigation-spec /tmp/mitigation.json
 ```
 
@@ -74,6 +104,8 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - accuracy and premature-closure metrics;
 - JSON and Markdown report output;
 - checked result artifact and known-bad regression gate.
+- validated 12-cluster, 24-case Historical Failure Benchmark;
+- one uniform evidence-and-constraint gate with zero per-observation rules.
 
 ### Measured in the current demonstration
 
@@ -83,6 +115,10 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - known recurrence variants caught: **4/4**;
 - evaluation tests: **15/15**;
 - runtime integration status: **PASS**.
+- historical benchmark baseline: **50%**;
+- uniform constraint gate: **100%**;
+- historical traps caught: **12/12**;
+- evaluation tests: **22/22**.
 
 ### Not claimed
 
@@ -95,7 +131,7 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 ## Artifact map
 
 - `evaluation_lab.py` — loader, policies, grader, metrics, regression gate, and CLI
-- `cases/anonymized/premature-parent-closure.md` — human-readable case card plus executable JSON fixture
+- `cases/anonymized/premature-parent-closure.md` — first-loop case card plus executable 24-case historical benchmark
 - `experiments/closure-guard-mitigation.md` — mitigation, decision rule, and executable JSON contract
 - `results/EVAL-CASE-001.json` — checked deterministic result
 - `tests/test_evaluation.py` — loader, reproducibility, reporting, and regression assertions
@@ -103,8 +139,8 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 
 ## Roadmap
 
-**Historical Failure Corpus** — planned expansion from longitudinal real-world LLM failure observations. It is intentionally out of scope for this release candidate.
+**Operationalization** — planned SQL/FastAPI/Docker, observability and experiment tracking after the current benchmark contract is stable.
 
 ## Privacy
 
-The case preserves the failure mechanism without publishing the private scene that revealed it. The repository contains no private Raw/L0 material, credentials, account data, client documents, personal records, or links to private archives.
+The fixtures preserve failure mechanisms without publishing the private scenes that revealed them. The historical suite uses synthetic neutral scenarios and excludes source quotations and archive locators. The repository contains no private Raw/L0 material, credentials, account data, client documents, personal records, or links to private archives.

@@ -1,4 +1,4 @@
-"""Reproducible CLI evaluation for Companion-Mind's Closure Guard."""
+"""Reproducible public-safe failure benchmarks and runtime evaluations."""
 
 from __future__ import annotations
 
@@ -13,11 +13,12 @@ from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 Child = Mapping[str, str]
 Case = Mapping[str, object]
 Policy = Callable[[Iterable[Child]], bool]
+HistoricalPolicy = Callable[[Mapping[str, object]], bool]
 
 DEFAULT_CASE_PATH = (
     Path(__file__).resolve().parent
@@ -125,10 +126,31 @@ class CaseSuite:
 
 
 @dataclass(frozen=True)
+class HistoricalBenchmarkSuite:
+    benchmark_id: str
+    title: str
+    run_id: str
+    privacy: str
+    source_observations: int
+    source_categories: int
+    mechanisms: tuple[dict[str, str], ...]
+    cases: tuple[dict[str, object], ...]
+
+
+@dataclass(frozen=True)
 class PolicyResult:
     policy: str
     accuracy: float
     premature_closure_rate: float
+    failures: tuple[str, ...]
+    predictions: tuple[dict[str, object], ...]
+
+
+@dataclass(frozen=True)
+class BenchmarkPolicyResult:
+    policy: str
+    accuracy: float
+    false_accept_rate: float
     failures: tuple[str, ...]
     predictions: tuple[dict[str, object], ...]
 
@@ -336,6 +358,192 @@ def load_case_suite(path: str | Path) -> CaseSuite:
     )
 
 
+def _positive_integer(
+    document: Mapping[str, object], key: str, path: Path
+) -> int:
+    value = document.get(key)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise ValueError(f"{path}: {key!r} must be a positive integer")
+    return value
+
+
+def _validate_mechanisms(
+    raw_mechanisms: object, path: Path
+) -> tuple[dict[str, str], ...]:
+    if not isinstance(raw_mechanisms, list) or not raw_mechanisms:
+        raise ValueError(f"{path}: 'mechanisms' must be a non-empty array")
+    normalized: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for index, raw_mechanism in enumerate(raw_mechanisms):
+        label = f"{path}: mechanisms[{index}]"
+        if not isinstance(raw_mechanism, dict):
+            raise ValueError(f"{label} must be an object")
+        mechanism_id = _required_text(raw_mechanism, "mechanism_id", path)
+        if mechanism_id in seen:
+            raise ValueError(f"{path}: duplicate mechanism_id {mechanism_id!r}")
+        seen.add(mechanism_id)
+        normalized.append(
+            {
+                "mechanism_id": mechanism_id,
+                "name": _required_text(raw_mechanism, "name", path),
+                "gate": _required_text(raw_mechanism, "gate", path),
+                "source_categories": _required_text(
+                    raw_mechanism, "source_categories", path
+                ),
+            }
+        )
+    return tuple(normalized)
+
+
+def _validate_historical_cases(
+    raw_cases: object,
+    mechanism_ids: set[str],
+    path: Path,
+) -> tuple[dict[str, object], ...]:
+    if not isinstance(raw_cases, list) or not raw_cases:
+        raise ValueError(f"{path}: historical 'inputs' must be a non-empty array")
+
+    normalized: list[dict[str, object]] = []
+    seen: set[str] = set()
+    pair_variants: dict[str, set[str]] = {item: set() for item in mechanism_ids}
+    for index, raw_case in enumerate(raw_cases):
+        label = f"{path}: historical inputs[{index}]"
+        if not isinstance(raw_case, dict):
+            raise ValueError(f"{label} must be an object")
+        variant_id = _required_text(raw_case, "variant_id", path)
+        if variant_id in seen:
+            raise ValueError(f"{path}: duplicate historical variant_id {variant_id!r}")
+        seen.add(variant_id)
+        mechanism_id = _required_text(raw_case, "mechanism_id", path)
+        if mechanism_id not in mechanism_ids:
+            raise ValueError(f"{label}: unknown mechanism_id {mechanism_id!r}")
+        variant = _required_text(raw_case, "variant", path)
+        if variant not in {"TRAP", "CONTROL"}:
+            raise ValueError(f"{label}: variant must be TRAP or CONTROL")
+        if variant in pair_variants[mechanism_id]:
+            raise ValueError(
+                f"{path}: duplicate {variant} for mechanism {mechanism_id}"
+            )
+        pair_variants[mechanism_id].add(variant)
+
+        evidence_state = _required_text(raw_case, "evidence_state", path)
+        if evidence_state not in {
+            "SUPPORTED",
+            "CONTRADICTED",
+            "UNKNOWN",
+            "NOT_LOADED",
+        }:
+            raise ValueError(f"{label}: unsupported evidence_state {evidence_state!r}")
+        surface_confidence = _required_text(
+            raw_case, "surface_confidence", path
+        )
+        if surface_confidence not in {"HIGH", "LOW"}:
+            raise ValueError(
+                f"{label}: surface_confidence must be HIGH or LOW"
+            )
+        expected_accept = raw_case.get("expected_accept")
+        if not isinstance(expected_accept, bool):
+            raise ValueError(f"{label}.expected_accept must be boolean")
+
+        raw_constraints = raw_case.get("constraints")
+        if not isinstance(raw_constraints, list) or not raw_constraints:
+            raise ValueError(f"{label}.constraints must be a non-empty array")
+        constraints: list[dict[str, str]] = []
+        for constraint_index, raw_constraint in enumerate(raw_constraints):
+            constraint_label = f"{label}.constraints[{constraint_index}]"
+            if not isinstance(raw_constraint, dict):
+                raise ValueError(f"{constraint_label} must be an object")
+            status = _required_text(raw_constraint, "status", path)
+            if status not in {"PASS", "FAIL", "UNKNOWN"}:
+                raise ValueError(f"{constraint_label}: unsupported status {status!r}")
+            constraints.append(
+                {
+                    "constraint_id": _required_text(
+                        raw_constraint, "constraint_id", path
+                    ),
+                    "status": status,
+                }
+            )
+
+        normalized.append(
+            {
+                "variant_id": variant_id,
+                "mechanism_id": mechanism_id,
+                "variant": variant,
+                "scenario": _required_text(raw_case, "scenario", path),
+                "candidate": _required_text(raw_case, "candidate", path),
+                "surface_confidence": surface_confidence,
+                "evidence_state": evidence_state,
+                "constraints": tuple(constraints),
+                "expected_accept": expected_accept,
+            }
+        )
+
+    incomplete = sorted(
+        mechanism_id
+        for mechanism_id, variants in pair_variants.items()
+        if variants != {"TRAP", "CONTROL"}
+    )
+    if incomplete:
+        raise ValueError(
+            f"{path}: every mechanism needs one TRAP and one CONTROL: "
+            + ", ".join(incomplete)
+        )
+    return tuple(normalized)
+
+
+def load_historical_benchmark(path: str | Path) -> HistoricalBenchmarkSuite:
+    """Load the synthetic mechanism-preserving historical benchmark."""
+
+    case_path = Path(path)
+    root = _read_case_document(case_path)
+    if not isinstance(root, dict):
+        raise ValueError(f"{case_path}: case document must be an object")
+    document = root.get("historical_benchmark")
+    if not isinstance(document, dict):
+        raise ValueError(f"{case_path}: missing historical_benchmark object")
+    privacy = _required_text(document, "privacy", case_path)
+    if privacy != "PUBLIC_SAFE":
+        raise ValueError(
+            f"{case_path}: historical benchmark must be PUBLIC_SAFE"
+        )
+    source_scope = document.get("source_scope")
+    if not isinstance(source_scope, dict):
+        raise ValueError(f"{case_path}: source_scope must be an object")
+    mechanisms = _validate_mechanisms(document.get("mechanisms"), case_path)
+    cases = _validate_historical_cases(
+        document.get("inputs"),
+        {item["mechanism_id"] for item in mechanisms},
+        case_path,
+    )
+    declared_mechanisms = _positive_integer(
+        source_scope, "mechanism_clusters", case_path
+    )
+    declared_cases = _positive_integer(source_scope, "public_cases", case_path)
+    if declared_mechanisms != len(mechanisms):
+        raise ValueError(
+            f"{case_path}: declared mechanism cluster count does not match fixture"
+        )
+    if declared_cases != len(cases):
+        raise ValueError(
+            f"{case_path}: declared public case count does not match fixture"
+        )
+    return HistoricalBenchmarkSuite(
+        benchmark_id=_required_text(document, "benchmark_id", case_path),
+        title=_required_text(document, "title", case_path),
+        run_id=_required_text(document, "run_id", case_path),
+        privacy=privacy,
+        source_observations=_positive_integer(
+            source_scope, "observations", case_path
+        ),
+        source_categories=_positive_integer(
+            source_scope, "raw_categories", case_path
+        ),
+        mechanisms=mechanisms,
+        cases=cases,
+    )
+
+
 def naive_any_done(children: Iterable[Child]) -> bool:
     """Known-bad baseline: local completion is mistaken for parent completion."""
 
@@ -464,11 +672,176 @@ def run_experiment(
     }
 
 
+def confidence_only_baseline(case: Mapping[str, object]) -> bool:
+    """Known-bad baseline: fluent confidence is treated as sufficient evidence."""
+
+    return case.get("surface_confidence") == "HIGH"
+
+
+def constraint_gate_policy(case: Mapping[str, object]) -> bool:
+    """Uniform reference gate; it contains no mechanism- or case-specific branch."""
+
+    if case.get("evidence_state") != "SUPPORTED":
+        return False
+    constraints = case.get("constraints")
+    if not isinstance(constraints, Iterable):
+        return False
+    statuses: list[str] = []
+    for constraint in constraints:
+        if not isinstance(constraint, Mapping):
+            return False
+        statuses.append(str(constraint.get("status", "UNKNOWN")))
+    return bool(statuses) and all(status == "PASS" for status in statuses)
+
+
+def evaluate_historical_policy(
+    name: str,
+    policy: HistoricalPolicy,
+    cases: Iterable[Mapping[str, object]],
+) -> BenchmarkPolicyResult:
+    case_list = tuple(cases)
+    if not case_list:
+        raise ValueError("at least one historical evaluation case is required")
+
+    predictions: list[dict[str, object]] = []
+    failures: list[str] = []
+    negatives = 0
+    false_accepts = 0
+    for case in case_list:
+        variant_id = str(case["variant_id"])
+        expected = bool(case["expected_accept"])
+        predicted = policy(case)
+        correct = predicted == expected
+        if not correct:
+            failures.append(variant_id)
+        if not expected:
+            negatives += 1
+            if predicted:
+                false_accepts += 1
+        predictions.append(
+            {
+                "variant_id": variant_id,
+                "mechanism_id": str(case["mechanism_id"]),
+                "variant": str(case["variant"]),
+                "expected_accept": expected,
+                "predicted_accept": predicted,
+                "correct": correct,
+            }
+        )
+
+    return BenchmarkPolicyResult(
+        policy=name,
+        accuracy=(len(case_list) - len(failures)) / len(case_list),
+        false_accept_rate=false_accepts / negatives if negatives else 0.0,
+        failures=tuple(failures),
+        predictions=tuple(predictions),
+    )
+
+
+def run_historical_benchmark(
+    suite: HistoricalBenchmarkSuite,
+) -> dict[str, object]:
+    """Run the 12-cluster public-safe benchmark with a uniform constraint gate."""
+
+    baseline = evaluate_historical_policy(
+        "confidence_only", confidence_only_baseline, suite.cases
+    )
+    treatment = evaluate_historical_policy(
+        "uniform_constraint_gate", constraint_gate_policy, suite.cases
+    )
+    trap_count = sum(not bool(case["expected_accept"]) for case in suite.cases)
+    controls = sum(bool(case["expected_accept"]) for case in suite.cases)
+    regression_pass = (
+        len(baseline.failures) == trap_count
+        and not treatment.failures
+        and trap_count == controls == len(suite.mechanisms)
+    )
+    return {
+        "benchmark_id": suite.benchmark_id,
+        "run_id": suite.run_id,
+        "privacy": suite.privacy,
+        "source_scope": {
+            "observations": suite.source_observations,
+            "raw_categories": suite.source_categories,
+            "mechanism_clusters": len(suite.mechanisms),
+            "public_cases": len(suite.cases),
+            "transformation": "mechanism-preserving synthetic reconstruction",
+        },
+        "fixture_count": len(suite.cases),
+        "mechanisms": [dict(item) for item in suite.mechanisms],
+        "baseline": asdict(baseline),
+        "treatment": asdict(treatment),
+        "accuracy_delta": treatment.accuracy - baseline.accuracy,
+        "regression": {
+            "known_bad_failures_detected": len(baseline.failures),
+            "reference_gate_failures": len(treatment.failures),
+            "status": "PASS" if regression_pass else "FAIL",
+        },
+        "architecture": {
+            "policy": "uniform evidence-and-constraint gate",
+            "mechanism_specific_branches": 0,
+            "per_observation_rules": 0,
+        },
+        "evidence_level": "E3_EXECUTABLE_PUBLIC_SAFE_BENCHMARK",
+        "limitations": [
+            "synthetic mechanism-preserving cases, not the private observations",
+            "deterministic reference policies, not live LLM calls",
+            "no production traffic",
+            "no broad-model or scientific-benchmark validity claim",
+        ],
+    }
+
+
+def _render_historical_report(result: Mapping[str, object]) -> str:
+    baseline = result["baseline"]
+    treatment = result["treatment"]
+    regression = result["regression"]
+    source_scope = result["source_scope"]
+    if not all(
+        isinstance(item, Mapping)
+        for item in (baseline, treatment, regression, source_scope)
+    ):
+        raise ValueError("historical result is missing benchmark metrics")
+    return "\n".join(
+        (
+            f"# {result['benchmark_id']} Evaluation Report",
+            "",
+            f"- Run: `{result['run_id']}`",
+            f"- Evidence: `{result['evidence_level']}`",
+            f"- Mechanism clusters: `{source_scope['mechanism_clusters']}`",
+            f"- Public-safe cases: `{source_scope['public_cases']}`",
+            "",
+            "| Policy | Accuracy | False accept rate | Failures |",
+            "|---|---:|---:|---:|",
+            f"| Confidence-only baseline | {float(baseline['accuracy']):.0%} | "
+            f"{float(baseline['false_accept_rate']):.0%} | "
+            f"{len(baseline['failures'])} |",
+            f"| Uniform constraint gate | {float(treatment['accuracy']):.0%} | "
+            f"{float(treatment['false_accept_rate']):.0%} | "
+            f"{len(treatment['failures'])} |",
+            "",
+            "## Regression",
+            "",
+            f"**{regression['status']}** — known-bad traps detected: "
+            f"{regression['known_bad_failures_detected']}; reference-gate failures: "
+            f"{regression['reference_gate_failures']}.",
+            "",
+            "## Evidence boundary",
+            "",
+            *[f"- {item}" for item in result["limitations"]],
+            "",
+        )
+    )
+
+
 def render_report(result: Mapping[str, object], output_format: str) -> str:
     if output_format == "json":
         return json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if output_format != "markdown":
         raise ValueError(f"unsupported output format: {output_format}")
+
+    if "benchmark_id" in result:
+        return _render_historical_report(result)
 
     baseline = result["baseline"]
     treatment = result["treatment"]
@@ -542,9 +915,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-eval",
         description=(
-            "Load public-safe cases, run baseline and Closure Guard policies, "
+            "Load public-safe cases, run closure or historical benchmark policies, "
             "grade outcomes, calculate metrics, and enforce regression checks."
         ),
+    )
+    parser.add_argument(
+        "--suite",
+        choices=("closure", "historical"),
+        default="closure",
+        help="evaluation suite to run (default: closure)",
     )
     parser.add_argument(
         "--cases",
@@ -586,30 +965,41 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.cases:
-            suite = load_case_suite(args.cases)
-        elif DEFAULT_CASE_PATH.exists():
-            suite = load_case_suite(DEFAULT_CASE_PATH)
-        else:
-            suite = BUILTIN_SUITE
-        if args.mitigation_spec:
-            mitigation_spec = load_mitigation_spec(args.mitigation_spec)
-        elif DEFAULT_MITIGATION_PATH.exists():
-            mitigation_spec = load_mitigation_spec(DEFAULT_MITIGATION_PATH)
-        else:
-            mitigation_spec = validate_mitigation_spec(BUILTIN_MITIGATION_SPEC)
-        if args.emit_mitigation:
-            write_report(
-                args.emit_mitigation,
-                json.dumps(
-                    mitigation_spec,
-                    ensure_ascii=False,
-                    indent=2,
-                    sort_keys=True,
+        case_path = args.cases or DEFAULT_CASE_PATH
+        if args.suite == "historical":
+            if not case_path.exists():
+                raise ValueError(
+                    "historical suite requires the checked public-safe case document"
                 )
-                + "\n",
-            )
-        result = run_experiment(suite, mitigation_spec)
+            if args.mitigation_spec or args.emit_mitigation:
+                raise ValueError(
+                    "historical suite does not consume or emit a runtime MitigationSpec"
+                )
+            historical_suite = load_historical_benchmark(case_path)
+            result = run_historical_benchmark(historical_suite)
+        else:
+            if case_path.exists():
+                suite = load_case_suite(case_path)
+            else:
+                suite = BUILTIN_SUITE
+            if args.mitigation_spec:
+                mitigation_spec = load_mitigation_spec(args.mitigation_spec)
+            elif DEFAULT_MITIGATION_PATH.exists():
+                mitigation_spec = load_mitigation_spec(DEFAULT_MITIGATION_PATH)
+            else:
+                mitigation_spec = validate_mitigation_spec(BUILTIN_MITIGATION_SPEC)
+            if args.emit_mitigation:
+                write_report(
+                    args.emit_mitigation,
+                    json.dumps(
+                        mitigation_spec,
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                )
+            result = run_experiment(suite, mitigation_spec)
         report = render_report(result, args.format)
         if args.output:
             write_report(args.output, report)

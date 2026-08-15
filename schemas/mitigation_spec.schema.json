@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/mitigation-spec.schema.json",
+  "title": "Mitigation Experiment Specification",
+  "type": "object",
+  "required": [
+    "mitigation_id",
+    "target_failure",
+    "intervention",
+    "control",
+    "treatment",
+    "metrics",
+    "decision_rule"
+  ],
+  "properties": {
+    "mitigation_id": {
+      "type": "string"
+    },
+    "target_failure": {
+      "type": "string"
+    },
+    "intervention": {
+      "type": "string"
+    },
+    "control": {
+      "type": "string"
+    },
+    "treatment": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cost_metrics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decision_rule": {
+      "type": "string"
+    },
+    "regression_cases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

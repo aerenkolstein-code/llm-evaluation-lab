@@ -15,5 +15,15 @@ Portfolio Status：**CURRENT ARTIFACT** · Evidence Level：**E3——可复现�
 
 这不是通用模型性能声明，而是第一个能被陌生人复跑的 Case → Failure → Metric → Mitigation → Guard → Regression 闭环。
 
-第三仓仍保留 concept growth、prior lock-in、world-model drift、longitudinal evolution 与 experimental timeline；failure taxonomy 只是公开接口，不取代纵向评估内核。
+## CLI 纵切
 
+```bash
+python -m pip install -e ../Companion-Mind
+python -m pip install -e .
+llm-eval --cases cases/anonymized/premature-parent-closure.md
+llm-eval --format markdown --output evaluation-report.md
+```
+
+`llm-eval` 依次完成 Case 加载与校验、基线/处理组执行、逐例评分、指标计算、回归门禁以及 JSON/Markdown 报告输出。回归失败返回退出码 `1`，输入或依赖错误返回 `2`。当前 11 项测试覆盖 fixture 同步、非法输入、实测指标、checked result、双格式报告、CLI 文件输出与退出码契约。
+
+第三仓仍保留 concept growth、prior lock-in、world-model drift、longitudinal evolution 与 experimental timeline；failure taxonomy 只是公开接口，不取代纵向评估内核。

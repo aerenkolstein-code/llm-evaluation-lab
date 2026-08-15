@@ -4,11 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-evaluation-lab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Runnable public-safe LLM failure evaluation harness"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.scripts]
+llm-eval = "evaluation_lab:main"
+
 [tool.setuptools]
 py-modules = ["evaluation_lab"]
-

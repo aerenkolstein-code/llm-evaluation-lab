@@ -1,0 +1,54 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+      - agent/first-closed-loop
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out evaluation repository
+        uses: actions/checkout@v4
+        with:
+          path: llm-evaluation-lab
+
+      - name: Check out Companion-Mind
+        uses: actions/checkout@v4
+        with:
+          repository: aerenkolstein-code/Companion-Mind
+          ref: main
+          path: Companion-Mind
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            Companion-Mind/pyproject.toml
+            llm-evaluation-lab/pyproject.toml
+
+      - name: Install both packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e Companion-Mind
+          python -m pip install -e llm-evaluation-lab
+
+      - name: Run evaluation tests
+        working-directory: llm-evaluation-lab
+        run: python -m unittest discover -s tests -v
+
+      - name: Run checked experiment
+        working-directory: llm-evaluation-lab
+        run: python evaluation_lab.py
+

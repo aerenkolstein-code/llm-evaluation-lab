@@ -1,59 +1,89 @@
 # LLM Evaluation Lab
 
-**A runnable evaluation harness for failure modes, longitudinal change, mitigation and regression.**
+**Reproducible LLM evaluation harness for failure mechanisms, mitigation experiments, and regression testing.**
 
-Portfolio Status: **CURRENT ARTIFACT** · Evidence Level: **E3 — reproducible public-safe evaluation**
+[![Test](https://github.com/aerenkolstein-code/llm-evaluation-lab/actions/workflows/test.yml/badge.svg)](https://github.com/aerenkolstein-code/llm-evaluation-lab/actions/workflows/test.yml)
 
-This repository is the public-facing continuation of the earlier **AI Longitudinal Evaluation / third repository**. Failure taxonomy is its interface; the retained core is how concepts, priors and world models change across an experimental timeline.
+## First Closed Loop
 
-## First closed loop
+| Result | Measured value |
+|---|---:|
+| Baseline accuracy | 20% |
+| With Closure Guard | 100% |
+| Known regression failures caught | 4/4 |
+| Evaluation tests | 4/4 |
 
-`EVAL-CASE-001` reproduces **Premature Parent Closure**: one local child action completes, another required child remains open, and the parent is incorrectly declared done.
+**Status:** Experimental / reproducible artifact  
+**Evidence level:** E3 — reproducible public-safe evaluation
 
-The harness runs five order/status variants against:
+```mermaid
+flowchart LR
+  A[Observed failure] --> B[EvaluationCase]
+  B --> C[Baseline]
+  C --> D[Mitigation]
+  D --> E[Metric]
+  E --> F[Runtime Guard]
+  F --> G[Regression]
+```
 
-- **baseline:** close when any child is done;
-- **treatment:** Companion-Mind `CM-GUARD-001`, close only when every required child is terminal.
+LLM Evaluation Lab proves whether a protection works. The paired [Companion-Mind](https://github.com/aerenkolstein-code/Companion-Mind) repository implements the protection.
 
-Measured result from `python evaluation_lab.py`:
+`EVAL-CASE-001` reproduces **Premature Parent Closure** across five deterministic, public-safe variants. The harness compares a known-bad baseline with Companion-Mind's `CM-GUARD-001`, records metrics, and deliberately reintroduces the bad policy to prove the regression suite catches the recurrence.
 
-| Policy | Accuracy | Premature closure rate | Regression failures |
-|---|---:|---:|---:|
-| Naive baseline | 20% | 100% | 4 |
-| Closure Guard | 100% | 0% | 0 |
-
-Accuracy moved by **+80 percentage points** on this deterministic fixture. The regression run deliberately applies the known-bad baseline and detects all four recurrence variants.
+> In the current reproducible first-closed-loop evaluation, the implemented Closure Guard improved the tested cases from 20% baseline accuracy to 100%; broader generalization has not yet been established.
 
 ## Reproduce
 
-Clone both core repositories as siblings, then run:
+Clone both repositories as siblings. Requires Python 3.11 or later; no model API, network call, or private dataset is used by the experiment.
 
 ```bash
 python -m pip install -e ../Companion-Mind
+python -m pip install -e .
 python -m unittest discover -s tests -v
 python evaluation_lab.py
 ```
 
-No model API, network call or private dataset is used.
+## Evidence boundary
+
+### Implemented
+
+- deterministic evaluation harness;
+- public-safe `EvaluationCase` fixture;
+- baseline and mitigation comparison;
+- accuracy and premature-closure metrics;
+- checked result artifact;
+- known-bad regression probe.
+
+### Measured in the current demonstration
+
+- baseline accuracy: **20%**;
+- guarded accuracy: **100%**;
+- premature closure rate: **100% → 0%**;
+- known recurrence variants caught: **4/4**;
+- evaluation tests: **4/4**.
+
+### Not claimed
+
+- production deployment;
+- broad model generalization;
+- scientific benchmark validity;
+- enterprise-grade reliability;
+- live-LLM effectiveness or statistical significance.
 
 ## Artifact map
 
-- `evaluation_lab.py` — case, baseline, treatment adapter, metrics and regression run
+- `evaluation_lab.py` — case, policies, metrics, and regression run
 - `cases/anonymized/premature-parent-closure.md` — public-safe case card
 - `experiments/closure-guard-mitigation.md` — mitigation and decision rule
-- `results/EVAL-CASE-001.json` — checked-in deterministic result
+- `results/EVAL-CASE-001.json` — checked deterministic result
 - `tests/test_evaluation.py` — reproducibility and regression assertions
-- `schemas/` — shared EvaluationCase and MitigationSpec contracts
+- `schemas/` — shared evaluation and mitigation contracts
 
-## Longitudinal identity
+## Roadmap
 
-The lab evaluates not only a single answer, but also **concept growth**, **prior lock-in**, **world-model drift**, recovery and **longitudinal evolution** across an **experimental timeline**. The current artifact is the smallest executable slice of that larger program.
-
-## Limits and next step
-
-This first result is structural and deterministic. It does not measure a live LLM, production traffic, statistical significance or cross-model generalization. The next step is a public-safe model-run adapter that preserves the same predeclared case, metric and regression contracts.
+**Historical Failure Corpus** — planned expansion from longitudinal real-world LLM failure observations. It is intentionally out of scope for this release candidate.
 
 ## Privacy
 
-The case is abstracted to synthetic child-task states. No private Raw/L0, relationship history, account, company assessment, client document or archive link is included.
+The case preserves the failure mechanism without publishing the private scene that revealed it. The repository contains no private Raw/L0 material, credentials, account data, client documents, personal records, or links to private archives.
 

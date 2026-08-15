@@ -14,10 +14,10 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 Child = Mapping[str, str]
 Case = Mapping[str, object]
@@ -945,6 +945,34 @@ def _initialize_store(connection: sqlite3.Connection) -> None:
         connection.execute(f"PRAGMA user_version = {STORE_SCHEMA_VERSION}")
 
 
+def _open_read_only_store(store_path: str | Path) -> sqlite3.Connection:
+    """Open an initialized experiment store without permitting writes."""
+
+    path = Path(store_path)
+    if not path.is_file():
+        raise ValueError(f"experiment store does not exist: {path}")
+    try:
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        connection.execute("PRAGMA query_only = ON")
+        version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        if version != STORE_SCHEMA_VERSION:
+            connection.close()
+            raise ValueError(
+                f"unsupported experiment store schema version {version}"
+            )
+        table = connection.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'experiment_runs'"
+        ).fetchone()
+        if table is None:
+            connection.close()
+            raise ValueError("experiment store is missing experiment_runs")
+        connection.row_factory = sqlite3.Row
+        return connection
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"experiment store error: {exc}") from exc
+
+
 def persist_experiment_run(
     store_path: str | Path,
     result: Mapping[str, object],
@@ -1052,13 +1080,8 @@ def list_experiment_runs(
 
     if limit < 1 or limit > 1000:
         raise ValueError("run list limit must be between 1 and 1000")
-    path = Path(store_path)
-    if not path.exists():
-        raise ValueError(f"experiment store does not exist: {path}")
     try:
-        with sqlite3.connect(path) as connection:
-            _initialize_store(connection)
-            connection.row_factory = sqlite3.Row
+        with _open_read_only_store(store_path) as connection:
             rows = connection.execute(
                 """
                 SELECT run_id, suite, case_suite_version, model,
@@ -1074,6 +1097,134 @@ def list_experiment_runs(
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"experiment store error: {exc}") from exc
     return [dict(row) for row in rows]
+
+
+def get_experiment_run(
+    store_path: str | Path, run_id: str
+) -> dict[str, object] | None:
+    """Return one immutable experiment record and its canonical result."""
+
+    normalized_run_id = run_id.strip()
+    if not normalized_run_id:
+        raise ValueError("run_id must be a non-empty string")
+    try:
+        with _open_read_only_store(store_path) as connection:
+            row = connection.execute(
+                """
+                SELECT run_id, suite, case_suite_version, model,
+                       prompt_version, git_commit, created_at_utc,
+                       latency_ms, token_cost, baseline_accuracy,
+                       treatment_accuracy, regression_status, result_json
+                FROM experiment_runs
+                WHERE run_id = ?
+                """,
+                (normalized_run_id,),
+            ).fetchone()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"experiment store error: {exc}") from exc
+    if row is None:
+        return None
+    record = dict(row)
+    result_json = record.pop("result_json")
+    record["result"] = json.loads(str(result_json))
+    return record
+
+
+def create_app(store_path: str | Path) -> Any:
+    """Create a local-first, read-only FastAPI query surface."""
+
+    try:
+        from fastapi import FastAPI, HTTPException, Query
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Install the API dependencies: python -m pip install -e ."
+        ) from exc
+
+    store = Path(store_path).resolve()
+    with _open_read_only_store(store):
+        pass
+
+    app = FastAPI(
+        title="LLM Evaluation Lab Query API",
+        description=(
+            "Read-only access to immutable, public-safe experiment records. "
+            "No write routes are exposed."
+        ),
+        version=__version__,
+        docs_url=None,
+        redoc_url=None,
+    )
+
+    @app.get("/healthz", tags=["service"])
+    def healthz() -> dict[str, object]:
+        try:
+            with _open_read_only_store(store):
+                pass
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {
+            "status": "ok",
+            "service": "llm-evaluation-lab",
+            "read_only": True,
+            "store_schema_version": STORE_SCHEMA_VERSION,
+        }
+
+    @app.get("/v1/runs", tags=["experiments"])
+    def runs(
+        limit: int = Query(default=20, ge=1, le=1000),
+    ) -> list[dict[str, object]]:
+        try:
+            return list_experiment_runs(store, limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/v1/runs/{run_id}", tags=["experiments"])
+    def run_detail(run_id: str) -> dict[str, object]:
+        try:
+            record = get_experiment_run(store, run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if record is None:
+            raise HTTPException(status_code=404, detail="experiment run not found")
+        return record
+
+    return app
+
+
+def serve_main(argv: Sequence[str] | None = None) -> int:
+    """Serve the read-only API on loopback by default."""
+
+    parser = argparse.ArgumentParser(
+        prog="llm-eval-api",
+        description="Serve a read-only FastAPI view of an experiment store.",
+    )
+    parser.add_argument("--store", type=Path, required=True)
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="allow binding beyond localhost; no authentication is provided",
+    )
+    parser.add_argument("--log-level", default="info")
+    args = parser.parse_args(argv)
+    if args.host not in {"127.0.0.1", "localhost", "::1"} and not args.allow_network:
+        parser.error("non-loopback --host requires --allow-network")
+    if not 1 <= args.port <= 65535:
+        parser.error("--port must be between 1 and 65535")
+    try:
+        import uvicorn
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Install the API dependencies: python -m pip install -e ."
+        ) from exc
+    uvicorn.run(
+        create_app(args.store),
+        host=args.host,
+        port=args.port,
+        log_level=args.log_level,
+    )
+    return 0
 
 
 def emit_json_log(enabled: bool, event: str, **fields: object) -> None:

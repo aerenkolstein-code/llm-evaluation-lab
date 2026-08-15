@@ -1,3 +1,5 @@
+import asyncio
+import hashlib
 import json
 import io
 import sqlite3
@@ -6,6 +8,13 @@ import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
+
+try:
+    import fastapi  # noqa: F401
+except ModuleNotFoundError:
+    HAS_FASTAPI = False
+else:
+    HAS_FASTAPI = True
 
 from evaluation_lab import (
     BUILTIN_MITIGATION_SPEC,
@@ -16,8 +25,10 @@ from evaluation_lab import (
     closure_guard_policy,
     confidence_only_baseline,
     constraint_gate_policy,
+    create_app,
     evaluate_historical_policy,
     evaluate_policy,
+    get_experiment_run,
     load_case_suite,
     load_historical_benchmark,
     load_mitigation_spec,
@@ -34,6 +45,51 @@ from evaluation_lab import (
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKED_RESULT = ROOT / "results" / "EVAL-CASE-001.json"
+
+
+def asgi_get(
+    app: object, path: str, query_string: bytes = b""
+) -> tuple[int, dict[str, object]]:
+    """Exercise one GET request without adding an HTTP test dependency."""
+
+    async def invoke() -> tuple[int, dict[str, object]]:
+        messages: list[dict[str, object]] = []
+        request_sent = False
+
+        async def receive() -> dict[str, object]:
+            nonlocal request_sent
+            if request_sent:
+                return {"type": "http.disconnect"}
+            request_sent = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message: dict[str, object]) -> None:
+            messages.append(message)
+
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode("utf-8"),
+            "query_string": query_string,
+            "headers": [(b"host", b"testserver")],
+            "client": ("127.0.0.1", 12345),
+            "server": ("127.0.0.1", 8000),
+            "root_path": "",
+        }
+        await app(scope, receive, send)  # type: ignore[operator]
+        start = next(item for item in messages if item["type"] == "http.response.start")
+        body = b"".join(
+            item.get("body", b"")  # type: ignore[arg-type]
+            for item in messages
+            if item["type"] == "http.response.body"
+        )
+        return int(start["status"]), json.loads(body)
+
+    return asyncio.run(invoke())
 
 
 class EvaluationHarnessTest(unittest.TestCase):
@@ -214,6 +270,88 @@ class EvaluationHarnessTest(unittest.TestCase):
             self.assertEqual(row["case_suite_version"], "EVAL-CASE-001")
             self.assertEqual(row["baseline_accuracy"], 0.2)
             self.assertEqual(row["treatment_accuracy"], 1.0)
+
+    def _seed_api_store(self, store: Path, run_id: str = "RUN-API-001") -> None:
+        result = run_historical_benchmark(
+            load_historical_benchmark(DEFAULT_CASE_PATH)
+        )
+        result["run_id"] = run_id
+        persist_experiment_run(
+            store,
+            result,
+            suite="historical",
+            model="deterministic-reference",
+            prompt_version="hfb-v1",
+            git_commit="abc123",
+            latency_ms=3.5,
+            created_at_utc="2026-08-15T20:00:00Z",
+        )
+
+    @unittest.skipUnless(HAS_FASTAPI, "FastAPI is not installed")
+    def test_api_exposes_only_read_routes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            self._seed_api_store(store)
+            app = create_app(store)
+            methods = {
+                method
+                for route in app.routes
+                for method in (getattr(route, "methods", None) or set())
+            }
+            self.assertTrue(methods)
+            self.assertEqual(methods - {"GET", "HEAD"}, set())
+
+    @unittest.skipUnless(HAS_FASTAPI, "FastAPI is not installed")
+    def test_api_health_reports_read_only_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            self._seed_api_store(store)
+            status, body = asgi_get(create_app(store), "/healthz")
+            self.assertEqual(status, 200)
+            self.assertEqual(body["status"], "ok")
+            self.assertTrue(body["read_only"])
+            self.assertEqual(body["store_schema_version"], 1)
+
+    @unittest.skipUnless(HAS_FASTAPI, "FastAPI is not installed")
+    def test_api_lists_metadata_and_returns_canonical_detail(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            self._seed_api_store(store)
+            app = create_app(store)
+            list_status, rows = asgi_get(app, "/v1/runs", b"limit=1")
+            self.assertEqual(list_status, 200)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["run_id"], "RUN-API-001")
+            self.assertNotIn("result", rows[0])
+            detail_status, detail = asgi_get(app, "/v1/runs/RUN-API-001")
+            self.assertEqual(detail_status, 200)
+            self.assertEqual(detail["run_id"], "RUN-API-001")
+            self.assertEqual(detail["result"]["fixture_count"], 24)
+            self.assertEqual(
+                get_experiment_run(store, "RUN-API-001"), detail
+            )
+
+    @unittest.skipUnless(HAS_FASTAPI, "FastAPI is not installed")
+    def test_api_returns_404_for_unknown_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            self._seed_api_store(store)
+            status, body = asgi_get(create_app(store), "/v1/runs/UNKNOWN")
+            self.assertEqual(status, 404)
+            self.assertEqual(body["detail"], "experiment run not found")
+
+    @unittest.skipUnless(HAS_FASTAPI, "FastAPI is not installed")
+    def test_api_queries_do_not_mutate_the_sqlite_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Path(temporary) / "runs.sqlite3"
+            self._seed_api_store(store)
+            before = hashlib.sha256(store.read_bytes()).hexdigest()
+            app = create_app(store)
+            asgi_get(app, "/healthz")
+            asgi_get(app, "/v1/runs", b"limit=1")
+            asgi_get(app, "/v1/runs/RUN-API-001")
+            after = hashlib.sha256(store.read_bytes()).hexdigest()
+            self.assertEqual(after, before)
 
     def test_cli_persists_lists_and_emits_structured_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

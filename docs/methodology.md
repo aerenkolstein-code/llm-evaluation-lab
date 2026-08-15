@@ -37,3 +37,12 @@ Structured lifecycle logs use one JSON object per line and remain separate from
 the report channel: `run_started`, `run_completed`, `run_persisted`, or
 `run_failed`. This preserves machine-readable observability without changing the
 deterministic report contract when tracking is not requested.
+
+## Read-only query boundary
+
+The FastAPI surface is a projection over immutable SQLite evidence. It opens the
+database in URI `mode=ro`, enables SQLite `query_only`, and exposes only health,
+metadata-list, and single-run-detail GET routes. List responses omit the stored
+result payload; detail responses return the canonical result for one run. Tests
+hash the database before and after all three queries to prove the query path does
+not mutate the evidence file.

@@ -17,3 +17,9 @@ SQLite stores and JSON logs may contain experiment metadata and full public-safe
 result payloads. They are runtime evidence, not repository fixtures: database
 files are ignored by git, and operators must not pass private prompts, credentials
 or archive locations through model, prompt-version, git-commit or run-ID fields.
+
+The query API returns stored metadata and, for a requested run, its canonical
+result payload. It therefore defaults to loopback and ships without any write
+route. This is not an authentication boundary: operators must not expose it to a
+network or populate it with non-public evidence without adding deployment-specific
+access controls outside this artifact.

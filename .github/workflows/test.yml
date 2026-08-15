@@ -95,3 +95,36 @@ jobs:
             --list-runs 1 \
             --output /tmp/experiment-runs.json
           python -c 'import json; rows=json.load(open("/tmp/experiment-runs.json")); assert len(rows)==1; assert rows[0]["regression_status"]=="PASS"; assert rows[0]["git_commit"]'
+
+      - name: Smoke-test read-only query API
+        working-directory: llm-evaluation-lab
+        run: |
+          llm-eval-api \
+            --store /tmp/eval-runs.sqlite3 \
+            --host 127.0.0.1 \
+            --port 8765 \
+            --log-level warning \
+            > /tmp/llm-eval-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill "$API_PID" 2>/dev/null || true' EXIT
+          curl --silent --show-error --fail \
+            --retry 10 --retry-delay 1 --retry-connrefused \
+            http://127.0.0.1:8765/healthz \
+            > /tmp/api-health.json
+          curl --silent --show-error --fail \
+            'http://127.0.0.1:8765/v1/runs?limit=1' \
+            > /tmp/api-runs.json
+          python - <<'PY'
+          import json
+
+          health = json.load(open('/tmp/api-health.json', encoding='utf-8'))
+          runs = json.load(open('/tmp/api-runs.json', encoding='utf-8'))
+          assert health == {
+              'status': 'ok',
+              'service': 'llm-evaluation-lab',
+              'read_only': True,
+              'store_schema_version': 1,
+          }
+          assert len(runs) == 1
+          assert runs[0]['regression_status'] == 'PASS'
+          PY

@@ -170,10 +170,20 @@ jobs:
             --allow-network \
             --port 8000 \
             --log-level warning
-          curl --silent --show-error --fail \
-            --retry 10 --retry-delay 1 --retry-connrefused \
-            http://127.0.0.1:8766/healthz \
-            > /tmp/docker-api-health.json
+          API_READY=false
+          for attempt in $(seq 1 20); do
+            if curl --silent --show-error --fail \
+              http://127.0.0.1:8766/healthz \
+              > /tmp/docker-api-health.json; then
+              API_READY=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$API_READY" != true ]; then
+            docker logs llm-eval-api-ci
+            exit 1
+          fi
           curl --silent --show-error --fail \
             'http://127.0.0.1:8766/v1/runs?limit=1' \
             > /tmp/docker-api-runs.json

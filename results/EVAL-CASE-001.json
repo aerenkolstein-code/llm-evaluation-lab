@@ -21,6 +21,14 @@
   "case_id": "EVAL-CASE-001",
   "evidence_level": "E3_EXECUTABLE_LOCAL_PROTOTYPE",
   "fixture_count": 5,
+  "integration": {
+    "loaded_mitigation_id": "MIT-CLOSURE-GUARD-001",
+    "loaded_safeguard_id": "CM-GUARD-001",
+    "runtime": "companion_mind.runtime.ClosureGuard",
+    "schema_version": "mitigation-spec/v1",
+    "spec_fingerprint": "3010e1ba79e9679acef6c2ad30576f923a304ae2bd76eb907b63c0bdff183e6f",
+    "status": "PASS"
+  },
   "limitations": [
     "deterministic structural fixture",
     "no live LLM calls",

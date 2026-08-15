@@ -52,7 +52,97 @@
     "metrics": {"type": "array", "items": {"type": "string"}},
     "failure_modes": {"type": "array", "items": {"type": "string"}},
     "privacy": {"enum": ["PUBLIC", "PUBLIC_SAFE", "REDACTED"]},
-    "provenance": {"type": "array", "items": {"type": "string"}}
+    "provenance": {"type": "array", "items": {"type": "string"}},
+    "historical_benchmark": {
+      "type": "object",
+      "required": [
+        "benchmark_id",
+        "title",
+        "run_id",
+        "task",
+        "privacy",
+        "source_scope",
+        "mechanisms",
+        "inputs"
+      ],
+      "properties": {
+        "benchmark_id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "task": {"type": "string", "minLength": 1},
+        "privacy": {"const": "PUBLIC_SAFE"},
+        "source_scope": {
+          "type": "object",
+          "required": ["observations", "raw_categories", "mechanism_clusters", "public_cases", "transformation"],
+          "properties": {
+            "observations": {"type": "integer", "minimum": 1},
+            "raw_categories": {"type": "integer", "minimum": 1},
+            "mechanism_clusters": {"type": "integer", "minimum": 1},
+            "public_cases": {"type": "integer", "minimum": 1},
+            "transformation": {"const": "mechanism-preserving synthetic reconstruction"}
+          },
+          "additionalProperties": false
+        },
+        "mechanisms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["mechanism_id", "name", "gate", "source_categories"],
+            "properties": {
+              "mechanism_id": {"type": "string", "minLength": 1},
+              "name": {"type": "string", "minLength": 1},
+              "gate": {"type": "string", "minLength": 1},
+              "source_categories": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "variant_id",
+              "mechanism_id",
+              "variant",
+              "scenario",
+              "candidate",
+              "surface_confidence",
+              "evidence_state",
+              "constraints",
+              "expected_accept"
+            ],
+            "properties": {
+              "variant_id": {"type": "string", "minLength": 1},
+              "mechanism_id": {"type": "string", "minLength": 1},
+              "variant": {"enum": ["TRAP", "CONTROL"]},
+              "scenario": {"type": "string", "minLength": 1},
+              "candidate": {"type": "string", "minLength": 1},
+              "surface_confidence": {"enum": ["HIGH", "LOW"]},
+              "evidence_state": {"enum": ["SUPPORTED", "CONTRADICTED", "UNKNOWN", "NOT_LOADED"]},
+              "constraints": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["constraint_id", "status"],
+                  "properties": {
+                    "constraint_id": {"type": "string", "minLength": 1},
+                    "status": {"enum": ["PASS", "FAIL", "UNKNOWN"]}
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "expected_accept": {"type": "boolean"}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": true
 }

@@ -65,3 +65,19 @@ jobs:
             --mitigation-spec /tmp/MIT-CLOSURE-GUARD-001.json \
             > /tmp/MIT-CLOSURE-GUARD-001.validated.json
           test -s /tmp/MIT-CLOSURE-GUARD-001.validated.json
+
+      - name: Run historical failure benchmark
+        working-directory: llm-evaluation-lab
+        run: |
+          llm-eval \
+            --suite historical \
+            --cases cases/anonymized/premature-parent-closure.md \
+            --format json \
+            --output /tmp/HISTORICAL-FAILURE-BENCHMARK-v1.json
+          llm-eval \
+            --suite historical \
+            --cases cases/anonymized/premature-parent-closure.md \
+            --format markdown \
+            --output /tmp/HISTORICAL-FAILURE-BENCHMARK-v1.md
+          test -s /tmp/HISTORICAL-FAILURE-BENCHMARK-v1.json
+          test -s /tmp/HISTORICAL-FAILURE-BENCHMARK-v1.md

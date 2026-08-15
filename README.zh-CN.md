@@ -29,7 +29,7 @@ companion-mind validate-mitigation --mitigation-spec /tmp/mitigation.json
 
 `llm-eval` 现在负责校验并输出完整的 `mitigation-spec/v1`，再用它实例化 Companion-Mind 的真实 `ClosureGuard`。报告同时记录 runtime 实际加载的 mitigation ID、safeguard ID、schema version 与 canonical SHA-256 fingerprint，从而证明“写入评测报告的配置”与“运行时真正执行的配置”一致。
 
-当前 **27/27 tests** 覆盖 Case/Spec 同步、非法规范、状态集合冲突、真实 runtime 回归、checked result、历史机制簇、最小对照、隐私定位符、双套 suite 的 SQLite 持久化、重复 run 防覆盖、结构化日志、双格式报告、CLI 原子输出与退出码契约。
+当前 **32/32 tests** 覆盖 Case/Spec 同步、非法规范、状态集合冲突、真实 runtime 回归、checked result、历史机制簇、最小对照、隐私定位符、双套 suite 的 SQLite 持久化、重复 run 防覆盖、结构化日志、只读 API、双格式报告、CLI 原子输出与退出码契约。
 
 ## Historical Failure Benchmark v0.4
 
@@ -41,10 +41,20 @@ llm-eval \
   --cases cases/anonymized/premature-parent-closure.md
 ```
 
-当前确定性基准：置信表面基线 **50%**，统一证据—约束门 **100%**，已抓住 **12/12** 个已知陷阱，逐观察规则数 **0**。全仓测试现为 **27/27**。这些数字只描述合成结构基准，不代表真实模型泛化、生产可靠性或科学 benchmark 有效性。
+当前确定性基准：置信表面基线 **50%**，统一证据—约束门 **100%**，已抓住 **12/12** 个已知陷阱，逐观察规则数 **0**。全仓测试现为 **32/32**。这些数字只描述合成结构基准，不代表真实模型泛化、生产可靠性或科学 benchmark 有效性。
 
 ## Persistent Experiment Tracking v0.5
 
 `llm-eval` 现在可以把每次运行原子写入 SQLite，记录 run ID、suite version、model/policy、prompt version、metrics、latency、token cost、git commit、UTC timestamp 与 canonical result JSON。`run_id` 不可变，重复写入会被拒绝；`--list-runs` 可回读元数据，`--log-json` 输出结构化生命周期日志。数据库属于运行证据，默认被 git 忽略，不进入公开仓库。
+
+## Read-Only FastAPI Query Surface v0.6
+
+`llm-eval-api --store /tmp/eval-runs.sqlite3` 提供三个只读端点：
+`/healthz`、`/v1/runs` 与 `/v1/runs/{run_id}`。SQLite 以 `mode=ro`
+和 `query_only` 打开；接口默认只监听 `127.0.0.1`，写方法数为 **0**，
+查询前后数据库哈希保持不变。
+
+该接口只适合本地、public-safe 实验记录查询。当前没有认证、授权、限流、
+公网部署或生产可靠性声明；操作方不得把私密提示词、档案定位符或账号信息写入实验元数据。
 
 第三仓仍保留 concept growth、prior lock-in、world-model drift、longitudinal evolution 与 experimental timeline；failure taxonomy 只是公开接口，不取代纵向评估内核。

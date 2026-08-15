@@ -11,7 +11,7 @@
 | Baseline accuracy | 20% |
 | With Closure Guard | 100% |
 | Known regression failures caught | 4/4 |
-| Evaluation tests | 27/27 |
+| Evaluation tests | 32/32 |
 | Executable MitigationSpec | Runtime-validated |
 
 **Status:** Experimental / reproducible artifact  
@@ -111,6 +111,25 @@ Structured lifecycle events are emitted to `stderr`, leaving the JSON or
 Markdown report on `stdout` or in `--output`. SQLite files are runtime evidence
 and are ignored by git; they are not checked into the public repository.
 
+## Read-only query API v0.6
+
+An optional FastAPI surface exposes the immutable experiment store without
+adding any write route. It binds to loopback by default and opens SQLite with
+`mode=ro` plus `PRAGMA query_only=ON`.
+
+```bash
+llm-eval-api --store /tmp/eval-runs.sqlite3
+
+curl http://127.0.0.1:8000/healthz
+curl 'http://127.0.0.1:8000/v1/runs?limit=10'
+curl http://127.0.0.1:8000/v1/runs/RUN-ID
+```
+
+The list endpoint returns indexed metadata only. The detail endpoint returns one
+stored public-safe canonical result. There is no create, update or delete API,
+no authentication layer, and no claim that this local demonstration is ready for
+network or production exposure.
+
 ## Executable integration v0.3
 
 The experiment now owns a complete `mitigation-spec/v1` contract, validates it,
@@ -135,6 +154,7 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - one uniform evidence-and-constraint gate with zero per-observation rules.
 - immutable SQLite experiment-run persistence and metadata query;
 - structured JSON lifecycle logging.
+- loopback-first read-only FastAPI health, list and detail endpoints.
 
 ### Measured in the current demonstration
 
@@ -146,9 +166,11 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - historical benchmark baseline: **50%**;
 - uniform constraint gate: **100%**;
 - historical traps caught: **12/12**;
-- evaluation tests: **27/27**;
+- evaluation tests: **32/32**;
 - SQLite persistence and readback: **PASS**;
 - duplicate run protection: **PASS**.
+- API route write methods exposed: **0**;
+- read-only query mutation check: **PASS**.
 
 ### Not claimed
 
@@ -157,10 +179,11 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - scientific benchmark validity;
 - enterprise-grade reliability;
 - live-LLM effectiveness or statistical significance.
+- authenticated or production-ready API deployment.
 
 ## Artifact map
 
-- `evaluation_lab.py` — loader, policies, grader, metrics, regression gate, and CLI
+- `evaluation_lab.py` — loader, policies, grader, metrics, regression gate, CLI, and read-only API
 - `cases/anonymized/premature-parent-closure.md` — first-loop case card plus executable 24-case historical benchmark
 - `experiments/closure-guard-mitigation.md` — mitigation, decision rule, and executable JSON contract
 - `results/EVAL-CASE-001.json` — checked deterministic result
@@ -169,8 +192,13 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 
 ## Roadmap
 
-**Operationalization** — SQLite experiment tracking and structured logging are implemented. Next: a read-only FastAPI query surface, followed by Docker reproducibility.
+**Operationalization** — SQLite experiment tracking, structured logging and a
+read-only FastAPI query surface are implemented. Next: Docker reproducibility.
 
 ## Privacy
 
 The fixtures preserve failure mechanisms without publishing the private scenes that revealed them. The historical suite uses synthetic neutral scenarios and excludes source quotations and archive locators. The repository contains no private Raw/L0 material, credentials, account data, client documents, personal records, or links to private archives.
+
+The API returns whatever canonical result was stored by the operator. Only
+public-safe runs belong in a publicly reachable deployment; this artifact binds
+to localhost by default and intentionally provides no authentication.

@@ -11,7 +11,7 @@
 | Baseline accuracy | 20% |
 | With Closure Guard | 100% |
 | Known regression failures caught | 4/4 |
-| Evaluation tests | 4/4 |
+| Evaluation tests | 11/11 |
 
 **Status:** Experimental / reproducible artifact  
 **Evidence level:** E3 — reproducible public-safe evaluation
@@ -40,19 +40,28 @@ Clone both repositories as siblings. Requires Python 3.11 or later; no model API
 python -m pip install -e ../Companion-Mind
 python -m pip install -e .
 python -m unittest discover -s tests -v
-python evaluation_lab.py
+llm-eval --cases cases/anonymized/premature-parent-closure.md
+llm-eval \
+  --cases cases/anonymized/premature-parent-closure.md \
+  --format markdown \
+  --output evaluation-report.md
 ```
+
+The command validates the public-safe case contract, executes baseline and treatment,
+grades every variant, calculates metrics, enforces the regression gate, and emits a
+stable JSON or Markdown report. Exit code `1` means regression failure; invalid input
+or missing runtime dependencies return `2`.
 
 ## Evidence boundary
 
 ### Implemented
 
-- deterministic evaluation harness;
-- public-safe `EvaluationCase` fixture;
+- dependency-free `llm-eval` CLI and deterministic evaluation harness;
+- validated public-safe `EvaluationCase` loader;
 - baseline and mitigation comparison;
 - accuracy and premature-closure metrics;
-- checked result artifact;
-- known-bad regression probe.
+- JSON and Markdown report output;
+- checked result artifact and known-bad regression gate.
 
 ### Measured in the current demonstration
 
@@ -60,7 +69,7 @@ python evaluation_lab.py
 - guarded accuracy: **100%**;
 - premature closure rate: **100% → 0%**;
 - known recurrence variants caught: **4/4**;
-- evaluation tests: **4/4**.
+- evaluation tests: **11/11**.
 
 ### Not claimed
 
@@ -72,11 +81,11 @@ python evaluation_lab.py
 
 ## Artifact map
 
-- `evaluation_lab.py` — case, policies, metrics, and regression run
-- `cases/anonymized/premature-parent-closure.md` — public-safe case card
+- `evaluation_lab.py` — loader, policies, grader, metrics, regression gate, and CLI
+- `cases/anonymized/premature-parent-closure.md` — human-readable case card plus executable JSON fixture
 - `experiments/closure-guard-mitigation.md` — mitigation and decision rule
 - `results/EVAL-CASE-001.json` — checked deterministic result
-- `tests/test_evaluation.py` — reproducibility and regression assertions
+- `tests/test_evaluation.py` — loader, reproducibility, reporting, and regression assertions
 - `schemas/` — shared evaluation and mitigation contracts
 
 ## Roadmap
@@ -86,4 +95,3 @@ python evaluation_lab.py
 ## Privacy
 
 The case preserves the failure mechanism without publishing the private scene that revealed it. The repository contains no private Raw/L0 material, credentials, account data, client documents, personal records, or links to private archives.
-

@@ -3,12 +3,51 @@
   "$id": "https://example.org/schemas/evaluation-case.schema.json",
   "title": "LLM Evaluation Case",
   "type": "object",
-  "required": ["case_id", "title", "task", "inputs", "expected", "metrics", "privacy"],
+  "required": [
+    "case_id",
+    "title",
+    "run_id",
+    "mitigation_id",
+    "safeguard_id",
+    "task",
+    "inputs",
+    "expected",
+    "metrics",
+    "privacy"
+  ],
   "properties": {
     "case_id": {"type": "string"},
     "title": {"type": "string"},
     "task": {"type": "string"},
-    "inputs": {"type": "array", "items": {"type": "object"}},
+    "run_id": {"type": "string"},
+    "mitigation_id": {"type": "string"},
+    "safeguard_id": {"type": "string"},
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["variant_id", "children", "expected_close"],
+        "properties": {
+          "variant_id": {"type": "string", "minLength": 1},
+          "children": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["child_id", "status"],
+              "properties": {
+                "child_id": {"type": "string", "minLength": 1},
+                "status": {"type": "string", "minLength": 1}
+              },
+              "additionalProperties": false
+            }
+          },
+          "expected_close": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      }
+    },
     "expected": {"type": "object"},
     "metrics": {"type": "array", "items": {"type": "string"}},
     "failure_modes": {"type": "array", "items": {"type": "string"}},

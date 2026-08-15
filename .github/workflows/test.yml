@@ -50,5 +50,14 @@ jobs:
 
       - name: Run checked experiment
         working-directory: llm-evaluation-lab
-        run: python evaluation_lab.py
-
+        run: |
+          llm-eval \
+            --cases cases/anonymized/premature-parent-closure.md \
+            --format json \
+            --output /tmp/EVAL-CASE-001.json
+          llm-eval \
+            --cases cases/anonymized/premature-parent-closure.md \
+            --format markdown \
+            --output /tmp/EVAL-CASE-001.md
+          test -s /tmp/EVAL-CASE-001.json
+          test -s /tmp/EVAL-CASE-001.md

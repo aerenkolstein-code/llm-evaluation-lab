@@ -1,0 +1,51 @@
+{
+  "accuracy_delta": 0.8,
+  "baseline": {
+    "accuracy": 0.2,
+    "failures": [
+      "base-order",
+      "reordered-children",
+      "waiting-external",
+      "unknown-required-state"
+    ],
+    "policy": "naive_any_done",
+    "predictions": [
+      {"correct": false, "expected_close": false, "predicted_close": true, "variant_id": "base-order"},
+      {"correct": false, "expected_close": false, "predicted_close": true, "variant_id": "reordered-children"},
+      {"correct": false, "expected_close": false, "predicted_close": true, "variant_id": "waiting-external"},
+      {"correct": false, "expected_close": false, "predicted_close": true, "variant_id": "unknown-required-state"},
+      {"correct": true, "expected_close": true, "predicted_close": true, "variant_id": "all-terminal"}
+    ],
+    "premature_closure_rate": 1.0
+  },
+  "case_id": "EVAL-CASE-001",
+  "evidence_level": "E3_EXECUTABLE_LOCAL_PROTOTYPE",
+  "fixture_count": 5,
+  "limitations": [
+    "deterministic structural fixture",
+    "no live LLM calls",
+    "no production traffic",
+    "no cross-model generalization claim"
+  ],
+  "mitigation_id": "MIT-CLOSURE-GUARD-001",
+  "regression": {
+    "guard_failures": 0,
+    "known_bad_failures_detected": 4,
+    "status": "PASS"
+  },
+  "run_id": "EVAL-RUN-001",
+  "safeguard_id": "CM-GUARD-001",
+  "treatment": {
+    "accuracy": 1.0,
+    "failures": [],
+    "policy": "CM-GUARD-001",
+    "predictions": [
+      {"correct": true, "expected_close": false, "predicted_close": false, "variant_id": "base-order"},
+      {"correct": true, "expected_close": false, "predicted_close": false, "variant_id": "reordered-children"},
+      {"correct": true, "expected_close": false, "predicted_close": false, "variant_id": "waiting-external"},
+      {"correct": true, "expected_close": false, "predicted_close": false, "variant_id": "unknown-required-state"},
+      {"correct": true, "expected_close": true, "predicted_close": true, "variant_id": "all-terminal"}
+    ],
+    "premature_closure_rate": 0.0
+  }
+}

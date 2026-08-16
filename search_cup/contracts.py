@@ -221,10 +221,16 @@ class CompetitionSpec:
 class SearchRequest:
     entrant_id: str
     query: str
+    call_number: int = 0
+    request_id: str = ""
 
     def __post_init__(self) -> None:
         _required_text(self.entrant_id, "entrant_id")
         _required_text(self.query, "query")
+        if self.call_number < 0:
+            raise ValueError("call_number must not be negative")
+        if self.request_id:
+            _required_text(self.request_id, "request_id")
 
 
 @dataclass(frozen=True)
@@ -246,6 +252,17 @@ class SearchTrace:
     status: str
     result_count: int
     error_type: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    backend_id: str | None = None
+    backend_request_id: str | None = None
+    backend_response_id: str | None = None
+    http_status: int | None = None
+    retryable: bool | None = None
+    backend_attempts: int = 1
+    automatic_retries: int = 0
+    started_at_utc: str | None = None
+    duration_ms: float | None = None
 
 
 @dataclass(frozen=True)

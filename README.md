@@ -14,8 +14,8 @@
 | Evaluation tests | 32/32 |
 | Container CLI/API smoke | PASS |
 | Executable MitigationSpec | Runtime-validated |
-| SEARCH-CUP-02 P0 offline tests | 21/21 |
-| Full repository tests | 53/53 |
+| SEARCH-CUP-02 P0/P1 tests | 27/27 |
+| Full repository tests | 59/59 |
 
 **Status:** Experimental / reproducible artifact  
 **Evidence level:** E3 — reproducible public-safe evaluation
@@ -140,9 +140,9 @@ to commit `c6a2128271532746a5570b99ce0ccdea4618db4e`, installs the evaluation
 package, and runs as an unprivileged user.
 
 ```bash
-docker build -t llm-evaluation-lab:0.8 .
+docker build -t llm-evaluation-lab:0.9 .
 
-docker run --rm llm-evaluation-lab:0.8 \
+docker run --rm llm-evaluation-lab:0.9 \
   --suite historical \
   --cases cases/anonymized/premature-parent-closure.md
 ```
@@ -155,21 +155,21 @@ docker run --rm \
   -p 127.0.0.1:8000:8000 \
   -v /absolute/path/to/data:/data:ro \
   --entrypoint llm-eval-api \
-  llm-evaluation-lab:0.8 \
+  llm-evaluation-lab:0.9 \
   --store /data/eval-runs.sqlite3 \
   --host 0.0.0.0 \
   --allow-network
 ```
 
-CI builds the image from a clean checkout, verifies version `0.8.0`, executes the
+CI builds the image from a clean checkout, verifies version `0.9.0`, executes the
 24-case historical regression, creates a mounted SQLite record, then queries the
 containerized API over HTTP. This is reproducible local packaging, not a published
 registry image or production deployment.
 
-## SEARCH-CUP-02 Offline Fairness Harness v0.8
+## SEARCH-CUP-02 Unified SearchProxy v0.9
 
-`ENG-SC-01-P0` adds a closed-book, provider-neutral search-benchmark skeleton.
-It is intentionally offline: four deterministic fake entrants receive the same
+`ENG-SC-01-P0` added a closed-book, provider-neutral search-benchmark skeleton.
+The P0 regression remains intentionally offline: four deterministic fake entrants receive the same
 canonical Candidate Card and CompetitionSpec; each gets an isolated search tool
 with a hard 20-call budget; submissions are frozen and SHA-256 hashed before a
 synthetic hidden registry can be opened; the judge then produces a deterministic
@@ -180,10 +180,30 @@ llm-search-cup preflight
 llm-search-cup demo --format markdown
 ```
 
-The P0 CLI contains no live provider adapter, real search backend, credential
-path, or official-match command. It cannot spend model/search quota or run the
-authorized-but-not-approved 80-search-call match. The included employers, URLs,
-registry, and scores are synthetic fixtures and are not job leads.
+`ENG-SC-01-P1` adds exactly one live infrastructure boundary: Zhipu Web Search
+API with `search_engine=search_pro`. It normalizes official `title`, `link`, and
+`content` fields into the same `SearchResult` contract used by every future
+provider adapter. The backend performs no automatic retry: a caller retry is a
+new SearchProxy call and therefore a new budget event.
+
+The only live command is a manually gated Fake Entrant smoke with one to three
+queries:
+
+```bash
+export GLM_API_KEY=...  # keep this outside shell history and repository files
+llm-search-cup live-smoke \
+  --authorize-live-search-smoke \
+  --query 'OpenAI careers evaluation remote Europe' \
+  --query 'Anthropic careers model behavior remote Europe' \
+  --output /tmp/search-pro-smoke.json
+```
+
+The command has no model adapter, Candidate Card handoff, hidden-registry handle,
+judge, provider loop, or official-match path. It cannot turn two smoke queries
+into the four-model 80-call match. The API key is read only from the named
+environment variable and is never included in results, errors, traces, or Git.
+Without the explicit authorization flag, the command fails before key lookup or
+network access.
 
 P0 evidence:
 
@@ -194,6 +214,20 @@ P0 evidence:
 - hidden-registry access fails until all four submissions are frozen and entrant execution is closed;
 - repeated judging is byte-identical and requires no model call;
 - Apply-Now errors receive the specified 2× penalty.
+
+P1 evidence:
+
+- one `search_web` invocation creates one trace and consumes one ticket whether
+  the backend succeeds, returns HTTP 429, violates its schema, or rejects an
+  invalid query;
+- traces record entrant, query, call number, normalized result count, backend and
+  request identity, HTTP/error fields, duration, and an explicit zero automatic
+  retry count;
+- the 21st call remains rejected before any backend execution;
+- P0 hidden-registry isolation, provider failure isolation, freeze/hash, and
+  deterministic judging remain green;
+- all four future provider adapters will receive the same `EntrantTools.search_web`
+  and `SearchResult` contract; P1 implements zero real model adapters.
 
 ## Executable integration v0.3
 
@@ -253,7 +287,7 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 ## Artifact map
 
 - `evaluation_lab.py` — loader, policies, grader, metrics, regression gate, CLI, and read-only API
-- `search_cup/` — P0 contracts, budgeted tools, fake providers, isolated runner, hidden judge, and offline CLI
+- `search_cup/` — P0 contracts plus the gated P1 `search_pro` backend, budgeted tools, fake providers, isolated runner, hidden judge, and CLI
 - `candidates/` and `competitions/` — canonical public-safe P0 inputs and fingerprints
 - `cases/anonymized/premature-parent-closure.md` — first-loop case card plus executable 24-case historical benchmark
 - `experiments/closure-guard-mitigation.md` — mitigation, decision rule, and executable JSON contract
@@ -264,10 +298,11 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 
 ## Roadmap
 
-**SEARCH-CUP-02 P0 complete; live phases locked** — the fully offline fairness
-harness is implemented. SearchProxy integration, live provider adapters, immutable
-SQLite match evidence, the private judge snapshot, and any paid official match
-remain separate gated phases under Issue #8.
+**SEARCH-CUP-02 P1 implemented; provider phases locked** — the offline fairness
+harness and unified real-search boundary are implemented. OpenAI, Gemini,
+DeepSeek, and GLM model adapters, immutable match evidence, the private judge
+snapshot, and any official 80-call match remain separate gated phases under
+Issue #8.
 
 ## Privacy
 

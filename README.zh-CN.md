@@ -29,7 +29,7 @@ companion-mind validate-mitigation --mitigation-spec /tmp/mitigation.json
 
 `llm-eval` 现在负责校验并输出完整的 `mitigation-spec/v1`，再用它实例化 Companion-Mind 的真实 `ClosureGuard`。报告同时记录 runtime 实际加载的 mitigation ID、safeguard ID、schema version 与 canonical SHA-256 fingerprint，从而证明“写入评测报告的配置”与“运行时真正执行的配置”一致。
 
-原有评测主线仍保持 **32/32 tests**；加上 SEARCH-CUP-02 P0 的 **21/21** 项，当前全仓为 **53/53**。
+原有评测主线仍保持 **32/32 tests**；SEARCH-CUP-02 P0/P1 为 **27/27**，当前全仓为 **59/59**。
 
 ## Historical Failure Benchmark v0.4
 
@@ -63,17 +63,17 @@ llm-eval \
 `c6a2128271532746a5570b99ce0ccdea4618db4e`，容器以非 root 用户运行。
 
 ```bash
-docker build -t llm-evaluation-lab:0.8 .
-docker run --rm llm-evaluation-lab:0.8 \
+docker build -t llm-evaluation-lab:0.9 .
+docker run --rm llm-evaluation-lab:0.9 \
   --suite historical \
   --cases cases/anonymized/premature-parent-closure.md
 ```
 
-GitHub Actions 会从 clean checkout 构建镜像、核验 `0.8.0`、复跑 24 案例历史基准、
+GitHub Actions 会从 clean checkout 构建镜像、核验 `0.9.0`、复跑 24 案例历史基准、
 在挂载目录中生成 SQLite 记录，并通过真实 HTTP 查询容器化 API。它证明本地容器复跑能力，
 不代表已经发布 registry image、完成云部署或达到生产可靠性。
 
-## SEARCH-CUP-02 离线公平性框架 v0.8
+## SEARCH-CUP-02 统一 SearchProxy v0.9
 
 `ENG-SC-01-P0` 已实现四名 Fake Entrant 的封闭式离线比赛：四方读取字节一致的
 Candidate Card 与 CompetitionSpec；每方拥有独立的 20 次搜索硬预算；Submission
@@ -85,7 +85,24 @@ llm-search-cup preflight
 llm-search-cup demo --format markdown
 ```
 
-P0 中没有 live provider adapter、真实搜索后端、密钥读取路径或正式比赛命令，不能触发
-四模型 80 次搜索。示例公司、网址、隐藏井表与分数全部是离线合成夹具，不是真实岗位。
+P0 的离线公平性回归全部保留。P1 只新增一个真实基础设施边界：智谱 Web Search API，
+固定 `search_engine=search_pro`，并将 `title/link/content` 标准化成未来四个 Provider 共用的
+`SearchResult`。一次 `search_web` 调用严格记一次券；成功、HTTP 失败、协议失败和非法查询
+都写入可审计 trace；没有隐式自动重试。
+
+唯一 live 入口是手动授权的 Fake Entrant smoke，最多 3 个 query：
+
+```bash
+export GLM_API_KEY=...
+llm-search-cup live-smoke \
+  --authorize-live-search-smoke \
+  --query 'OpenAI careers evaluation remote Europe' \
+  --query 'Anthropic careers model behavior remote Europe' \
+  --output /tmp/search-pro-smoke.json
+```
+
+该命令不会调用 OpenAI / Gemini / DeepSeek / GLM 模型，不会加载 Candidate Card、隐藏井表或
+Judge，也没有正式比赛循环。密钥只从环境变量读取，不进入结果、错误、trace 或 Git；缺少
+显式授权 flag 时，在读取密钥和联网前即拒绝。四模型 80 发仍需董事会另行授权。
 
 第三仓仍保留 concept growth、prior lock-in、world-model drift、longitudinal evolution 与 experimental timeline；failure taxonomy 只是公开接口，不取代纵向评估内核。

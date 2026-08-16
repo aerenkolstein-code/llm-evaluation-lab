@@ -34,11 +34,13 @@ from search_cup.providers import (
     LockedLiveProvider,
 )
 from search_cup.runner import EntrantOutcome, MatchRun, run_match
+from search_cup.search_pro import SearchProBackend, TransportResponse
 from search_cup.tools import (
     BudgetedSearchProxy,
     EntrantTools,
     FakeSearchBackend,
     FakeURLReader,
+    SearchBackendError,
     SearchBudgetExceeded,
 )
 
@@ -153,6 +155,22 @@ class ToolBoundaryTests(unittest.TestCase):
         self.assertEqual("FAILED", proxy.traces[0].status)
         self.assertEqual("TimeoutError", proxy.traces[0].error_type)
 
+    def test_invalid_empty_query_is_a_failed_budget_event(self) -> None:
+        backend_calls = 0
+
+        def backend(_request):
+            nonlocal backend_calls
+            backend_calls += 1
+            return ()
+
+        proxy = BudgetedSearchProxy("entrant", 20, backend)
+        with self.assertRaisesRegex(ValueError, "non-empty"):
+            proxy.search("   ")
+        self.assertEqual(0, backend_calls)
+        self.assertEqual(1, proxy.calls_used)
+        self.assertEqual("FAILED", proxy.traces[0].status)
+        self.assertEqual("UNEXPECTED_BACKEND_ERROR", proxy.traces[0].error_code)
+
     def test_url_reader_returns_typed_not_found_without_fallback(self) -> None:
         result = FakeURLReader({}).read("https://example.test/missing")
         self.assertEqual("NOT_FOUND", result.status)
@@ -164,6 +182,124 @@ class ToolBoundaryTests(unittest.TestCase):
         )
         self.assertFalse(hasattr(tools, "registry"))
         self.assertFalse(hasattr(tools, "judge_snapshot"))
+
+    def test_search_pro_normalizes_real_contract_and_traces_identity(self) -> None:
+        captured: dict[str, object] = {}
+
+        def transport(endpoint, headers, payload, timeout):
+            captured.update(
+                endpoint=endpoint,
+                headers=dict(headers),
+                payload=dict(payload),
+                timeout=timeout,
+            )
+            return TransportResponse(
+                200,
+                json.dumps(
+                    {
+                        "id": "backend-response-1",
+                        "request_id": payload["request_id"],
+                        "search_result": [
+                            {
+                                "title": " Example role ",
+                                "link": "https://jobs.example.test/live-role",
+                                "content": " Search snippet. ",
+                                "media": "Example",
+                            }
+                        ],
+                    }
+                ).encode("utf-8"),
+            )
+
+        secret = "test-secret-must-not-enter-trace"
+        proxy = BudgetedSearchProxy(
+            "fake-entrant",
+            20,
+            SearchProBackend(secret, count=7, transport=transport),
+        )
+        results = proxy.search("AI evaluation remote Europe")
+        self.assertEqual(
+            (
+                SearchResult(
+                    title="Example role",
+                    url="https://jobs.example.test/live-role",
+                    snippet="Search snippet.",
+                ),
+            ),
+            results,
+        )
+        payload = captured["payload"]
+        self.assertIsInstance(payload, dict)
+        assert isinstance(payload, dict)
+        self.assertEqual("search_pro", payload["search_engine"])
+        self.assertEqual(7, payload["count"])
+        trace = proxy.traces[0]
+        self.assertEqual(1, trace.call_number)
+        self.assertEqual("zhipu-web-search/search_pro", trace.backend_id)
+        self.assertEqual("backend-response-1", trace.backend_response_id)
+        self.assertEqual(1, trace.result_count)
+        self.assertEqual(0, trace.automatic_retries)
+        self.assertNotIn(secret, json.dumps(dataclasses.asdict(trace)))
+
+    def test_search_pro_http_failure_consumes_ticket_without_hidden_retry(self) -> None:
+        transport_calls = 0
+
+        def transport(_endpoint, _headers, payload, _timeout):
+            nonlocal transport_calls
+            transport_calls += 1
+            return TransportResponse(
+                429,
+                json.dumps(
+                    {
+                        "request_id": payload["request_id"],
+                        "error": {"code": "1302", "message": "rate limited"},
+                    }
+                ).encode("utf-8"),
+            )
+
+        proxy = BudgetedSearchProxy(
+            "fake-entrant", 20, SearchProBackend("test-key", transport=transport)
+        )
+        with self.assertRaisesRegex(SearchBackendError, "1302"):
+            proxy.search("query")
+        self.assertEqual(1, transport_calls)
+        self.assertEqual(1, proxy.calls_used)
+        trace = proxy.traces[0]
+        self.assertEqual("FAILED", trace.status)
+        self.assertEqual("1302", trace.error_code)
+        self.assertEqual(429, trace.http_status)
+        self.assertTrue(trace.retryable)
+        self.assertEqual(1, trace.backend_attempts)
+        self.assertEqual(0, trace.automatic_retries)
+
+    def test_search_pro_malformed_result_is_an_audited_failure(self) -> None:
+        def transport(_endpoint, _headers, payload, _timeout):
+            return TransportResponse(
+                200,
+                json.dumps(
+                    {
+                        "request_id": payload["request_id"],
+                        "search_result": [{"title": "Missing link"}],
+                    }
+                ).encode("utf-8"),
+            )
+
+        proxy = BudgetedSearchProxy(
+            "fake-entrant", 20, SearchProBackend("test-key", transport=transport)
+        )
+        with self.assertRaisesRegex(SearchBackendError, "missing title or link"):
+            proxy.search("query")
+        self.assertEqual(1, proxy.calls_used)
+        self.assertEqual("INVALID_RESULT", proxy.traces[0].error_code)
+
+    def test_search_pro_rejects_overlong_query_as_one_failed_budget_event(self) -> None:
+        proxy = BudgetedSearchProxy(
+            "fake-entrant", 20, SearchProBackend("test-key", transport=lambda *_: None)
+        )
+        with self.assertRaisesRegex(SearchBackendError, "70-character"):
+            proxy.search("x" * 71)
+        self.assertEqual(1, proxy.calls_used)
+        self.assertEqual("INVALID_QUERY", proxy.traces[0].error_code)
 
 
 class RunnerAndJudgeTests(unittest.TestCase):
@@ -282,6 +418,12 @@ class CLIGateTests(unittest.TestCase):
         self.assertEqual("OFFLINE_ONLY", result["mode"])
         self.assertFalse(result["official_match_authorized"])
         self.assertEqual(0, result["live_provider_adapters"])
+        self.assertTrue(result["search_pro_backend_available"])
+        self.assertTrue(result["live_search_requires_explicit_smoke_authorization"])
+
+    def test_live_smoke_requires_manual_authorization_before_key_lookup(self) -> None:
+        with self.assertRaisesRegex(ValueError, "authorize-live-search-smoke"):
+            search_cup_main(["live-smoke", "--query", "non-official smoke"])
 
     def test_live_provider_is_explicitly_unimplemented(self) -> None:
         with self.assertRaisesRegex(LiveProviderNotImplemented, "outside ENG-SC-01-P0"):

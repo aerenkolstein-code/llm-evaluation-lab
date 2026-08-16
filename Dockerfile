@@ -4,7 +4,7 @@ ARG COMPANION_MIND_COMMIT=c6a2128271532746a5570b99ce0ccdea4618db4e
 
 LABEL org.opencontainers.image.source="https://github.com/aerenkolstein-code/llm-evaluation-lab" \
       org.opencontainers.image.description="Reproducible public-safe LLM evaluation harness" \
-      org.opencontainers.image.version="0.8.0"
+      org.opencontainers.image.version="0.9.0"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

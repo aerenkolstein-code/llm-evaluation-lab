@@ -29,7 +29,7 @@ companion-mind validate-mitigation --mitigation-spec /tmp/mitigation.json
 
 `llm-eval` 现在负责校验并输出完整的 `mitigation-spec/v1`，再用它实例化 Companion-Mind 的真实 `ClosureGuard`。报告同时记录 runtime 实际加载的 mitigation ID、safeguard ID、schema version 与 canonical SHA-256 fingerprint，从而证明“写入评测报告的配置”与“运行时真正执行的配置”一致。
 
-当前 **32/32 tests** 覆盖 Case/Spec 同步、非法规范、状态集合冲突、真实 runtime 回归、checked result、历史机制簇、最小对照、隐私定位符、双套 suite 的 SQLite 持久化、重复 run 防覆盖、结构化日志、只读 API、双格式报告、CLI 原子输出与退出码契约。
+原有评测主线仍保持 **32/32 tests**；加上 SEARCH-CUP-02 P0 的 **21/21** 项，当前全仓为 **53/53**。
 
 ## Historical Failure Benchmark v0.4
 
@@ -57,20 +57,35 @@ llm-eval \
 该接口只适合本地、public-safe 实验记录查询。当前没有认证、授权、限流、
 公网部署或生产可靠性声明；操作方不得把私密提示词、档案定位符或账号信息写入实验元数据。
 
-## Docker Reproducibility v0.7
+## Docker Reproducibility（v0.7 引入）
 
 仓库新增唯一一个受控文件 `Dockerfile`，将 Companion-Mind runtime 固定在
 `c6a2128271532746a5570b99ce0ccdea4618db4e`，容器以非 root 用户运行。
 
 ```bash
-docker build -t llm-evaluation-lab:0.7 .
-docker run --rm llm-evaluation-lab:0.7 \
+docker build -t llm-evaluation-lab:0.8 .
+docker run --rm llm-evaluation-lab:0.8 \
   --suite historical \
   --cases cases/anonymized/premature-parent-closure.md
 ```
 
-GitHub Actions 会从 clean checkout 构建镜像、核验 `0.7.0`、复跑 24 案例历史基准、
+GitHub Actions 会从 clean checkout 构建镜像、核验 `0.8.0`、复跑 24 案例历史基准、
 在挂载目录中生成 SQLite 记录，并通过真实 HTTP 查询容器化 API。它证明本地容器复跑能力，
 不代表已经发布 registry image、完成云部署或达到生产可靠性。
+
+## SEARCH-CUP-02 离线公平性框架 v0.8
+
+`ENG-SC-01-P0` 已实现四名 Fake Entrant 的封闭式离线比赛：四方读取字节一致的
+Candidate Card 与 CompetitionSpec；每方拥有独立的 20 次搜索硬预算；Submission
+冻结并生成 SHA-256 后，程序才允许打开合成隐藏井表，并由无模型调用的确定性 Judge
+生成保留各评分维度的榜单。
+
+```bash
+llm-search-cup preflight
+llm-search-cup demo --format markdown
+```
+
+P0 中没有 live provider adapter、真实搜索后端、密钥读取路径或正式比赛命令，不能触发
+四模型 80 次搜索。示例公司、网址、隐藏井表与分数全部是离线合成夹具，不是真实岗位。
 
 第三仓仍保留 concept growth、prior lock-in、world-model drift、longitudinal evolution 与 experimental timeline；failure taxonomy 只是公开接口，不取代纵向评估内核。

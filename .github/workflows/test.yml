@@ -48,6 +48,24 @@ jobs:
         working-directory: llm-evaluation-lab
         run: python -m unittest discover -s tests -v
 
+      - name: Run SEARCH-CUP-02 P0 offline gate
+        working-directory: llm-evaluation-lab
+        run: |
+          llm-search-cup preflight > /tmp/search-cup-preflight.json
+          llm-search-cup demo --format json --output /tmp/search-cup-offline.json
+          python - <<'PY'
+          import json
+
+          preflight = json.load(open('/tmp/search-cup-preflight.json', encoding='utf-8'))
+          report = json.load(open('/tmp/search-cup-offline.json', encoding='utf-8'))
+          assert preflight['mode'] == 'OFFLINE_ONLY'
+          assert preflight['official_match_authorized'] is False
+          assert preflight['live_provider_adapters'] == 0
+          assert preflight['entrant_count'] == 4
+          assert len(report['scores']) == 4
+          assert all(score['exact_model_id'].startswith('fake-') for score in report['scores'])
+          PY
+
       - name: Run checked experiment
         working-directory: llm-evaluation-lab
         run: |
@@ -138,7 +156,14 @@ jobs:
 
           docker run --rm llm-evaluation-lab:ci --version \
             > /tmp/docker-version.txt
-          grep --quiet '^llm-eval 0.7.0$' /tmp/docker-version.txt
+          grep --quiet '^llm-eval 0.8.0$' /tmp/docker-version.txt
+
+          docker run --rm \
+            --entrypoint llm-search-cup \
+            llm-evaluation-lab:ci \
+            preflight \
+            > /tmp/docker-search-cup-preflight.json
+          python -c 'import json; result=json.load(open("/tmp/docker-search-cup-preflight.json")); assert result["mode"]=="OFFLINE_ONLY"; assert result["official_match_authorized"] is False'
 
           docker run --rm llm-evaluation-lab:ci \
             --suite historical \

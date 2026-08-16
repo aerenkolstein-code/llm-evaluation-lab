@@ -14,6 +14,8 @@
 | Evaluation tests | 32/32 |
 | Container CLI/API smoke | PASS |
 | Executable MitigationSpec | Runtime-validated |
+| SEARCH-CUP-02 P0 offline tests | 21/21 |
+| Full repository tests | 53/53 |
 
 **Status:** Experimental / reproducible artifact  
 **Evidence level:** E3 — reproducible public-safe evaluation
@@ -131,16 +133,16 @@ stored public-safe canonical result. There is no create, update or delete API,
 no authentication layer, and no claim that this local demonstration is ready for
 network or production exposure.
 
-## Docker reproducibility v0.7
+## Docker reproducibility (introduced in v0.7)
 
 The repository includes one minimal Dockerfile. It pins the Companion-Mind runtime
 to commit `c6a2128271532746a5570b99ce0ccdea4618db4e`, installs the evaluation
 package, and runs as an unprivileged user.
 
 ```bash
-docker build -t llm-evaluation-lab:0.7 .
+docker build -t llm-evaluation-lab:0.8 .
 
-docker run --rm llm-evaluation-lab:0.7 \
+docker run --rm llm-evaluation-lab:0.8 \
   --suite historical \
   --cases cases/anonymized/premature-parent-closure.md
 ```
@@ -153,16 +155,45 @@ docker run --rm \
   -p 127.0.0.1:8000:8000 \
   -v /absolute/path/to/data:/data:ro \
   --entrypoint llm-eval-api \
-  llm-evaluation-lab:0.7 \
+  llm-evaluation-lab:0.8 \
   --store /data/eval-runs.sqlite3 \
   --host 0.0.0.0 \
   --allow-network
 ```
 
-CI builds the image from a clean checkout, verifies version `0.7.0`, executes the
+CI builds the image from a clean checkout, verifies version `0.8.0`, executes the
 24-case historical regression, creates a mounted SQLite record, then queries the
 containerized API over HTTP. This is reproducible local packaging, not a published
 registry image or production deployment.
+
+## SEARCH-CUP-02 Offline Fairness Harness v0.8
+
+`ENG-SC-01-P0` adds a closed-book, provider-neutral search-benchmark skeleton.
+It is intentionally offline: four deterministic fake entrants receive the same
+canonical Candidate Card and CompetitionSpec; each gets an isolated search tool
+with a hard 20-call budget; submissions are frozen and SHA-256 hashed before a
+synthetic hidden registry can be opened; the judge then produces a deterministic
+dimension-preserving scoreboard.
+
+```bash
+llm-search-cup preflight
+llm-search-cup demo --format markdown
+```
+
+The P0 CLI contains no live provider adapter, real search backend, credential
+path, or official-match command. It cannot spend model/search quota or run the
+authorized-but-not-approved 80-search-call match. The included employers, URLs,
+registry, and scores are synthetic fixtures and are not job leads.
+
+P0 evidence:
+
+- call 21 is rejected before the backend executes;
+- failed backend attempts consume one explicit budget event;
+- all four successful submissions share identical contract fingerprints;
+- one provider failure preserves other entrants' frozen evidence;
+- hidden-registry access fails until all four submissions are frozen and entrant execution is closed;
+- repeated judging is byte-identical and requires no model call;
+- Apply-Now errors receive the specified 2× penalty.
 
 ## Executable integration v0.3
 
@@ -222,6 +253,8 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 ## Artifact map
 
 - `evaluation_lab.py` — loader, policies, grader, metrics, regression gate, CLI, and read-only API
+- `search_cup/` — P0 contracts, budgeted tools, fake providers, isolated runner, hidden judge, and offline CLI
+- `candidates/` and `competitions/` — canonical public-safe P0 inputs and fingerprints
 - `cases/anonymized/premature-parent-closure.md` — first-loop case card plus executable 24-case historical benchmark
 - `experiments/closure-guard-mitigation.md` — mitigation, decision rule, and executable JSON contract
 - `results/EVAL-CASE-001.json` — checked deterministic result
@@ -231,9 +264,10 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 
 ## Roadmap
 
-**Operationalization baseline complete** — SQLite experiment tracking, structured
-logging, a read-only FastAPI query surface, and Docker CLI/API reproduction are
-implemented. Further infrastructure expansion requires a separate scope decision.
+**SEARCH-CUP-02 P0 complete; live phases locked** — the fully offline fairness
+harness is implemented. SearchProxy integration, live provider adapters, immutable
+SQLite match evidence, the private judge snapshot, and any paid official match
+remain separate gated phases under Issue #8.
 
 ## Privacy
 

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 Child = Mapping[str, str]
 Case = Mapping[str, object]

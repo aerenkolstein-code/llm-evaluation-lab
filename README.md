@@ -4,6 +4,18 @@
 
 [![Test](https://github.com/aerenkolstein-code/llm-evaluation-lab/actions/workflows/test.yml/badge.svg)](https://github.com/aerenkolstein-code/llm-evaluation-lab/actions/workflows/test.yml)
 
+## Current evaluation focus
+
+LLM Evaluation Lab is the **A2 / Measure the system** repository for the approved **Persistent AI Companion** program. Its role is to turn continuity claims into reproducible evidence rather than letting the product grade itself.
+
+The planned Companion evaluation direction includes identity and relationship continuity, shared-history hallucination, model-switch continuity, initiative regressions, and staged **Day 1 / 7 / 30 / 90** longitudinal gates. Those Companion benchmarks are active roadmap work, **not claims of completed or merged evaluation results**.
+
+The `main` branch below remains the stable public evidence base for the First Closed Loop, Historical Failure Benchmark, immutable experiment tracking, read-only query API, and Docker reproducibility.
+
+The paired [Companion-Mind](https://github.com/aerenkolstein-code/Companion-Mind) repository is the A1 / implementation counterpart: Companion-Mind builds the system; LLM Evaluation Lab measures whether it actually improves.
+
+**B / Search Cup** is a separate Search/Tooling workstream that also lives in this repository for infrastructure reuse. Repository location does not make Search Cup part of A2, and its later live/provider phases remain separately gated.
+
 ## First Closed Loop
 
 | Result | Measured value |

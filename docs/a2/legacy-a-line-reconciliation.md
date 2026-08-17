@@ -97,6 +97,34 @@ The following semantics may be inherited into future A2 design without rerunning
 
 PR #8 is reusable only through items 1–5 and its frozen terminal receipt. Its workflow, model calls, corpus, and incomplete behavior lane are not reusable execution assets.
 
+### Legacy behavioral rubric and scoring axes
+
+The following rubric is a historical evaluation asset, not a current A2 benchmark. The legacy blind-review contract scored a complete trajectory from 0–3 on each axis (18 maximum); existing scores remain tied to their original corpus, reviewer lock, model, prompt, and runtime commit.
+
+| Legacy asset | Historical meaning | Disposition | A2 treatment |
+|---|---|---|---|
+| P1 — Identity | Identity continuity across the complete trajectory | `A2-INHERIT` | Retain the provider-neutral observable axis name and intent; do not import Persona/State internals. |
+| P2 — Voice | Voice continuity across the complete trajectory | `A2-INHERIT` | Retain as an externally judged behavior axis; future anchors must be public-safe. |
+| P3 — Cognitive | Cognitive continuity across the complete trajectory | `A2-INHERIT` | Retain the behavioral concept without treating verbosity or hidden reasoning as evidence. |
+| P4 — Relationship | Relationship continuity across the complete trajectory | `A2-INHERIT` | Retain the observable axis; A1 relationship state is not an A2 scoring source of truth. |
+| P5 — Memory | Memory continuity across the complete trajectory | `A2-INHERIT` | Retain the observable axis while separating supported recall from invented shared history. |
+| P6 — Seamlessness | Continuity without visible implementation seams | `A2-INHERIT` | Retain as an externally observable axis; runtime/context exposure is handled separately as a hard failure. |
+| Blind full-trajectory scoring, 0–3 per axis, 18 maximum, scores locked before lane inference | Historical review protocol and scale | `A2-INHERIT` | Preserve the protocol semantics; any future inter-rater calibration needs a new authorized evaluation ticket. |
+| Private reference responses, legacy score anchors, and reviewer calibration examples | Corpus-bound scoring implementation | `A2-REFACTOR` | Rebuild with synthetic/public-safe anchors; do not migrate private bodies or infer missing anchors from aggregate scores. |
+| Completed per-axis scorecards and totals from PR #5 diagnostics | Frozen observations | `EVAL-ONLY` | Keep lane/commit/reviewer provenance; never combine them into a current leaderboard or benchmark claim. |
+
+### Legacy hard-failure taxonomy
+
+| Legacy hard-failure asset | Historical role | Disposition | A2 treatment |
+|---|---|---|---|
+| `SEMANTIC_RELATIONSHIP_RESET` | Observable relationship continuity collapse | `A2-INHERIT` | Retain the content-free label and fail-fast meaning; future public-safe detection criteria require explicit calibration. |
+| `META_RUNTIME_CONTEXT_LEAK` | Runtime/state implementation details exposed in persona behavior | `A2-INHERIT` | Retain as an observable hard failure independent of total score. |
+| `REPEATED_SELF_INTRODUCTION`, `PERSONA_REINVENTED_AS_STRANGER` | Legacy identity-reset heuristics promoted to hard failures | `A2-REFACTOR` | Preserve the failure concepts, but replace branch-specific Chinese regexes with public-safe cases and reviewer criteria. |
+| `RELATIONSHIP_STATE_RESET` | Legacy Runtime v1 internal relationship-state mutation | `A2-REFACTOR` | Do not inspect copied A1 internals; remap only through a future published A1 contract or an observable behavioral case. |
+| `PROVIDER_PROVENANCE_MISMATCH`, `MODEL_PROVENANCE_MISMATCH`, `RESPONSE_COUNT_MISMATCH`, `PERSONA_ID_CHANGED`, `SESSION_ID_CHANGED`, `TURN_INDEX_MISMATCH`, `UNIFIED_RAW_EVENT_COUNT_MISMATCH`, `ASSISTANT_EVENT_COUNT_MISMATCH` | Run-integrity and legacy runtime-conformance failures | `A2-REFACTOR` | Keep runner-validity intent, but map codes to A2 run/result schemas and leave product conformance assertions in A1. |
+| `PERSONA_CALL_FAILED`, `OBSERVER_CALL_FAILED` | Terminal lane-call failures | `A2-INHERIT` | Retain attempt accounting, fail-stop, no-retry, and non-score semantics; PR #8 remains terminal. |
+| Hard-failure labels attached to completed legacy scorecards | Frozen review outcomes | `EVAL-ONLY` | Preserve with original lane and evidence provenance only; do not silently project them onto a new corpus or interface. |
+
 ## Do-not-inherit list
 
 - Companion-Mind Persona, State, Observer, Reducer, Prompt, provider, RAW writer, or persistence implementations.
@@ -113,24 +141,34 @@ Runtime v1 and v2 are inseparable from their original Companion-Mind branch topo
 
 ## Legacy source disposition
 
-| Legacy source | Recommendation |
-|---|---|
-| PR #4 | Do not merge for A2. Keep as read-only A1 lineage; reconcile any still-needed product ideas through the current A1 work order. |
-| PR #5 | Do not merge. Preserve public aggregate lineage, then refactor only approved evaluation contracts in A2 under new tickets. Retire old live workflows. |
-| Issue #6 | Keep as a historical requirements record while open/closure status is decided by A1. It grants no new A2 migration or live authority. |
-| PR #7 | Do not merge for A2. Treat implementation and tests as legacy A1 material subject to Issue #11, not as an A2 dependency. |
-| PR #8 | Do not merge or rerun. Preserve the terminal receipt and reusable control-envelope semantics; retire the executable path. |
+The GitHub-state labels below are recommendations only. This docs-only PR does not close, merge, split, or otherwise mutate any Companion-Mind source.
+
+| Legacy source | Recommended GitHub state | Recommendation |
+|---|---|---|
+| PR #4 | `close-superseded` | Do not merge for A2. After A1 confirms any still-needed product ideas are represented by the current work order, close the draft while retaining its immutable link as lineage. |
+| PR #5 | `later-split` | Do not merge. In separately authorized work, split reusable evaluation contracts toward A2, leave runtime ownership in A1, preserve public aggregate lineage, and retire old live workflows. |
+| Issue #6 | `keep-open-for-history` | Keep open as the shared historical requirements index until the PR #5/#7/#8 split/retention decisions and Issue #11 boundary mapping are recorded; it grants no new migration or live authority. |
+| PR #7 | `close-superseded` | Do not merge for A2. After A1 records its Issue #11 mapping, close the legacy implementation draft and retain it only as A1 lineage. |
+| PR #8 | `retain-reference` | Do not merge, close over, or rerun as an experiment path. Preserve the terminal receipt and reusable control-envelope semantics as the authoritative historical reference. |
 
 ## Deferred follow-up tickets
 
 These are recommendations only; this reconciliation does not create or execute them.
 
-1. **A1 canonical boundary export** — after Issue #11, publish the versioned event/adapter schema and black-box conformance contract A2 may consume.
-2. **A2 legacy evidence registry** — decide whether approved public aggregates become immutable `legacy` result records or remain link-only provenance.
-3. **A2 provider-neutral runner** — implement run identity, fingerprints, call accounting, fail-stop/no-retry controls, and content-free receipts without importing Companion-Mind internals.
-4. **A2 continuity case/rubric pack** — translate approved Issue #6 scenarios and hard-failure concepts into synthetic public-safe cases and externally observable scoring.
-5. **A2 adapter compatibility gate** — after the A1 boundary freezes, verify fixtures and runner integration at the published seam; keep product conformance tests in A1.
-6. **Separately authorized live study** — only after the preceding offline gates and a new Board approval; no legacy workflow or authorization may be reused.
+Gate meanings:
+
+- `CAN-RUN-NOW` — no A1 contract dependency; still requires a separately authorized ticket and does not authorize execution here.
+- `WAIT-P0` — blocked until A1 Issue #11 Phase 0 publishes the relevant external boundary.
+- `WAIT-LATER-A1` — blocked on a post-P0 A1 runtime milestone plus any separate live/provider governance gate.
+
+| Recommended follow-up ticket | Gate | Planning rule |
+|---|---|---|
+| **A1 canonical boundary export** — publish the versioned event/adapter schema and black-box conformance contract A2 may consume | `WAIT-P0` | A2 must wait for Issue #11 Phase 0 output; this report does not dispatch A1 work. |
+| **A2 legacy evidence registry** — decide whether approved public aggregates become immutable `legacy` result records or remain link-only provenance | `CAN-RUN-NOW` | Governance and public-safe provenance design can proceed independently of runtime internals after ticket approval. |
+| **A2 provider-neutral runner** — implement run identity, fingerprints, call accounting, fail-stop/no-retry controls, and content-free receipts | `CAN-RUN-NOW` | Keep it offline and independent of Companion-Mind imports; provider/live execution remains separately gated. |
+| **A2 continuity case/rubric pack** — translate approved Issue #6 scenarios, P1–P6 axes, and hard-failure concepts into synthetic public-safe cases and externally observable scoring | `CAN-RUN-NOW` | Build only provider-neutral cases/rubric artifacts; defer A1 adapter assertions. |
+| **A2 adapter compatibility gate** — verify fixtures and runner integration at the A1-published seam while keeping product conformance tests in A1 | `WAIT-P0` | Cannot bind to an interface until Issue #11 freezes and publishes it. |
+| **Separately authorized live study** — create a new bounded live work order; do not reuse legacy workflow or authorization | `WAIT-LATER-A1` | Requires the offline gates, a later A1 runtime candidate, Board approval, fresh secrets review, and a new cost/stop envelope. |
 
 ## Minimum future A2 migration sequence
 

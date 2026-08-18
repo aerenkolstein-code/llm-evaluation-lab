@@ -417,16 +417,24 @@ class CLIGateTests(unittest.TestCase):
         result = json.loads(output.getvalue())
         self.assertEqual("OFFLINE_ONLY", result["mode"])
         self.assertFalse(result["official_match_authorized"])
-        self.assertEqual(0, result["live_provider_adapters"])
+        self.assertEqual("ENG-SC-01-P2", result["phase"])
+        self.assertEqual(4, result["live_provider_adapters"])
         self.assertTrue(result["search_pro_backend_available"])
         self.assertTrue(result["live_search_requires_explicit_smoke_authorization"])
+        self.assertTrue(result["provider_smoke_requires_explicit_authorization"])
+        self.assertFalse(result["official_prompt_available"])
+        self.assertFalse(result["hidden_registry_available"])
 
     def test_live_smoke_requires_manual_authorization_before_key_lookup(self) -> None:
         with self.assertRaisesRegex(ValueError, "authorize-live-search-smoke"):
             search_cup_main(["live-smoke", "--query", "non-official smoke"])
 
+    def test_p2_smoke_requires_manual_authorization_before_key_lookup(self) -> None:
+        with self.assertRaisesRegex(ValueError, "authorize-p2-provider-smoke"):
+            search_cup_main(["p2-smoke"])
+
     def test_live_provider_is_explicitly_unimplemented(self) -> None:
-        with self.assertRaisesRegex(LiveProviderNotImplemented, "outside ENG-SC-01-P0"):
+        with self.assertRaisesRegex(LiveProviderNotImplemented, "outside the bounded P2 smoke"):
             LockedLiveProvider("OpenAI").run()
 
     def test_p0_preflight_refuses_official_authorization(self) -> None:

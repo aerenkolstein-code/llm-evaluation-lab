@@ -79,11 +79,11 @@ class LiveProviderNotImplemented(RuntimeError):
 
 @dataclass(frozen=True)
 class LockedLiveProvider:
-    """Explicit P0 stop: no paid/live provider can execute from this branch."""
+    """Legacy direct-live guard; P2 runs only through its bounded smoke gate."""
 
     provider: str
 
     def run(self, **_: object) -> Submission:
         raise LiveProviderNotImplemented(
-            f"{self.provider}: live adapters are outside ENG-SC-01-P0"
+            f"{self.provider}: direct live execution is outside the bounded P2 smoke"
         )

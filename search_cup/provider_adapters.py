@@ -245,6 +245,51 @@ def _submission_template(
     }
 
 
+def build_final_submission_instruction(
+    *,
+    entrant: EntrantConfig,
+    candidate_fingerprint: str,
+    competition_fingerprint: str,
+    normalized_results: Sequence[Mapping[str, str]],
+) -> str:
+    """Render one provider-neutral, fully grounded final contract directive.
+
+    The P2 smoke measures adapter conformance rather than model quality.  After
+    the shared SearchProxy result is available, every provider therefore sees
+    the same explicit output shape and is asked to reproduce one complete
+    Submission object without a wrapper.  Provider identity is experiment
+    metadata already required by the frozen common contract.
+    """
+
+    submission = _submission_template(
+        entrant,
+        candidate_fingerprint,
+        competition_fingerprint,
+    )
+    if normalized_results:
+        source_url = normalized_results[0]["url"]
+        lead = submission["leads"][0]
+        lead["source_url"] = source_url
+        lead["evidence_urls"] = [source_url]
+    else:
+        submission["leads"] = []
+        submission["uncertainties"] = [
+            "SearchProxy returned no results for the non-official smoke query."
+        ]
+
+    return canonical_json(
+        {
+            "directive": (
+                "Return only the complete required_output JSON object. Do not "
+                "omit fields, rename fields, add a wrapper key, or add prose."
+            ),
+            "required_top_level_keys": list(submission),
+            "required_output": submission,
+            "submission_contract": "Submission",
+        }
+    )
+
+
 def build_provider_prompt(
     *,
     candidate_content: bytes,
@@ -634,6 +679,17 @@ class OpenAICompatibleAdapter(_ProviderAdapterBase):
                 "content": canonical_json({"results": results}),
             }
         )
+        messages.append(
+            {
+                "role": "user",
+                "content": build_final_submission_instruction(
+                    entrant=entrant,
+                    candidate_fingerprint=candidate_fingerprint,
+                    competition_fingerprint=competition_fingerprint,
+                    normalized_results=results,
+                ),
+            }
+        )
         final = self._post(
             phase="FINAL_SUBMISSION",
             requested_model_id=entrant.exact_model_id,
@@ -766,7 +822,15 @@ class GeminiAdapter(_ProviderAdapterBase):
                             "name": "search_web",
                             "response": {"results": results},
                         }
-                    }
+                    },
+                    {
+                        "text": build_final_submission_instruction(
+                            entrant=entrant,
+                            candidate_fingerprint=candidate_fingerprint,
+                            competition_fingerprint=competition_fingerprint,
+                            normalized_results=results,
+                        )
+                    },
                 ],
             }
         )

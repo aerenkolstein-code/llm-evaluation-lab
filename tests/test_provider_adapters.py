@@ -233,6 +233,37 @@ class P2ProviderAdapterTests(unittest.TestCase):
                 self.assertEqual(SEARCH_WEB_DESCRIPTION, function["description"])
                 self.assertEqual(dict(SEARCH_WEB_PARAMETERS), function["parameters"])
 
+        final_requests = [item for item in captured if item["call"] == 2]
+        self.assertEqual(4, len(final_requests))
+        provider_neutral_contracts: list[str] = []
+        for item in final_requests:
+            payload = item["payload"]
+            if item["provider"] == "Gemini":
+                instruction_text = payload["contents"][-1]["parts"][-1]["text"]
+            else:
+                instruction_text = payload["messages"][-1]["content"]
+            instruction = json.loads(instruction_text)
+            required_output = instruction["required_output"]
+            self.assertEqual(
+                sorted(required_output),
+                sorted(instruction["required_top_level_keys"]),
+            )
+            self.assertEqual(
+                "https://docs.python.org/3/library/dataclasses.html",
+                required_output["leads"][0]["source_url"],
+            )
+            self.assertEqual(
+                ["https://docs.python.org/3/library/dataclasses.html"],
+                required_output["leads"][0]["evidence_urls"],
+            )
+            self.assertEqual(1, required_output["search_calls"])
+            neutralized = json.loads(json.dumps(instruction))
+            neutralized["required_output"]["entrant"] = "ENTRANT_METADATA"
+            provider_neutral_contracts.append(
+                json.dumps(neutralized, ensure_ascii=False, sort_keys=True)
+            )
+        self.assertEqual(1, len(set(provider_neutral_contracts)))
+
         serialized = json.dumps(artifact, ensure_ascii=False, sort_keys=True)
         for secret in self.keys.values():
             self.assertNotIn(secret, serialized)

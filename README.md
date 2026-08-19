@@ -1,18 +1,43 @@
 # LLM Evaluation Lab
 
-**Reproducible LLM evaluation harness for failure mechanisms, mitigation experiments, and regression testing.**
+**Reproducible evaluation lab for failure mechanisms, mitigation experiments, regression testing, independent system gates, and longitudinal evidence.**
 
 [![Test](https://github.com/aerenkolstein-code/llm-evaluation-lab/actions/workflows/test.yml/badge.svg)](https://github.com/aerenkolstein-code/llm-evaluation-lab/actions/workflows/test.yml)
 
 ## Current evaluation focus
 
-LLM Evaluation Lab is the **A2 / Measure the system** repository for the approved **Persistent AI Companion** program. Its role is to turn continuity claims into reproducible evidence rather than letting the product grade itself.
+LLM Evaluation Lab is the **A2 / Measure the system** repository. It is not a QA annex that lets one product grade itself. Its job is to turn observed AI-system failures and continuity claims into reproducible cases, explicit oracles, comparative evidence, falsifiable mitigation hypotheses, and regression gates.
 
-The planned Companion evaluation direction includes identity and relationship continuity, shared-history hallucination, model-switch continuity, initiative regressions, and staged **Day 1 / 7 / 30 / 90** longitudinal gates. Those Companion benchmarks are active roadmap work, **not claims of completed or merged evaluation results**.
+The paired [Companion-Mind](https://github.com/aerenkolstein-code/Companion-Mind) repository is the A1 / implementation counterpart:
+
+> **A1 builds the system. A2 measures whether it actually improves.**
+
+The current product-linked evaluation gate is **A019 / Gate E1 — Durable Journal black-box evaluation**. The published A2 Wave 1 plan defines durability, ordering, dedupe, crash/restart recovery, correction, secret exclusion, and UNKNOWN semantics as zero-tolerance observable invariants. The plan is published; implementation and Gate E1 execution remain separately gated and wait for an A1-D candidate and sanctioned black-box seam.
+
+After E1, the product-linked evaluation path follows the current personal-first runtime sequence:
+
+```text
+Journal / E1
+→ Context Engine / Owned Home
+→ Retrieval / Authority Routing
+→ Model Gateway / model-switch continuity
+→ W1 operational independence
+→ Living Lab longitudinal reliability
+→ W2 evidence readiness
+```
+
+This does **not** pre-select a commercial companion product. Commercial evaluation becomes relevant only if later product discovery explicitly extracts one from long-term use evidence.
+
+The broader lab now has four connected lanes:
+
+1. **Failure Mechanism Lab** — failure taxonomy, mechanism clustering, reproducible cases, baseline/treatment, falsification, and regression.
+2. **A2 Independent System Gates** — black-box evidence for A1/runtime promises without copying A1 implementation authority.
+3. **RAW Harvest + Historical / Era Benchmarks** — private longitudinal evidence is mined into public-safe mechanisms, replay cases, rubrics, and cross-generation comparisons; private Raw/L0 stays private.
+4. **Longitudinal Cognitive / Persona Research** — concept growth, reasoning trajectory, world-model evolution, personality/relationship continuity, prior lock-in, attractor stability, replay effects, and related long-horizon questions when evidence and protocol are mature enough.
+
+See [docs/current-roadmap.md](docs/current-roadmap.md), [docs/methodology.md](docs/methodology.md), and [docs/method-lineage.md](docs/method-lineage.md).
 
 The `main` branch below remains the stable public evidence base for the First Closed Loop, Historical Failure Benchmark, immutable experiment tracking, read-only query API, and Docker reproducibility.
-
-The paired [Companion-Mind](https://github.com/aerenkolstein-code/Companion-Mind) repository is the A1 / implementation counterpart: Companion-Mind builds the system; LLM Evaluation Lab measures whether it actually improves.
 
 **B / Search Cup** is a separate Search/Tooling workstream that also lives in this repository for infrastructure reuse. Repository location does not make Search Cup part of A2, and its later live/provider phases remain separately gated.
 
@@ -34,9 +59,9 @@ The paired [Companion-Mind](https://github.com/aerenkolstein-code/Companion-Mind
 flowchart LR
   A[Observed failure] --> B[EvaluationCase]
   B --> C[Baseline]
-  C --> D[Mitigation]
-  D --> E[Metric]
-  E --> F[Runtime Guard]
+  C --> D[Mitigation hypothesis]
+  D --> E[Independent check]
+  E --> F[Runtime guard]
   F --> G[Regression]
 ```
 
@@ -178,11 +203,39 @@ registry image or production deployment.
 
 ## Executable integration v0.3
 
-The experiment now owns a complete `mitigation-spec/v1` contract, validates it,
+The experiment owns a complete `mitigation-spec/v1` contract, validates it,
 emits canonical JSON, and instantiates Companion-Mind's real `ClosureGuard` from
 that document. The evaluation report records the runtime-loaded mitigation ID,
 safeguard ID, schema version, and canonical SHA-256 fingerprint. This makes the
 boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
+
+## Methodology
+
+The long-term loop is broader than a single score:
+
+```text
+Observed failure / friction
+→ phenomenon classification
+→ mechanism hypothesis / cluster
+→ reproducible case
+→ rubric / oracle
+→ baseline
+→ mitigation hypothesis
+→ independent verification / falsification
+→ regression
+→ cross-method comparison
+→ review
+→ best-known solution
+```
+
+Failure reproduction comes before patching. Mechanism-level explanations are preferred over one-off rules. `BLOCKED` and `NOT EVALUABLE` are not passes. Regression is part of a mitigation, not an optional cleanup step.
+
+Historical evidence adds another distinction:
+
+- **Historical Observed Baseline** — score what an older system actually did, while preserving the limits of incomplete historical environment reconstruction.
+- **Frozen Replay Benchmark** — sanitize and freeze the necessary task, context, constraints, evidence and oracle so later models or runtimes can be compared on the same replayable case.
+
+Private Raw/L0 is evidence input, not a public dataset. See [docs/methodology.md](docs/methodology.md) and [docs/method-lineage.md](docs/method-lineage.md).
 
 ## Evidence boundary
 
@@ -195,12 +248,12 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - baseline and mitigation comparison;
 - accuracy and premature-closure metrics;
 - JSON and Markdown report output;
-- checked result artifact and known-bad regression gate.
+- checked result artifact and known-bad regression gate;
 - validated 12-cluster, 24-case Historical Failure Benchmark;
-- one uniform evidence-and-constraint gate with zero per-observation rules.
+- one uniform evidence-and-constraint gate with zero per-observation rules;
 - immutable SQLite experiment-run persistence and metadata query;
-- structured JSON lifecycle logging.
-- loopback-first read-only FastAPI health, list and detail endpoints.
+- structured JSON lifecycle logging;
+- loopback-first read-only FastAPI health, list and detail endpoints;
 - non-root Docker packaging with pinned Companion-Mind runtime commit.
 
 ### Measured in the current demonstration
@@ -209,27 +262,38 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - guarded accuracy: **100%**;
 - premature closure rate: **100% → 0%**;
 - known recurrence variants caught: **4/4**;
-- runtime integration status: **PASS**.
+- runtime integration status: **PASS**;
 - historical benchmark baseline: **50%**;
 - uniform constraint gate: **100%**;
 - historical traps caught: **12/12**;
 - evaluation tests: **32/32**;
 - SQLite persistence and readback: **PASS**;
-- duplicate run protection: **PASS**.
+- duplicate run protection: **PASS**;
 - API route write methods exposed: **0**;
-- read-only query mutation check: **PASS**.
+- read-only query mutation check: **PASS**;
 - Docker image build: **PASS**;
 - containerized CLI/API smoke: **PASS**.
+
+### Planned / separately gated
+
+- A019 / Gate E1 black-box execution against an A1-D candidate;
+- Context Engine / Retrieval / Model Gateway evaluation profiles;
+- W1 operational-independence evaluation;
+- Living Lab longitudinal reliability profiles;
+- historical/era replay packs and cross-generation continuity comparisons beyond the existing public Historical Failure Benchmark;
+- long-horizon Persona/Relationship, concept-growth, attractor and world-model studies.
 
 ### Not claimed
 
 - production deployment;
 - broad model generalization;
 - scientific benchmark validity;
+- corpus representativeness;
 - enterprise-grade reliability;
-- live-LLM effectiveness or statistical significance.
-- authenticated or production-ready API deployment.
-- bit-for-bit dependency or base-image reproducibility.
+- live-LLM effectiveness or statistical significance;
+- authenticated or production-ready API deployment;
+- bit-for-bit dependency or base-image reproducibility;
+- objective ground truth for personality, relationship, consciousness, or subjective experience.
 
 ## Artifact map
 
@@ -239,18 +303,24 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 - `results/EVAL-CASE-001.json` — checked deterministic result
 - `tests/test_evaluation.py` — loader, reproducibility, reporting, and regression assertions
 - `schemas/` — shared evaluation and mitigation contracts
+- `docs/a2/` — approved A2 planning and reconciliation records
+- `docs/current-roadmap.md` — public-safe current evaluation placement and future gates
+- `docs/methodology.md` — failure-science and evidence methodology
+- `docs/method-lineage.md` — private-evidence to public-evaluation lineage
 - `Dockerfile` — non-root container build for CLI and read-only API reproduction
 
 ## Roadmap
 
-**Operationalization baseline complete** — SQLite experiment tracking, structured
-logging, a read-only FastAPI query surface, and Docker CLI/API reproduction are
-implemented. Further infrastructure expansion requires a separate scope decision.
+**Operationalization baseline is complete.** The current public evidence base already includes executable failure reproduction, mitigation integration, historical mechanism compression, immutable run tracking, structured logs, read-only querying, and container reproduction.
+
+The next product-linked evaluation is **A019 / Gate E1**, but execution waits for separate authorization and an A1-D candidate. Later evaluation expands with the system under test rather than pre-building empty benchmark infrastructure: Context/Owned Home → W1 → Living Lab → W2.
+
+A separate RAW-harvest research lane may derive public-safe historical and era benchmarks from private longitudinal evidence. Archive recovery alone is not treated as completed evaluation harvest.
 
 ## Privacy
 
 The fixtures preserve failure mechanisms without publishing the private scenes that revealed them. The historical suite uses synthetic neutral scenarios and excludes source quotations and archive locators. The repository contains no private Raw/L0 material, credentials, account data, client documents, personal records, or links to private archives.
 
-The API returns whatever canonical result was stored by the operator. Only
-public-safe runs belong in a publicly reachable deployment; this artifact binds
-to localhost by default and intentionally provides no authentication.
+Historical observed baselines and future replay packs must keep the same boundary: aggregate or sanitized evidence may become public; private source bodies and reverse-lookup locators do not.
+
+The API returns whatever canonical result was stored by the operator. Only public-safe runs belong in a publicly reachable deployment; this artifact binds to localhost by default and intentionally provides no authentication.

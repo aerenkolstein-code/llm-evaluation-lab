@@ -1,0 +1,141 @@
+name: P1 SearchPro Live Smoke
+
+on:
+  push:
+    branches:
+      - agent/search-cup-p1-search-pro-v0.1
+
+permissions:
+  contents: read
+
+jobs:
+  authorized-p1-smoke:
+    if: "${{ github.event.head_commit.message == 'ci: run authorized P1 search_pro smoke v3' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+    steps:
+      - name: Check out authorized P1 branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install search-cup package without optional runtime dependencies
+        run: python -m pip install --no-deps .
+
+      - name: Verify secret injection without exposing its value
+        shell: bash
+        run: |
+          test -n "${GLM_API_KEY}"
+          echo "GLM_API_KEY=SET"
+
+      - name: Record P0/P1 preflight fingerprints
+        run: llm-search-cup preflight > p1-preflight.json
+
+      - name: Run exactly two authorized real search_pro calls
+        id: live_smoke
+        continue-on-error: true
+        run: |
+          llm-search-cup live-smoke \
+            --authorize-live-search-smoke \
+            --count 5 \
+            --timeout 30 \
+            --query "Python dataclasses documentation" \
+            --query "GitHub Actions workflow syntax" \
+            --output search-pro-smoke.json
+
+      - name: Validate content-safe P1 evidence
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          preflight_path = Path("p1-preflight.json")
+          smoke_path = Path("search-pro-smoke.json")
+          assert preflight_path.is_file(), "preflight artifact missing"
+          assert smoke_path.is_file(), "live smoke artifact missing"
+
+          preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+          smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
+
+          assert preflight["candidate_fingerprint"] == "ad9394a5eb6f0c795f84e4f32d03394105d27ee61b2a080717f8b9f1fc9df497"
+          assert preflight["competition_fingerprint"] == "7877472af4d0909f117872f39c028f40b300d637f16120e311bed8b996e89743"
+          assert preflight["official_match_authorized"] is False
+          assert preflight["live_provider_adapters"] == 0
+
+          assert smoke["phase"] == "ENG-SC-01-P1"
+          assert smoke["gate"] == "GREEN"
+          assert smoke["entrant_type"] == "Fake Entrant"
+          assert smoke["backend_id"] == "zhipu-web-search/search_pro"
+          assert smoke["calls_requested"] == 2
+          assert smoke["calls_used"] == 2
+          assert smoke["automatic_retries"] == 0
+          assert smoke["provider_adapters_invoked"] == 0
+          assert smoke["hidden_registry_loaded"] is False
+          assert smoke["official_match_authorized"] is False
+          assert smoke["credentials_logged"] is False
+          assert len(smoke["calls"]) == 2
+          assert len(smoke["traces"]) == 2
+          assert all(call["status"] == "SUCCEEDED" for call in smoke["calls"])
+          assert all(call["results"] for call in smoke["calls"])
+          assert [trace["call_number"] for trace in smoke["traces"]] == [1, 2]
+          assert all(trace["status"] == "SUCCEEDED" for trace in smoke["traces"])
+          assert all(trace["result_count"] > 0 for trace in smoke["traces"])
+          assert all(trace["backend_id"] == "zhipu-web-search/search_pro" for trace in smoke["traces"])
+          assert all(trace["backend_attempts"] == 1 for trace in smoke["traces"])
+          assert all(trace["automatic_retries"] == 0 for trace in smoke["traces"])
+
+          serialized = json.dumps(smoke, ensure_ascii=False, sort_keys=True)
+          secret = os.environ["GLM_API_KEY"]
+          assert secret not in serialized, "credential leaked into evidence"
+
+          evidence = {
+              "authorization": "Issue #8 / PR #10: exactly two non-official Fake Entrant calls",
+              "commit_sha": os.environ["GITHUB_SHA"],
+              "preflight": preflight,
+              "smoke": smoke,
+              "smoke_sha256": hashlib.sha256(smoke_path.read_bytes()).hexdigest(),
+          }
+          evidence_path = Path("p1-search-pro-evidence.json")
+          evidence_path.write_text(
+              json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a", encoding="utf-8") as handle:
+              handle.write("## ENG-SC-01-P1 SearchProxy live smoke\n\n")
+              handle.write("- Gate: **GREEN**\n")
+              handle.write("- Backend: `zhipu-web-search/search_pro`\n")
+              handle.write("- Fake Entrant calls: **2/2**\n")
+              handle.write("- Normalized results: **{} + {}**\n".format(
+                  smoke["traces"][0]["result_count"],
+                  smoke["traces"][1]["result_count"],
+              ))
+              handle.write("- Automatic retries: **0**\n")
+              handle.write("- Provider adapters: **0**\n")
+              handle.write("- Hidden registry loaded: **false**\n")
+              handle.write("- Official match authorized: **false**\n")
+              handle.write("- Credentials logged: **false**\n")
+          print("P1_SEARCH_PRO_SMOKE=GREEN")
+          PY
+
+      - name: Upload immutable P1 smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-sc-01-p1-search-pro-smoke
+          path: |
+            p1-preflight.json
+            search-pro-smoke.json
+            p1-search-pro-evidence.json
+          if-no-files-found: warn
+          retention-days: 30

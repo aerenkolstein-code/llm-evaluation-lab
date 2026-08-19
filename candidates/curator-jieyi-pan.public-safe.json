@@ -1,0 +1,114 @@
+{
+  "candidate_id": "CURATOR-JIEYI-PAN",
+  "legal_name": "Jieyi Pan / 潘劼毅",
+  "technical_name": "Aeren Kolstein",
+  "github": "aerenkolstein-code",
+  "base": {
+    "city": "Elda",
+    "region": "Alicante",
+    "country": "Spain",
+    "timezone": "Europe/Madrid",
+    "geography_priority": [
+      "Worldwide Remote",
+      "Europe Remote",
+      "EMEA Remote",
+      "Spain Remote"
+    ],
+    "note": "Do not assume US work authorization or eligibility for country-restricted remote roles."
+  },
+  "languages": {
+    "Chinese": "native",
+    "English": "working-professional",
+    "Spanish": "not_work_ready"
+  },
+  "education_and_background": [
+    "East China Normal University, Biology / teacher-training background, 1998-2002",
+    "Fudan University, second bachelor's degree in Computer Technology, 2005-2007",
+    "early-career C/C++ software development experience",
+    "long career interruption followed by an active return to software/AI engineering in 2026"
+  ],
+  "current_positioning": {
+    "primary_identity": "AI Evaluation & LLM Systems / Applied AI engineering candidate",
+    "strengths": [
+      "reproducible LLM evaluation design",
+      "model-behavior and continuity testing",
+      "stateful LLM runtime architecture",
+      "Python engineering",
+      "experiment provenance and auditability",
+      "GitHub Actions / CI",
+      "SQLite experiment tracking",
+      "read-only API surface",
+      "Docker reproducibility",
+      "technical writing and evidence-oriented engineering",
+      "Chinese-language / cross-lingual AI evaluation relevance"
+    ]
+  },
+  "portfolio": [
+    {
+      "repo": "aerenkolstein-code/llm-evaluation-lab",
+      "status": "public; main has merged engineering through v0.7",
+      "evidence": [
+        "reproducible evaluation CLI",
+        "executable cross-repository MitigationSpec integration",
+        "24-case public-safe Historical Failure Benchmark",
+        "immutable SQLite experiment tracking",
+        "read-only FastAPI query surface",
+        "Docker reproducibility and CI validation"
+      ]
+    },
+    {
+      "repo": "aerenkolstein-code/Companion-Mind",
+      "status": "public; core runtime merged; persona-continuity work remains auditable",
+      "evidence": [
+        "replayable stateful runtime",
+        "append-only evidence/provenance",
+        "runtime safeguard contracts",
+        "provider-independent persona/session experiments",
+        "real model API evaluation",
+        "cross-model Native persona-continuity diagnostics",
+        "current public test suite at 55/55 on the active diagnostic branch"
+      ]
+    }
+  ],
+  "current_target_roles": {
+    "priority_1": [
+      "AI Evaluation Engineer",
+      "LLM Evaluation Engineer",
+      "Model Evaluation / Model Behavior",
+      "AI Quality / AI QA",
+      "Prompt QA / Prompt Evaluation",
+      "Agent Evaluation",
+      "AI Reliability / LLM Reliability"
+    ],
+    "priority_2": [
+      "Applied AI Engineer",
+      "LLM Systems Engineer",
+      "AI Application Engineer",
+      "LLM Ops / Agent Ops where evaluation or reliability is central"
+    ],
+    "priority_3": [
+      "higher-value AI evaluator / reviewer / contractor roles requiring technical or domain judgment"
+    ]
+  },
+  "fit_constraints": {
+    "prefer": [
+      "remote roles open from Spain, Europe, EMEA, or worldwide",
+      "roles where the two public GitHub repositories are relevant evidence",
+      "evaluation, reliability, behavior, applied-LLM, agent, QA, and systems work",
+      "junior, associate, or non-senior-exclusive engineering roles",
+      "full-time, part-time, or contractor arrangements with meaningful technical work"
+    ],
+    "deprioritize": [
+      "Spanish-mandatory professional roles",
+      "US-only remote employment",
+      "senior-only, staff, or principal ML roles requiring many recent production years",
+      "frontier-model research roles requiring PhD publication records",
+      "low-value surveys or generic microtasks when a direct AI role is available"
+    ]
+  },
+  "search_intent": {
+    "primary": "discover new direct employers and higher-value AI opportunities globally",
+    "secondary": "discover credible contractor or project pools with stronger AI-evaluation or applied-LLM content",
+    "hidden_registry_rule": "entrants must not see the current drilling table before submission freeze"
+  }
+}

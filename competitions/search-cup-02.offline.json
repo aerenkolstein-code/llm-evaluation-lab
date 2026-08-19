@@ -1,0 +1,37 @@
+{
+  "competition_id": "SEARCH-CUP-02-P0-OFFLINE",
+  "task": "Find up to 20 currently worth-considering AI work opportunities worldwide for this candidate, using no more than 20 web-search calls. Independently allocate discovery and verification. Return the full ranked lead set plus the five opportunities the candidate should review first.",
+  "search_backend_id": "fake-search-pro-offline",
+  "max_search_calls": 20,
+  "official_match_authorized": false,
+  "entrants": [
+    {
+      "entrant_id": "openai-offline",
+      "provider": "OpenAI",
+      "exact_model_id": "fake-openai-p0",
+      "endpoint_mode": "offline-fixture",
+      "sampling": {"temperature": 0}
+    },
+    {
+      "entrant_id": "gemini-offline",
+      "provider": "Gemini",
+      "exact_model_id": "fake-gemini-p0",
+      "endpoint_mode": "offline-fixture",
+      "sampling": {"temperature": 0}
+    },
+    {
+      "entrant_id": "deepseek-offline",
+      "provider": "DeepSeek",
+      "exact_model_id": "fake-deepseek-p0",
+      "endpoint_mode": "offline-fixture",
+      "sampling": {"temperature": 0}
+    },
+    {
+      "entrant_id": "glm-offline",
+      "provider": "GLM",
+      "exact_model_id": "fake-glm-p0",
+      "endpoint_mode": "offline-fixture",
+      "sampling": {"temperature": 0}
+    }
+  ]
+}

@@ -4,13 +4,22 @@
 
 [![Test](https://github.com/aerenkolstein-code/llm-evaluation-lab/actions/workflows/test.yml/badge.svg)](https://github.com/aerenkolstein-code/llm-evaluation-lab/actions/workflows/test.yml)
 
+## Production lines and repository role
+
+A1 and A2 are **production-line names, not repository aliases**.
+
+- **A1 — Build Line:** builds the Companion-Mind system. Its primary implementation artifacts live in the paired [Companion-Mind](https://github.com/aerenkolstein-code/Companion-Mind) repository.
+- **A2 — Companion Evaluation Line:** accompanies A1 at explicit evidence gates. When an A1 milestone declares `WAIT-A2`, A1 must wait for independent A2 benchmark / diagnostic / regression / experiment evidence before proceeding, revising, rolling back, or holding.
+- **B — Independent Evaluation Line:** evaluation work that does not become an A1 blocking gate. B can host general AI evaluation, Search Cup, coding/data/science scenarios, tooling, and career-facing portfolio work.
+- **C1 / C2 — Tooling Lines:** engineering-tool workstreams that build tools for the construction of the Companion-Mind and LLM Evaluation Lab repositories. Their current capture/recovery projects do not define the lines themselves.
+
+The shortest operating rule is:
+
+> **A1 builds. A2 independently verifies when A1 must wait for evidence before proceeding. B evaluates independently. C1/C2 build tools for the two repositories.**
+
+Repository placement does not define line identity. LLM Evaluation Lab hosts both A2 companion-gate artifacts and B independent-evaluation artifacts, while shared evaluation tooling can serve both.
+
 ## Current evaluation focus
-
-LLM Evaluation Lab is the **A2 / Measure the system** repository. It is not a QA annex that lets one product grade itself. Its job is to turn observed AI-system failures and continuity claims into reproducible cases, explicit oracles, comparative evidence, falsifiable mitigation hypotheses, and regression gates.
-
-The paired [Companion-Mind](https://github.com/aerenkolstein-code/Companion-Mind) repository is the A1 / implementation counterpart:
-
-> **A1 builds the system. A2 measures whether it actually improves.**
 
 The current product-linked evaluation gate is **A019 / Gate E1 — Durable Journal black-box evaluation**. The published A2 Wave 1 plan defines durability, ordering, dedupe, crash/restart recovery, correction, secret exclusion, and UNKNOWN semantics as zero-tolerance observable invariants. The plan is published; implementation and Gate E1 execution remain separately gated and wait for an A1-D candidate and sanctioned black-box seam.
 
@@ -39,7 +48,7 @@ See [docs/current-roadmap.md](docs/current-roadmap.md), [docs/methodology.md](do
 
 The `main` branch below remains the stable public evidence base for the First Closed Loop, Historical Failure Benchmark, immutable experiment tracking, read-only query API, and Docker reproducibility.
 
-**B / Search Cup** is a separate Search/Tooling workstream that also lives in this repository for infrastructure reuse. Repository location does not make Search Cup part of A2, and its later live/provider phases remain separately gated.
+**B / Search Cup** is a current project within the independent B evaluation line and also lives in this repository for infrastructure reuse. Repository location does not make Search Cup part of A2, and its later live/provider phases remain separately gated.
 
 ## First Closed Loop
 

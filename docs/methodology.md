@@ -1,60 +1,72 @@
 # Methodology
 
-The lab predeclares case inputs, expected behavior and metrics before comparing baseline and treatment.
+The repository uses versioned, public-safe evaluation artifacts and keeps measurement claims narrower than the implementation surface.
 
-```text
-Observe → Diagnose → Intervene → Stress-test → Measure → Regression-test
-```
+## General principles
 
-The first artifact uses invariant transformations: child wording and order change while the required closure decision does not. A valid treatment must also preserve the sensitive all-terminal case, avoiding the trivial strategy “never close anything.”
+- Preserve exact experiment identity and configuration.
+- Keep private source material outside public fixtures.
+- Separate implementation evidence from claims of broad generalization.
+- Treat UNKNOWN as distinct from supported fact or known-empty state.
+- Keep failure, network, provider, and schema errors separate from model-quality judgments.
+- Prefer reproducible contracts, immutable evidence, and explicit limitations.
 
-The historical benchmark adds a second construction method:
+## SEARCH-CUP methodology v2.2
 
-1. review longitudinal correction chains in the private evidence layer;
-2. group raw categories by shared failure mechanism and required gate;
-3. rewrite each mechanism as a neutral synthetic scenario;
-4. create one invalid `TRAP` and one matched valid `CONTROL`;
-5. validate the pair with one uniform evidence-and-constraint policy;
-6. scan the public fixture for private locators before release.
+SEARCH-CUP now separates four sources of search performance:
 
-The 89 observations are therefore evidence for clustering, not 89 executable rules.
-The reference gate has no mechanism-specific branch and never reads the expected
-label. A new mechanism can use the same gate when it exposes evidence state and
-explicit constraint statuses.
+1. **Search Architecture / Strategy** — an upstream Human+Model co-design process. It defines the task, languages, sources, hard gates, budget allocation, and stop rules. It is recorded, but is not treated as a clean single-model leaderboard variable.
+2. **Agent Search Execution** — the entrant model's query formulation, bounded refinement, and evidence-path following under a frozen Search Spec and common neutral/transparent retriever contract.
+3. **Result Judgment** — the entrant's classification/ranking of a common candidate set, ideally with source-model provenance blinded.
+4. **Retriever / Search-Stack quality** — capabilities supplied by the backend itself, including query rewrite/decomposition, retrieval/ranking, aggregation, or synthesis.
 
-Future model-based runs will keep the same separation between case owner, policy under test, grader, mitigation and checked-in result.
+### Fair model comparison
 
-## Experiment records
+The main bare-model Cup uses:
 
-An experiment run is immutable evidence, not a mutable dashboard row. The SQLite
-store uses `run_id` as the primary key and rejects duplicate IDs. Every record
-keeps the case-suite identity, model or policy, prompt version, git commit, UTC
-timestamp, latency, token cost, baseline and treatment accuracy, regression
-status, and canonical result JSON. Listing returns indexed metadata without
-dumping the stored result payload.
+- byte/semantically identical task and Search Spec;
+- the same allowed tool contract;
+- the same transparent/neutral retriever;
+- the same search-call/turn budget;
+- the same time window;
+- the same retry policy;
+- exact model/version/config recording;
+- hidden judge/registry isolation until frozen submission.
 
-Structured lifecycle logs use one JSON object per line and remain separate from
-the report channel: `run_started`, `run_completed`, `run_persisted`, or
-`run_failed`. This preserves machine-readable observability without changing the
-deterministic report contract when tracking is not requested.
+A dedicated smart search product is not used as an invisible common substrate if it performs its own high-level decomposition/planning. Instead, it is evaluated as a separate system-level challenger.
 
-## Read-only query boundary
+### E1 / E2 separation
 
-The FastAPI surface is a projection over immutable SQLite evidence. It opens the
-database in URI `mode=ro`, enables SQLite `query_only`, and exposes only health,
-metadata-list, and single-run-detail GET routes. List responses omit the stored
-result payload; detail responses return the canonical result for one run. Tests
-hash the database before and after all three queries to prove the query path does
-not mutate the evidence file.
+- **E1 Agent Search Execution:** fixed retriever/backend, task, spec, and budget; vary the entrant model.
+- **E2 Retriever Benchmark:** fixed entrant model/agent, task, spec, and budget; vary the retriever/backend.
 
-## Container reproduction
+This prevents retriever gains from being mislabeled as model gains, or vice versa.
 
-The Docker image fixes the Companion-Mind runtime to an explicit commit, copies
-only the executable public-safe fixture and schema directories, installs the lab
-in editable mode so checked fixtures remain addressable, and drops privileges to
-UID 10001. CI treats the image as a black box: it verifies the version, executes
-the historical regression, writes one SQLite run through a mounted directory,
-then starts the API with that directory mounted read-only and queries it over HTTP.
+### Live Web vs Frozen Corpus
 
-The Python base tag and transitive package resolution are not locked by digest;
-this is repeatable functional packaging, not bit-for-bit image reproducibility.
+- **Live Web** maximizes ecological validity but is time/index/ranking dependent. Prefer pooled adjudication, unique valid yield, evidence coverage, and cost-normalized metrics; do not claim exhaustive recall unless a defensible answer universe exists.
+- **Frozen Corpus** maximizes reproducibility. Record corpus provenance/version/hash and use stable reference/adjudicated labels when available, enabling Recall@Budget, Precision@K, F1, and deterministic replay.
+
+Results from Live and Frozen tracks remain separately labeled.
+
+### Task design
+
+Prefer **hard-to-find, easy-to-verify** tasks: discovery should require real search work, while a found answer should be confirmable from clear evidence with low judging ambiguity.
+
+### Judgment-only track
+
+Pool and deduplicate candidate results, blind entrant provenance, provide the same rubric, and prohibit extra search unless the protocol explicitly creates a verification subtrack. Useful metrics include false opportunity rate, false reject rate, calibration, UNKNOWN discipline, and Top-K actionable precision.
+
+### Dedicated search-stack challenge
+
+GLM Search/Search Agent or any future dedicated intelligent search stack is evaluated separately from the bare-model leaderboard. Recommended sequence:
+
+1. four-model bare-agent Cup;
+2. dedicated search-stack challenge;
+3. winner-vs-stack playoff under an explicitly declared resource budget.
+
+### Historical evidence
+
+SEARCH-CUP-02 v0.1 evidence remains valid as **Strategy-heavy End-to-End Search Evidence**. Existing P0/P1/P2 implementation assets are retained. They are not retroactively relabeled as E1-only results unless their historical protocol satisfies the v2.2 isolation requirements.
+
+See [`search-cup-v2.2-architecture-reconciliation.md`](search-cup-v2.2-architecture-reconciliation.md) for the current protocol boundary.

@@ -1,31 +1,33 @@
-# Privacy and evidence policy
+# Privacy and Evidence Boundary
 
-Public cases preserve the failure mechanism, expected behavior and reproducible structure—not the private scene that first revealed the problem.
+This repository is public-safe by design.
 
-Historical benchmark publication uses a one-way transformation: private
-correction chains become mechanism identifiers, neutral synthetic scenarios,
-explicit constraints and expected structural decisions. Real names, relationships,
-quotations, source filenames, archive URLs, account identifiers, timestamps and
-provider-specific private details are not copied into the public fixture.
+## Excluded material
 
-CI checks the checked fixture for known private locator patterns. This check is a
-release guard, not a claim that automated scanning can replace human review.
+Do not commit:
 
-No file may expose or link to private Raw/L0, relationship or family records, adult material, medical/financial data, accounts, platform assessments, client material, unpublished manuscripts or internal archive/control documents. Uncertain material remains private.
+- private conversation Raw/L0 material;
+- private archive locators or credentials;
+- API keys, tokens, passwords, OTPs, or payment secrets;
+- private client documents;
+- family, health, financial, or relationship records;
+- hidden judge registries or private answer keys;
+- model-provider secrets or credential-bearing request/response dumps.
 
-SQLite stores and JSON logs may contain experiment metadata and full public-safe
-result payloads. They are runtime evidence, not repository fixtures: database
-files are ignored by git, and operators must not pass private prompts, credentials
-or archive locations through model, prompt-version, git-commit or run-ID fields.
+## Search Cup specific boundary
 
-The query API returns stored metadata and, for a requested run, its canonical
-result payload. It therefore defaults to loopback and ships without any write
-route. This is not an authentication boundary: operators must not expose it to a
-network or populate it with non-public evidence without adding deployment-specific
-access controls outside this artifact.
+SEARCH-CUP entrants must not receive hidden-registry contents, private drilling tables, Drive credentials, or provider secrets. Search traces and submissions should remain content-safe and auditable.
 
-The image contains only repository public-safe files and a pinned public
-Companion-Mind runtime commit. No database, log, credential, environment file or
-private archive path is copied into the image. Runtime evidence must enter through
-an explicit volume; read-only API use should mount that volume with `:ro` and bind
-the published host port to loopback.
+The v2.2 architecture additionally requires provenance labels that distinguish:
+
+- entrant model identity;
+- retriever/search backend identity;
+- Live Web vs Frozen Corpus environment;
+- Search Spec/version;
+- search call/turn budget;
+- evidence URLs or frozen-corpus references;
+- UNKNOWN / verification status.
+
+Dedicated search-stack challenge results must not be silently attributed to the general-purpose entrant model when the backend performs its own query decomposition, rewrite, aggregation, or synthesis.
+
+Frozen corpora and judge/reference sets may have private construction artifacts; only public-safe derived fixtures, hashes, versions, or explicitly approved evaluation assets belong in the public repository.

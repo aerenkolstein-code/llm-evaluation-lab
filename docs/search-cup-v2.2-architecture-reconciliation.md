@@ -179,3 +179,7 @@ Before implementation continues, a v2.2 Protocol Stage Plan must freeze:
 10. exact reuse plan for P0/P1/P2 code and Draft PR #17.
 
 Until that gate is approved: **STOP before P3, official prompt execution, hidden judge integration, or official paid/live competition.**
+
+## Current repository receipt
+
+The v2.2 docs-only reconciliation is now present on Draft PR #17's branch. P0/P1/P2 code remains unchanged; only public documentation/methodology boundaries were updated. The current branch head after the reconciliation doc set is `5f570091fcaf2c00cdefadc78613ef49c7016181` plus subsequent documentation commits. No official prompt, hidden judge, or official paid/live match was executed by this reconciliation.

@@ -69,4 +69,31 @@ GLM Search/Search Agent or any future dedicated intelligent search stack is eval
 
 SEARCH-CUP-02 v0.1 evidence remains valid as **Strategy-heavy End-to-End Search Evidence**. Existing P0/P1/P2 implementation assets are retained. They are not retroactively relabeled as E1-only results unless their historical protocol satisfies the v2.2 isolation requirements.
 
-See [`search-cup-v2.2-architecture-reconciliation.md`](search-cup-v2.2-architecture-reconciliation.md) for the current protocol boundary.
+See [`search-cup-v2.2-architecture-reconciliation.md`](search-cup-v2.2-architecture-reconciliation.md) for the v2.2 protocol boundary.
+
+## SEARCH-CUP methodology v2.3 — Winner-vs-Search-Stack fairness
+
+v2.3 adds a fairness distinction for comparing the bare-model champion with an integrated search stack such as GLM Search/Search Agent.
+
+A search-credit invocation may itself contain query-level intent understanding, query decomposition/rewrite, retrieval/ranking, aggregation, and synthesis. Therefore one search credit is not assumed to be equivalent to one neutral/raw retriever call.
+
+Search Architecture is further split into:
+
+- **A0 Search Program Architecture:** task goal, markets/languages/sources, layers, budget allocation, stop rules, and economic success criteria. Primarily Human+Model co-design.
+- **A1 Query-Level Search Planning:** intent understanding, query decomposition/rewrite, and local search-direction selection inside a frozen task. An integrated Search Agent may contribute part of A1.
+
+Three fairness questions must remain separate:
+
+1. **F1 Bare-Model Fairness** — same frozen Search Spec, neutral retriever, budget, time window, and output/evidence contract; compare general-purpose models only.
+2. **F2 System Fairness** — same A0 Search Program, task goal, deadline, success criteria, and output contract; allow each declared system to use its native search capabilities; compare complete systems, not pure model ability.
+3. **F3 Economic Fairness** — align comparable real-world resources such as money or time, then compare value produced per resource unit instead of mechanically equalizing call counts.
+
+For economic tracks, useful metrics include Actionable Leads / Cost, Unique Valid Discovery / Cost, Qualified Replies / Cost, Paid Conversion / Cost, Revenue / Cost, and Time-to-First-Actionable-Result.
+
+If causal attribution is required, use **Capability-Matched Ablation** to isolate query planning/decomposition, retrieval, ranking/aggregation, and synthesis while holding other components fixed where feasible.
+
+Any future Winner-vs-Stack report must separately publish Bare Cup, System Playoff, and Economic Playoff results. A single total score must not collapse F1/F2/F3 into one champion.
+
+GLM search credits belong to the dedicated search-stack/economic tracks and are not part of the Four-Model Bare Search Cup neutral budget pool.
+
+See [`search-cup-v2.3-fairness-framework.md`](search-cup-v2.3-fairness-framework.md) for the current fairness framework.

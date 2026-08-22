@@ -1,4 +1,4 @@
-"""P0/P1 CLI with an explicitly authorized search-only live smoke."""
+"""P0-P2 CLI with separately authorized, bounded live smoke commands."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Sequence
 
 from .contracts import CandidateCard, CompetitionSpec
 from .demo import DEFAULT_CANDIDATE, DEFAULT_COMPETITION, build_offline_demo
+from .p2_smoke import run_p2_smoke
 from .search_pro import run_live_smoke
 
 
@@ -40,6 +41,22 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="required manual gate; authorizes only these 1-3 search calls",
     )
+
+    p2_smoke = subcommands.add_parser(
+        "p2-smoke",
+        help="run four provider adapters sequentially with one non-official search each",
+    )
+    p2_smoke.add_argument("--candidate", default=str(DEFAULT_CANDIDATE))
+    p2_smoke.add_argument("--competition", default=str(DEFAULT_COMPETITION))
+    p2_smoke.add_argument("--search-api-key-env", default="GLM_API_KEY")
+    p2_smoke.add_argument("--count", type=int, default=5)
+    p2_smoke.add_argument("--timeout", type=float, default=60.0)
+    p2_smoke.add_argument("--output")
+    p2_smoke.add_argument(
+        "--authorize-p2-provider-smoke",
+        action="store_true",
+        help="required manual gate; never authorizes P3-P5 or the official match",
+    )
     return parser
 
 
@@ -51,16 +68,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         if competition.official_match_authorized:
             raise ValueError("P0 preflight refuses an authorized official-match spec")
         result = {
-            "phase": "ENG-SC-01-P1",
+            "phase": "ENG-SC-01-P2",
             "mode": "OFFLINE_ONLY",
             "candidate_fingerprint": candidate.fingerprint,
             "competition_fingerprint": competition.fingerprint,
             "entrant_count": len(competition.entrants),
             "search_budget_per_entrant": competition.max_search_calls,
             "official_match_authorized": competition.official_match_authorized,
-            "live_provider_adapters": 0,
+            "live_provider_adapters": 4,
             "search_pro_backend_available": True,
             "live_search_requires_explicit_smoke_authorization": True,
+            "provider_smoke_requires_explicit_authorization": True,
+            "official_prompt_available": False,
+            "hidden_registry_available": False,
         }
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
@@ -75,6 +95,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.query,
             api_key_env=args.api_key_env,
             count=args.count,
+            timeout_seconds=args.timeout,
+        )
+        rendered = json.dumps(artifact, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        if args.output:
+            Path(args.output).write_text(rendered, encoding="utf-8")
+        else:
+            print(rendered, end="")
+        return 0 if green else 1
+
+    if args.command == "p2-smoke":
+        if not args.authorize_p2_provider_smoke:
+            raise ValueError(
+                "p2-smoke requires --authorize-p2-provider-smoke; "
+                "this does not authorize P3-P5 or the official match"
+            )
+        artifact, green = run_p2_smoke(
+            candidate_path=args.candidate,
+            competition_path=args.competition,
+            search_api_key_env=args.search_api_key_env,
+            search_count=args.count,
             timeout_seconds=args.timeout,
         )
         rendered = json.dumps(artifact, ensure_ascii=False, indent=2, sort_keys=True) + "\n"

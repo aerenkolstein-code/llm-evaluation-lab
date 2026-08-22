@@ -1,20 +1,15 @@
-# Method lineage
+# Method Lineage
 
-```text
-Raw / L0: what happened
-→ L1: what changed the trajectory
-→ L2: what reusable rule appeared
-→ Errorbook: what failed, why, risk, mitigation
-→ Case Library: how to reproduce it
-→ Stress Test: how to expose it deliberately
-→ Mitigation Experiment: whether an intervention works
-→ Regression Test: whether the failure returns
-```
+This repository keeps evaluation-method changes versioned rather than silently rewriting historical evidence.
 
-For `HISTORICAL-FAILURE-BENCHMARK-v1`, the public boundary is crossed only after
-the Errorbook layer: 89 reviewed correction chains and 18 raw categories are
-compressed into 12 mechanism clusters, then reconstructed as 24 synthetic
-public-safe minimal-pair cases. The repository contains the reconstructed cases,
-not the underlying evidence corpus.
+## SEARCH-CUP lineage
 
-The repository does not publish private L0/L1/L2 material. It publishes public-safe method cards and reproducible cases derived from reviewed sources.
+- **SEARCH-CUP-02 v0.1** — strategy-heavy end-to-end four-model web-search benchmark using a provider-independent `SearchProxy`, strict per-entrant search budget, frozen submissions, and a hidden-registry judge.
+- **P0/P1/P2 engineering lineage** — fairness harness, unified real-search boundary, four provider adapters, normalized `SearchResult`, trace/budget accounting, and typed `NOT_EVALUABLE` semantics.
+- **Search Cup Architecture v2.2** — measurement reconciliation that separates Search Architecture Co-Design, bare-model Search Execution, Result Judgment, and Retriever/Search-Stack quality; adds Live Web vs Frozen Corpus tracks; keeps dedicated intelligent search stacks such as GLM Search as separate system challengers.
+
+Current reconciliation document:
+
+- [`search-cup-v2.2-architecture-reconciliation.md`](search-cup-v2.2-architecture-reconciliation.md)
+
+Historical v0.1 results remain valid as **Strategy-heavy End-to-End Search Evidence**. They are not silently relabeled as pure execution results.

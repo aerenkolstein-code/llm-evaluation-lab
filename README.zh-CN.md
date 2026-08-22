@@ -29,7 +29,7 @@ companion-mind validate-mitigation --mitigation-spec /tmp/mitigation.json
 
 `llm-eval` 现在负责校验并输出完整的 `mitigation-spec/v1`，再用它实例化 Companion-Mind 的真实 `ClosureGuard`。报告同时记录 runtime 实际加载的 mitigation ID、safeguard ID、schema version 与 canonical SHA-256 fingerprint，从而证明“写入评测报告的配置”与“运行时真正执行的配置”一致。
 
-原有评测主线仍保持 **32/32 tests**；SEARCH-CUP-02 P0/P1 为 **27/27**，当前全仓为 **59/59**。
+原有评测主线仍保持 **32/32 tests**；SEARCH-CUP-02 P0/P1/P2 为 **31/31**，当前全仓为 **63/63**。
 
 ## Historical Failure Benchmark v0.4
 
@@ -63,17 +63,19 @@ llm-eval \
 `c6a2128271532746a5570b99ce0ccdea4618db4e`，容器以非 root 用户运行。
 
 ```bash
-docker build -t llm-evaluation-lab:0.9 .
-docker run --rm llm-evaluation-lab:0.9 \
+docker build -t llm-evaluation-lab:0.10 .
+docker run --rm llm-evaluation-lab:0.10 \
   --suite historical \
   --cases cases/anonymized/premature-parent-closure.md
 ```
 
-GitHub Actions 会从 clean checkout 构建镜像、核验 `0.9.0`、复跑 24 案例历史基准、
+GitHub Actions 会从 clean checkout 构建镜像、核验 `0.10.0`、复跑 24 案例历史基准、
 在挂载目录中生成 SQLite 记录，并通过真实 HTTP 查询容器化 API。它证明本地容器复跑能力，
 不代表已经发布 registry image、完成云部署或达到生产可靠性。
 
-## SEARCH-CUP-02 统一 SearchProxy v0.9
+## SEARCH-CUP-02 四 Provider Adapter v0.10
+
+> **v2.2 架构对账中：** P0/P1/P2 实现和证据继续有效，但当前已将 Search Architecture、裸模型 Search Execution、Result Judgment 与 Retriever / Search Stack 能力拆开。详见 [`docs/search-cup-v2.2-architecture-reconciliation.md`](docs/search-cup-v2.2-architecture-reconciliation.md)。v2.2 Protocol Gate 批准前，P3-P5 与正式比赛继续锁定。
 
 `ENG-SC-01-P0` 已实现四名 Fake Entrant 的封闭式离线比赛：四方读取字节一致的
 Candidate Card 与 CompetitionSpec；每方拥有独立的 20 次搜索硬预算；Submission
@@ -104,5 +106,19 @@ llm-search-cup live-smoke \
 该命令不会调用 OpenAI / Gemini / DeepSeek / GLM 模型，不会加载 Candidate Card、隐藏井表或
 Judge，也没有正式比赛循环。密钥只从环境变量读取，不进入结果、错误、trace 或 Git；缺少
 显式授权 flag 时，在读取密钥和联网前即拒绝。四模型 80 发仍需董事会另行授权。
+
+P2 新增 OpenAI、Gemini、DeepSeek、GLM 四个真实协议适配器，但仍不接 Runner、隐藏井表、
+Judge 或正式题。四方依次执行同一条非正式 smoke 指令，各自拿到独立的一张 SearchProxy 券；
+Candidate Card 字节、`search_web` 工具合同、标准化 `SearchResult` 与最终 `Submission` 合同一致。
+
+```bash
+llm-search-cup p2-smoke \
+  --authorize-p2-provider-smoke \
+  --output /tmp/p2-provider-smoke.json
+```
+
+证据记录 provider、requested/resolved model、endpoint mode、sampling/config、模型调用 trace、
+搜索 trace 与冻结 submission hash。自动重试恒为 0；密钥、网络、Provider、工具或 schema 失败
+统一记为 `NOT_EVALUABLE` 且 `quality_score=null`，不冒充模型质量分。P3-P5 与 80 发正式比赛仍锁定。
 
 第三仓仍保留 concept growth、prior lock-in、world-model drift、longitudinal evolution 与 experimental timeline；failure taxonomy 只是公开接口，不取代纵向评估内核。

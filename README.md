@@ -14,8 +14,8 @@
 | Evaluation tests | 32/32 |
 | Container CLI/API smoke | PASS |
 | Executable MitigationSpec | Runtime-validated |
-| SEARCH-CUP-02 P0/P1 tests | 27/27 |
-| Full repository tests | 59/59 |
+| SEARCH-CUP-02 P0/P1/P2 tests | 31/31 |
+| Full repository tests | 63/63 |
 
 **Status:** Experimental / reproducible artifact  
 **Evidence level:** E3 — reproducible public-safe evaluation
@@ -140,9 +140,9 @@ to commit `c6a2128271532746a5570b99ce0ccdea4618db4e`, installs the evaluation
 package, and runs as an unprivileged user.
 
 ```bash
-docker build -t llm-evaluation-lab:0.9 .
+docker build -t llm-evaluation-lab:0.10 .
 
-docker run --rm llm-evaluation-lab:0.9 \
+docker run --rm llm-evaluation-lab:0.10 \
   --suite historical \
   --cases cases/anonymized/premature-parent-closure.md
 ```
@@ -155,18 +155,20 @@ docker run --rm \
   -p 127.0.0.1:8000:8000 \
   -v /absolute/path/to/data:/data:ro \
   --entrypoint llm-eval-api \
-  llm-evaluation-lab:0.9 \
+  llm-evaluation-lab:0.10 \
   --store /data/eval-runs.sqlite3 \
   --host 0.0.0.0 \
   --allow-network
 ```
 
-CI builds the image from a clean checkout, verifies version `0.9.0`, executes the
+CI builds the image from a clean checkout, verifies version `0.10.0`, executes the
 24-case historical regression, creates a mounted SQLite record, then queries the
 containerized API over HTTP. This is reproducible local packaging, not a published
 registry image or production deployment.
 
-## SEARCH-CUP-02 Unified SearchProxy v0.9
+## SEARCH-CUP-02 Four Provider Adapters v0.10
+
+> **Architecture reconciliation in progress:** the P0/P1/P2 implementation and evidence remain valid, but the benchmark measurement target has been refined. See [`docs/search-cup-v2.2-architecture-reconciliation.md`](docs/search-cup-v2.2-architecture-reconciliation.md). P3-P5 and any official match remain locked until the v2.2 protocol gate is approved.
 
 `ENG-SC-01-P0` added a closed-book, provider-neutral search-benchmark skeleton.
 The P0 regression remains intentionally offline: four deterministic fake entrants receive the same
@@ -226,8 +228,33 @@ P1 evidence:
 - the 21st call remains rejected before any backend execution;
 - P0 hidden-registry isolation, provider failure isolation, freeze/hash, and
   deterministic judging remain green;
-- all four future provider adapters will receive the same `EntrantTools.search_web`
-  and `SearchResult` contract; P1 implements zero real model adapters.
+- all four P2 provider adapters receive the same `EntrantTools.search_web` and
+  `SearchResult` contract.
+
+`ENG-SC-01-P2` adds four protocol adapters—OpenAI Chat Completions, Gemini
+`generateContent`, DeepSeek Chat Completions, and GLM Chat Completions—without
+adding a match runner, hidden judge, or official prompt path. The manually gated
+smoke executes providers sequentially and gives each a fresh one-ticket
+SearchProxy:
+
+```bash
+export OPENAI_API_KEY=...
+export GEMINI_API_KEY=...
+export DEEPSEEK_API_KEY=...
+export GLM_API_KEY=...  # also used by search_pro unless overridden
+llm-search-cup p2-smoke \
+  --authorize-p2-provider-smoke \
+  --output /tmp/p2-provider-smoke.json
+```
+
+Every provider receives the same Candidate Card bytes, non-official smoke
+instruction, `search_web` description/schema, normalized results, and final
+`Submission` contract. Evidence records requested/resolved model IDs, endpoint
+mode, sampling configuration, model attempts, SearchProxy traces, and Submission
+contract hashes. There is no automatic retry. Credential, provider, network,
+tool, or schema failures are typed `NOT_EVALUABLE` with `quality_score: null`.
+The command does not load the official task, private registry, or judge and does
+not authorize P3-P5 or the 80-call match.
 
 ## Executable integration v0.3
 
@@ -287,7 +314,7 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 ## Artifact map
 
 - `evaluation_lab.py` — loader, policies, grader, metrics, regression gate, CLI, and read-only API
-- `search_cup/` — P0 contracts plus the gated P1 `search_pro` backend, budgeted tools, fake providers, isolated runner, hidden judge, and CLI
+- `search_cup/` — P0 contracts, P1 `search_pro`, and gated P2 provider adapters; the offline runner/judge remain isolated
 - `candidates/` and `competitions/` — canonical public-safe P0 inputs and fingerprints
 - `cases/anonymized/premature-parent-closure.md` — first-loop case card plus executable 24-case historical benchmark
 - `experiments/closure-guard-mitigation.md` — mitigation, decision rule, and executable JSON contract
@@ -298,11 +325,8 @@ boundary explicit: Eval Lab specifies and verifies; Companion-Mind implements.
 
 ## Roadmap
 
-**SEARCH-CUP-02 P1 implemented; provider phases locked** — the offline fairness
-harness and unified real-search boundary are implemented. OpenAI, Gemini,
-DeepSeek, and GLM model adapters, immutable match evidence, the private judge
-snapshot, and any official 80-call match remain separate gated phases under
-Issue #8.
+**SEARCH-CUP-02 P2 implemented; v2.2 protocol reconciliation now gates P3-P5** — the offline fairness harness,
+unified real-search boundary, and four provider protocol adapters are implemented and retained. Runner/evidence automation, neutral-retriever selection, GLM Search Stack challenge, private judge snapshot, preflight, and any official match remain separate Board-gated phases under Issue #8.
 
 ## Privacy
 

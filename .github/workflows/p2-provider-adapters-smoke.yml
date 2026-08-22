@@ -1,0 +1,162 @@
+name: P2 Four Provider Adapters Smoke
+
+on:
+  push:
+    branches:
+      - agent/search-cup-p2-provider-adapters-v0.1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p2-provider-adapters-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bounded-provider-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+    steps:
+      - name: Check out authorized P2 branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install search-cup package without optional runtime dependencies
+        run: python -m pip install --no-deps .
+
+      - name: Record content-safe key availability
+        shell: bash
+        run: |
+          for name in OPENAI_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY GLM_API_KEY; do
+            if [ -n "${!name}" ]; then
+              echo "${name}=SET"
+            else
+              echo "${name}=UNSET"
+            fi
+          done
+
+      - name: Record P2 preflight fingerprints
+        run: llm-search-cup preflight > p2-preflight.json
+
+      - name: Run one bounded non-official smoke per configured provider
+        id: live_smoke
+        shell: bash
+        run: |
+          set +e
+          llm-search-cup p2-smoke \
+            --authorize-p2-provider-smoke \
+            --count 5 \
+            --timeout 60 \
+            --output p2-provider-smoke.json
+          status=$?
+          set -e
+          echo "cli_exit=${status}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate content-safe P2 evidence
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          preflight_path = Path("p2-preflight.json")
+          smoke_path = Path("p2-provider-smoke.json")
+          assert preflight_path.is_file(), "preflight artifact missing"
+          assert smoke_path.is_file(), "P2 smoke artifact missing"
+          preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+          smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
+
+          assert preflight["phase"] == "ENG-SC-01-P2"
+          assert preflight["candidate_fingerprint"] == "ad9394a5eb6f0c795f84e4f32d03394105d27ee61b2a080717f8b9f1fc9df497"
+          assert preflight["competition_fingerprint"] == "7877472af4d0909f117872f39c028f40b300d637f16120e311bed8b996e89743"
+          assert preflight["official_match_authorized"] is False
+          assert preflight["live_provider_adapters"] == 4
+
+          assert smoke["phase"] == "ENG-SC-01-P2"
+          assert smoke["authorization"] == "Issue #8 comment 5321078001"
+          assert smoke["evaluation"] == "NOT_SCORED"
+          assert smoke["candidate_fingerprint"] == preflight["candidate_fingerprint"]
+          assert smoke["competition_fingerprint"] == preflight["competition_fingerprint"]
+          assert smoke["provider_adapters_configured"] == 4
+          assert smoke["providers_executed_sequentially"] is True
+          assert smoke["max_search_calls_per_provider"] == 1
+          assert smoke["automatic_retries"] == 0
+          assert smoke["official_prompt_consumed"] is False
+          assert smoke["official_match_authorized"] is False
+          assert smoke["hidden_registry_loaded"] is False
+          assert smoke["judge_invoked"] is False
+          assert smoke["credentials_logged"] is False
+          assert len(smoke["outcomes"]) == 4
+          assert {item["provider"] for item in smoke["outcomes"]} == {
+              "OpenAI", "Gemini", "DeepSeek", "GLM"
+          }
+          assert all(item["status"] in {"PASS", "NOT_EVALUABLE"} for item in smoke["outcomes"])
+          assert all(item["quality_score"] is None for item in smoke["outcomes"])
+          assert all(item["automatic_retries"] == 0 for item in smoke["outcomes"])
+          assert all(item["search_calls"] <= 1 for item in smoke["outcomes"])
+          assert all(item["api_attempts"] <= 2 for item in smoke["outcomes"])
+          assert all(
+              trace["automatic_retries"] == 0
+              for item in smoke["outcomes"]
+              for trace in item["provider_traces"] + item["search_traces"]
+          )
+
+          serialized = json.dumps(smoke, ensure_ascii=False, sort_keys=True)
+          for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "GLM_API_KEY"):
+              secret = os.environ.get(name, "")
+              if secret:
+                  assert secret not in serialized, f"{name} leaked into evidence"
+
+          evidence = {
+              "authorization": "Issue #8 comment 5321078001",
+              "commit_sha": os.environ["GITHUB_SHA"],
+              "preflight": preflight,
+              "smoke": smoke,
+              "smoke_sha256": hashlib.sha256(smoke_path.read_bytes()).hexdigest(),
+          }
+          Path("p2-provider-evidence.json").write_text(
+              json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          passed = [item["provider"] for item in smoke["outcomes"] if item["status"] == "PASS"]
+          not_evaluable = [
+              f"{item['provider']}:{item['failure']['error_code']}"
+              for item in smoke["outcomes"]
+              if item["status"] == "NOT_EVALUABLE"
+          ]
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
+              handle.write("## ENG-SC-01-P2 Four Provider Adapters\n\n")
+              handle.write(f"- Smoke gate: **{smoke['gate']}** (not scored)\n")
+              handle.write(f"- PASS: **{', '.join(passed) or 'none'}**\n")
+              handle.write(f"- NOT_EVALUABLE: **{', '.join(not_evaluable) or 'none'}**\n")
+              handle.write("- Search budget: **max 1/provider**\n")
+              handle.write("- Automatic retries: **0**\n")
+              handle.write("- Official prompt / hidden registry / judge: **not loaded**\n")
+          print(f"P2_PROVIDER_SMOKE={smoke['gate']}")
+          PY
+
+      - name: Upload P2 smoke receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-sc-01-p2-four-provider-adapters
+          path: |
+            p2-preflight.json
+            p2-provider-smoke.json
+            p2-provider-evidence.json
+          if-no-files-found: error
+          retention-days: 30

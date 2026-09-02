@@ -1,0 +1,37 @@
+{
+  "case_count": 8,
+  "cases": ["B2-QA0-CS-CTRL-001", "B2-QA0-CS-KB-001", "B2-QA0-EAB-CTRL-001", "B2-QA0-EAB-KB-001", "B2-QA0-ES-CTRL-001", "B2-QA0-ES-KB-001", "B2-QA0-IC-CTRL-001", "B2-QA0-IC-KB-001"],
+  "control_count": 4,
+  "control_false_reject_rate": 0.0,
+  "evidence_completeness_rate": 1.0,
+  "fixture_fingerprints": {
+    "B2-QA0-CS-CTRL-001": "sha256:087c140420a1590306c6cfa170411124e09d885f2018dac976476e8cfa27e95a",
+    "B2-QA0-CS-KB-001": "sha256:8655ba51cf961a327347114ead00941d59ac73a7c61561216132638651e73d3c",
+    "B2-QA0-EAB-CTRL-001": "sha256:d25f5b3f26d7103322bb30954cb9cd55aac9a5f972716ef77959f4d94254d690",
+    "B2-QA0-EAB-KB-001": "sha256:3f99e8cc7694e9546c3c2456bcbc5fc8326b151bf8be9bf35f17fa7cee36133d",
+    "B2-QA0-ES-CTRL-001": "sha256:1f866622da898584740c9ac6c60809da7887b006ebfe1c874e866d4cf5b971d2",
+    "B2-QA0-ES-KB-001": "sha256:4658012daf5940f636b907daf45521fc4cc7fcf7f7d3265f2efe4cc02792be05",
+    "B2-QA0-IC-CTRL-001": "sha256:062926f799d429d11476f5e552b27220342284bc8bbca5b80eabefdec45e87fc",
+    "B2-QA0-IC-KB-001": "sha256:9060793e45d637e244e24ade315a948eb2e7b272970f22665a2e8e67308d4133"
+  },
+  "gate": "PASS",
+  "gate_criteria": {
+    "case_count": 8,
+    "control_count": 4,
+    "control_false_reject_rate": 0.0,
+    "evidence_completeness_rate": 1.0,
+    "known_bad_count": 4,
+    "known_bad_detection_rate": 1.0,
+    "provenance_trace_rate": 1.0
+  },
+  "known_bad_count": 4,
+  "known_bad_detection_rate": 1.0,
+  "limitations": ["Metrics apply only to the frozen deterministic QA0 fixture set.", "No live model/provider performance is measured.", "Mechanism hypotheses are not causal circuit findings."],
+  "provenance_trace_rate": 1.0,
+  "receipt_fingerprint": "sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7",
+  "run_id": "B2-QA0-DETERMINISTIC-001",
+  "runner": "python-unittest-compatible/deterministic",
+  "schema_version": "b2-qa0-receipt/v1",
+  "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
+  "terminal_statuses": ["ERROR", "FAIL", "PASS"]
+}

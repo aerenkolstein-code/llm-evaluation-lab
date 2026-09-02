@@ -1,6 +1,6 @@
 {
   "case_count": 8,
-  "cases": ["B2-QA0-CS-CTRL-001","B2-QA0-CS-KB-001","B2-QA0-EAB-CTRL-001","B2-QA0-EAB-KB-001","B2-QA0-ES-CTRL-001","B2-QA0-ES-KB-001","B2-QA0-IC-CTRL-001","B2-QA0-IC-KB-001"],
+  "cases": ["B2-QA0-CS-CTRL-001", "B2-QA0-CS-KB-001", "B2-QA0-EAB-CTRL-001", "B2-QA0-EAB-KB-001", "B2-QA0-ES-CTRL-001", "B2-QA0-ES-KB-001", "B2-QA0-IC-CTRL-001", "B2-QA0-IC-KB-001"],
   "control_count": 4,
   "control_false_reject_rate": 0.0,
   "evidence_completeness_rate": 1.0,
@@ -15,14 +15,23 @@
     "B2-QA0-IC-KB-001": "sha256:9060793e45d637e244e24ade315a948eb2e7b272970f22665a2e8e67308d4133"
   },
   "gate": "PASS",
+  "gate_criteria": {
+    "case_count": 8,
+    "control_count": 4,
+    "control_false_reject_rate": 0.0,
+    "evidence_completeness_rate": 1.0,
+    "known_bad_count": 4,
+    "known_bad_detection_rate": 1.0,
+    "provenance_trace_rate": 1.0
+  },
   "known_bad_count": 4,
   "known_bad_detection_rate": 1.0,
-  "limitations": ["Metrics apply only to the frozen deterministic QA0 fixture set.","No live model/provider performance is measured.","Mechanism hypotheses are not causal circuit findings."],
+  "limitations": ["Metrics apply only to the frozen deterministic QA0 fixture set.", "No live model/provider performance is measured.", "Mechanism hypotheses are not causal circuit findings."],
   "provenance_trace_rate": 1.0,
-  "receipt_fingerprint": "sha256:46e61929cbbad45a3721529893aa4bb64b20460ff439d8796d69fa200a456c69",
+  "receipt_fingerprint": "sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7",
   "run_id": "B2-QA0-DETERMINISTIC-001",
   "runner": "python-unittest-compatible/deterministic",
   "schema_version": "b2-qa0-receipt/v1",
   "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
-  "terminal_statuses": ["ERROR","FAIL","PASS"]
+  "terminal_statuses": ["ERROR", "FAIL", "PASS"]
 }

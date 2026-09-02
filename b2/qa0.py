@@ -28,6 +28,48 @@ BUG_CASE_SCHEMA_VERSION = "bug-case/v1"
 METRIC_REGISTRY_SCHEMA_VERSION = "metric-registry/v1"
 QA0_RECEIPT_SCHEMA_VERSION = "b2-qa0-receipt/v1"
 
+# A known-bad fixture is detected only when its family's frozen oracle observes
+# the intended failure mechanism.  Missing/blocked outcomes are never evidence
+# of detection.  ERROR is intentionally accepted only for connector-schema,
+# where a typed schema/infrastructure rejection is itself the target outcome.
+KNOWN_BAD_DETECTION_ORACLES = {
+    "entity-attribute-binding": {
+        "terminal_status": "FAIL",
+        "target_invariants": {"entity_attribute_evidence_binding"},
+    },
+    "connector-schema": {
+        "terminal_status": "ERROR",
+        "target_invariants": {"request_schema_valid", "provider_or_schema_error"},
+    },
+    "integrity-completeness": {
+        "terminal_status": "FAIL",
+        "target_invariants": {
+            "event_order_monotonic",
+            "global_pass_requires_full_set_scan",
+            "terminal_envelope_complete",
+            "unique_event_ids",
+        },
+    },
+    "evidence-scope": {
+        "terminal_status": "FAIL",
+        "target_invariants": {
+            "claim_source_value_consistency",
+            "current_inventory_cross_surface_consistency",
+            "current_inventory_evidence_scope",
+        },
+    },
+}
+
+QA0_HARD_GATE_CRITERIA = {
+    "case_count": 8,
+    "known_bad_count": 4,
+    "control_count": 4,
+    "known_bad_detection_rate": 1.0,
+    "control_false_reject_rate": 0.0,
+    "provenance_trace_rate": 1.0,
+    "evidence_completeness_rate": 1.0,
+}
+
 
 @dataclass(frozen=True)
 class CaseResult:
@@ -456,6 +498,25 @@ _SCORERS = {
 }
 
 
+def detection_oracle(
+    *,
+    family_id: str,
+    variant: str,
+    terminal_status: str,
+    failed_invariants: Iterable[str],
+    evidence_complete: bool,
+) -> bool:
+    """Apply the frozen per-family detection contract to one result."""
+    if variant == "CONTROL":
+        return terminal_status == "PASS"
+    if variant != "KNOWN_BAD" or not evidence_complete:
+        return False
+    oracle = KNOWN_BAD_DETECTION_ORACLES.get(family_id)
+    if oracle is None or terminal_status != oracle["terminal_status"]:
+        return False
+    return bool(set(failed_invariants) & oracle["target_invariants"])
+
+
 def score_case(document: object) -> CaseResult:
     case = validate_public_seed(document)
     scorer = _SCORERS.get(case["family_id"])
@@ -469,10 +530,13 @@ def score_case(document: object) -> CaseResult:
         terminal_status, hard_pass, failed = scorer(case["input"])
 
     variant = case["variant"]
-    detected = (
-        terminal_status != "PASS"
-        if variant == "KNOWN_BAD"
-        else terminal_status == "PASS"
+    evidence_complete = "evidence_complete" not in failed
+    detected = detection_oracle(
+        family_id=case["family_id"],
+        variant=variant,
+        terminal_status=terminal_status,
+        failed_invariants=failed,
+        evidence_complete=evidence_complete,
     )
     return CaseResult(
         case_id=case["case_id"],
@@ -482,7 +546,7 @@ def score_case(document: object) -> CaseResult:
         hard_invariant_pass=hard_pass,
         detected=detected,
         failed_invariants=failed,
-        evidence_complete="evidence_complete" not in failed,
+        evidence_complete=evidence_complete,
         provenance_traceable=bool(case["provenance"].get("seed_digest"))
         and case["provenance"].get("kind") == "ABSTRACT_PUBLIC_SEED_DIGEST",
         fixture_fingerprint=sha256_json(case),
@@ -497,8 +561,11 @@ def build_qa0_receipt(results: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
 
     receipt = {
         "schema_version": QA0_RECEIPT_SCHEMA_VERSION,
+        "run_id": "B2-QA0-DETERMINISTIC-001",
+        "runner": "python-unittest-compatible/deterministic",
         "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
         "case_count": len(rows),
+        "cases": [row["case_id"] for row in rows],
         "known_bad_count": len(known_bad),
         "control_count": len(controls),
         "known_bad_detection_rate": (
@@ -531,5 +598,11 @@ def build_qa0_receipt(results: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             "Mechanism hypotheses are not causal circuit findings.",
         ],
     }
+    receipt["gate_criteria"] = dict(QA0_HARD_GATE_CRITERIA)
+    receipt["gate"] = (
+        "PASS"
+        if all(receipt[key] == expected for key, expected in QA0_HARD_GATE_CRITERIA.items())
+        else "FAIL"
+    )
     receipt["receipt_fingerprint"] = sha256_json(receipt)
     return receipt

@@ -17,6 +17,10 @@ Terminal states are distinct: `PASS`, `FAIL`, `NOT_EVALUABLE`, `BLOCKED`, `ERROR
 
 Infrastructure/schema failures must not be silently scored as model-quality `FAIL`. Missing evidence must not be turned into zero.
 
+Known-bad detection is governed by a frozen per-family oracle. `UNKNOWN`, `NOT_EVALUABLE`, and `BLOCKED` never count as detection. `ERROR` counts only for the connector-schema family, where the typed schema/infrastructure rejection is the declared target outcome, and only when a target schema invariant is observed.
+
+The canonical QA0 receipt derives `gate` from the frozen hard criteria (8 cases, 4 known-bad, 4 controls, detection/provenance/evidence rates of 1.0, and control false-reject rate of 0.0). The derived gate and its criteria are included in the receipt fingerprint; a checked-in PASS is never authoritative by itself.
+
 ## Frozen QA0 families
 
 1. Entity–attribute binding: claims must keep entity/scope/attribute identity aligned with evidence.

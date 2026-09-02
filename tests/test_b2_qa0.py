@@ -8,6 +8,7 @@ from b2.qa0 import (
     TERMINAL_STATUSES,
     assert_public_safe,
     build_qa0_receipt,
+    detection_oracle,
     load_json,
     score_case,
     sha256_json,
@@ -110,22 +111,68 @@ class B2QA0Tests(unittest.TestCase):
         self.assertEqual(computed["control_false_reject_rate"], 0.0)
         self.assertEqual(computed["provenance_trace_rate"], 1.0)
         self.assertEqual(computed["evidence_completeness_rate"], 1.0)
+        self.assertEqual(computed["gate"], "PASS")
+
+    def test_missing_or_blocked_outcomes_never_detect_known_bad(self):
+        for status in ("UNKNOWN", "NOT_EVALUABLE", "BLOCKED"):
+            with self.subTest(status=status):
+                self.assertFalse(
+                    detection_oracle(
+                        family_id="entity-attribute-binding",
+                        variant="KNOWN_BAD",
+                        terminal_status=status,
+                        failed_invariants=("entity_attribute_evidence_binding",),
+                        evidence_complete=status != "UNKNOWN",
+                    )
+                )
+
+    def test_error_detection_is_limited_to_typed_connector_target(self):
+        self.assertFalse(
+            detection_oracle(
+                family_id="entity-attribute-binding",
+                variant="KNOWN_BAD",
+                terminal_status="ERROR",
+                failed_invariants=("entity_attribute_evidence_binding",),
+                evidence_complete=True,
+            )
+        )
+        self.assertFalse(
+            detection_oracle(
+                family_id="connector-schema",
+                variant="KNOWN_BAD",
+                terminal_status="ERROR",
+                failed_invariants=("unrelated_infrastructure_error",),
+                evidence_complete=True,
+            )
+        )
+        self.assertTrue(
+            detection_oracle(
+                family_id="connector-schema",
+                variant="KNOWN_BAD",
+                terminal_status="ERROR",
+                failed_invariants=("request_schema_valid",),
+                evidence_complete=True,
+            )
+        )
+
+    def test_deliberately_failing_input_derives_fail_gate(self):
+        results = [score_case(case).to_mapping() for case in self.fixture_set["cases"]]
+        passing_receipt = build_qa0_receipt(results)
+        broken = copy.deepcopy(results)
+        known_bad = next(row for row in broken if row["variant"] == "KNOWN_BAD")
+        known_bad["detected"] = False
+        receipt = build_qa0_receipt(broken)
+        self.assertLess(receipt["known_bad_detection_rate"], 1.0)
+        self.assertEqual(receipt["gate"], "FAIL")
+        self.assertNotEqual(
+            receipt["receipt_fingerprint"], passing_receipt["receipt_fingerprint"]
+        )
 
     def test_checked_in_receipt_matches_frozen_set(self):
         results = [score_case(case).to_mapping() for case in self.fixture_set["cases"]]
         computed = build_qa0_receipt(results)
-        for key in (
-            "case_count",
-            "known_bad_count",
-            "control_count",
-            "known_bad_detection_rate",
-            "control_false_reject_rate",
-            "provenance_trace_rate",
-            "evidence_completeness_rate",
-            "fixture_fingerprints",
-        ):
-            self.assertEqual(self.receipt[key], computed[key])
-        self.assertEqual(self.receipt["gate"], "PASS")
+        self.assertEqual(self.receipt, computed)
+        self.assertEqual(computed["gate"], "PASS")
         payload = {
             key: value
             for key, value in self.receipt.items()

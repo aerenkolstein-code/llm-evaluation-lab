@@ -1,0 +1,39 @@
+{
+  "$id": "https://example.org/schemas/b2-public-seed.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capability_profile": {"minLength": 1, "type": "string"},
+    "case_id": {"minLength": 1, "type": "string"},
+    "expected": {
+      "additionalProperties": false,
+      "properties": {
+        "detected": {"type": "boolean"},
+        "failed_invariants": {"items": {"type": "string"}, "type": "array"},
+        "hard_invariant_pass": {"type": "boolean"},
+        "terminal_status": {"enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]}
+      },
+      "required": ["terminal_status", "hard_invariant_pass", "detected", "failed_invariants"],
+      "type": "object"
+    },
+    "family_id": {"minLength": 1, "type": "string"},
+    "input": {"type": "object"},
+    "limitations": {"items": {"type": "string"}, "type": "array"},
+    "privacy": {"const": "PUBLIC_SAFE"},
+    "provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "ABSTRACT_PUBLIC_SEED_DIGEST"},
+        "seed_digest": {"pattern": "^sha256:[0-9a-f]{64}$", "type": "string"},
+        "transformation": {"const": "mechanism-preserving synthetic reconstruction"}
+      },
+      "required": ["kind", "seed_digest", "transformation"],
+      "type": "object"
+    },
+    "schema_version": {"const": "b2-public-seed/v1"},
+    "variant": {"enum": ["KNOWN_BAD", "CONTROL"]}
+  },
+  "required": ["schema_version", "family_id", "case_id", "variant", "capability_profile", "privacy", "provenance", "input", "expected", "limitations"],
+  "title": "B2 Public-Safe Seed",
+  "type": "object"
+}

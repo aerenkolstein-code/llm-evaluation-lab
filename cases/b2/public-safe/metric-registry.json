@@ -1,0 +1,11 @@
+{
+  "metrics": [
+    {"aggregation":"all","definition":"Whether all hard invariants for a case pass.","directionality":"higher_is_better","kind":"HARD","metric_id":"hard_invariant_pass","missing_data_semantics":"UNKNOWN","provenance":"B2-QA0 contract","scorer":"boolean_all_hard_invariants","task_scope":"per-case","threshold":"must_be_true_for_PASS","version":"v1"},
+    {"aggregation":"ratio","definition":"Fraction of frozen KNOWN_BAD fixtures detected as non-PASS.","directionality":"higher_is_better","kind":"HARD","metric_id":"known_bad_detection_rate","missing_data_semantics":"NOT_EVALUABLE","provenance":"B2-QA0 contract","scorer":"detected_known_bad/known_bad_count","task_scope":"frozen QA0 fixture set","threshold":"1.0","version":"v1"},
+    {"aggregation":"ratio","definition":"Fraction of matched CONTROL fixtures receiving a non-PASS terminal status.","directionality":"lower_is_better","kind":"HARD","metric_id":"control_false_reject_rate","missing_data_semantics":"NOT_EVALUABLE","provenance":"B2-QA0 contract","scorer":"nonpass_control/control_count","task_scope":"frozen QA0 fixture set","threshold":"0.0","version":"v1"},
+    {"aggregation":"ratio","definition":"Fraction of public fixtures carrying a valid abstract public-seed digest.","directionality":"higher_is_better","kind":"HARD","metric_id":"provenance_trace_rate","missing_data_semantics":"UNKNOWN","provenance":"B2-QA0 contract","scorer":"traceable/case_count","task_scope":"frozen QA0 fixture set","threshold":"1.0","version":"v1"},
+    {"aggregation":"ratio","definition":"Fraction of fixtures with enough typed evidence for a deterministic terminal verdict.","directionality":"higher_is_better","kind":"HARD","metric_id":"evidence_completeness_rate","missing_data_semantics":"UNKNOWN","provenance":"B2-QA0 contract","scorer":"complete/case_count","task_scope":"frozen QA0 fixture set","threshold":"1.0","version":"v1"},
+    {"aggregation":"none","definition":"Placeholder for whether future mutation operators preserve the intended failure mechanism.","directionality":"higher_is_better","kind":"PLACEHOLDER","metric_id":"mutation_validity","missing_data_semantics":"NOT_EVALUABLE","provenance":"B2-QA0 placeholder only","scorer":"deferred","task_scope":"QA1+ mutation families","threshold":"deferred","version":"v0"}
+  ],
+  "schema_version":"metric-registry/v1"
+}

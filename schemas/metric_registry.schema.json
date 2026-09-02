@@ -1,0 +1,33 @@
+{
+  "$id": "https://example.org/schemas/metric-registry.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "metrics": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregation": {"minLength": 1, "type": "string"},
+          "definition": {"minLength": 1, "type": "string"},
+          "directionality": {"minLength": 1, "type": "string"},
+          "kind": {"enum": ["HARD", "SOFT", "PLACEHOLDER"]},
+          "metric_id": {"minLength": 1, "type": "string"},
+          "missing_data_semantics": {"minLength": 1, "type": "string"},
+          "provenance": {"minLength": 1, "type": "string"},
+          "scorer": {"minLength": 1, "type": "string"},
+          "task_scope": {"minLength": 1, "type": "string"},
+          "threshold": {"minLength": 1, "type": "string"},
+          "version": {"minLength": 1, "type": "string"}
+        },
+        "required": ["metric_id", "definition", "task_scope", "scorer", "directionality", "threshold", "kind", "missing_data_semantics", "aggregation", "version", "provenance"],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema_version": {"const": "metric-registry/v1"}
+  },
+  "required": ["schema_version", "metrics"],
+  "title": "B2 Metric Registry",
+  "type": "object"
+}

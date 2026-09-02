@@ -1,0 +1,27 @@
+{
+  "$id": "https://example.org/schemas/error-mechanism.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "alternative_causes": {"items": {"type": "string"}, "type": "array"},
+    "capability_profile": {"minLength": 1, "type": "string"},
+    "error_class": {"minLength": 1, "type": "string"},
+    "expected_invariants": {"items": {"type": "string"}, "type": "array"},
+    "falsifier": {"minLength": 1, "type": "string"},
+    "forbidden_outcomes": {"items": {"type": "string"}, "type": "array"},
+    "mechanism_hypothesis": {"minLength": 1, "type": "string"},
+    "mechanism_id": {"minLength": 1, "type": "string"},
+    "mechanism_status": {"enum": ["OBSERVED_ONLY", "HYPOTHESIS", "UNKNOWN"]},
+    "mutation_axes": {"items": {"type": "string"}, "type": "array"},
+    "observed_phenomenon": {"minLength": 1, "type": "string"},
+    "privacy_class": {"const": "PUBLIC_SAFE"},
+    "private_seed_digest": {"pattern": "^sha256:[0-9a-f]{64}$", "type": "string"},
+    "public_safe_transform": {"minLength": 1, "type": "string"},
+    "schema_version": {"const": "error-mechanism/v1"},
+    "seed_status": {"enum": ["VERIFIED_SEED", "MULTI_SEED", "EXPLORATORY_NO_SEED"]},
+    "severity": {"minLength": 1, "type": "string"}
+  },
+  "required": ["schema_version", "mechanism_id", "seed_status", "private_seed_digest", "error_class", "observed_phenomenon", "mechanism_hypothesis", "mechanism_status", "alternative_causes", "falsifier", "expected_invariants", "forbidden_outcomes", "capability_profile", "severity", "mutation_axes", "public_safe_transform", "privacy_class"],
+  "title": "B2 Error Mechanism Spec",
+  "type": "object"
+}

@@ -1,0 +1,33 @@
+{
+  "$id": "https://example.org/schemas/bug-case.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actual": {"type": "object"},
+    "alternative_causes": {"items": {"type": "string"}, "type": "array"},
+    "bug_id": {"minLength": 1, "type": "string"},
+    "capability_profile": {"minLength": 1, "type": "string"},
+    "case_id": {"minLength": 1, "type": "string"},
+    "environment": {"type": "object"},
+    "evidence_refs": {"items": {"type": "string"}, "type": "array"},
+    "expected": {"type": "object"},
+    "failed_invariants": {"items": {"type": "string"}, "type": "array"},
+    "falsifier": {"minLength": 1, "type": "string"},
+    "family_id": {"minLength": 1, "type": "string"},
+    "impact": {"minLength": 1, "type": "string"},
+    "limitations": {"items": {"type": "string"}, "type": "array"},
+    "mechanism_hypothesis": {"minLength": 1, "type": "string"},
+    "mechanism_status": {"enum": ["OBSERVED_ONLY", "HYPOTHESIS", "UNKNOWN"]},
+    "phenomenon": {"minLength": 1, "type": "string"},
+    "privacy": {"const": "PUBLIC_SAFE"},
+    "regression_ref": {"minLength": 1, "type": "string"},
+    "reproduction": {"minLength": 1, "type": "string"},
+    "run_id": {"minLength": 1, "type": "string"},
+    "schema_version": {"const": "bug-case/v1"},
+    "severity": {"minLength": 1, "type": "string"},
+    "terminal_status": {"enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]}
+  },
+  "required": ["schema_version", "bug_id", "run_id", "family_id", "case_id", "capability_profile", "environment", "expected", "actual", "failed_invariants", "phenomenon", "mechanism_hypothesis", "mechanism_status", "alternative_causes", "falsifier", "evidence_refs", "severity", "impact", "reproduction", "regression_ref", "terminal_status", "privacy", "limitations"],
+  "title": "B2 BugCase v1",
+  "type": "object"
+}

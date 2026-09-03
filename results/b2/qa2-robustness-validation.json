@@ -1,0 +1,145 @@
+{
+  "case_count": 6,
+  "control_count": 3,
+  "control_false_reject_rate": 0.0,
+  "evidence_completeness_rate": 1.0,
+  "exact_family_pairing": true,
+  "expected_families": [
+    "constraint-action-persistence",
+    "live-assessment-rule-persistence",
+    "live-production-no-ai-persistence"
+  ],
+  "fairness_formal_family_count": 0,
+  "fairness_receipt_count": 0,
+  "fairness_seed_status": "EXPLORATORY_NO_SEED",
+  "family_composition": {
+    "constraint-action-persistence": {
+      "case_count": 2,
+      "provenance_digests": [
+        "sha256:592fb41c789bdf198752eabbed52cfb217838456c565d635e9b8b5a57b13ea1a"
+      ],
+      "seed_lineages": [
+        "QA2-SEED-A01"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    },
+    "live-assessment-rule-persistence": {
+      "case_count": 2,
+      "provenance_digests": [
+        "sha256:3293879f2abc6ba27bd38de3b46ad910c433b09edf816ab3a759609ea567972c"
+      ],
+      "seed_lineages": [
+        "QA2-SEED-A02"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    },
+    "live-production-no-ai-persistence": {
+      "case_count": 2,
+      "provenance_digests": [
+        "sha256:e8ee744a56b63f85bfc6a470b5d2499ba13b8ef3305352093ca56aa9946f89f1"
+      ],
+      "seed_lineages": [
+        "QA2-SEED-A03"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    }
+  },
+  "family_count": 3,
+  "fixture_fingerprints": {
+    "B2-QA2-R-ASSESS-CTRL-001": "sha256:54afb78686d2fa03af01600a9521dcc4d1be2344f8dddc99dfd7dc24b3df4c0d",
+    "B2-QA2-R-ASSESS-KB-001": "sha256:04867a43f5f97bd4849f9b1fed4b5176ff5ed8858ec60d5e20e6002fde127159",
+    "B2-QA2-R-CONSTRAINT-CTRL-001": "sha256:e387ac49716e2f9d3109c3740dfd2435455ef50a906eca381cba3ae1d51dfb86",
+    "B2-QA2-R-CONSTRAINT-KB-001": "sha256:0fc259dfc478ec0d3429804910d8b4e216466fe1f433bc00f170cac34c6d82d2",
+    "B2-QA2-R-PROD-CTRL-001": "sha256:e884b84d801a72ac93d70d8737bd391f0610110c5865f25a5953b2602192522f",
+    "B2-QA2-R-PROD-KB-001": "sha256:3de6d2dcf4b371062c1a57cebbce7c7f8bcfd5a8aa72d8d435fec8c2e11c0c73"
+  },
+  "gate": "PASS",
+  "gate_criteria": {
+    "case_count": 6,
+    "control_count": 3,
+    "control_false_reject_rate": 0.0,
+    "evidence_completeness_rate": 1.0,
+    "exact_family_pairing": true,
+    "fairness_formal_family_count": 0,
+    "fairness_receipt_count": 0,
+    "fairness_seed_status": "EXPLORATORY_NO_SEED",
+    "family_count": 3,
+    "known_bad_count": 3,
+    "known_bad_detection_rate": 1.0,
+    "lqe_formal_family_count": 0,
+    "lqe_receipt_count": 0,
+    "lqe_seed_status": "EXPLORATORY_NO_SEED",
+    "observed_families": [
+      "constraint-action-persistence",
+      "live-assessment-rule-persistence",
+      "live-production-no-ai-persistence"
+    ],
+    "provenance_digest_match_rate": 1.0,
+    "provenance_trace_rate": 1.0,
+    "safety_formal_family_count": 3,
+    "safety_formal_family_ids": [
+      "constraint-action-persistence",
+      "live-assessment-rule-persistence",
+      "live-production-no-ai-persistence"
+    ],
+    "safety_receipt_paths": [
+      "results/b2/qa2-robustness-validation.json"
+    ],
+    "safety_seed_status": "VERIFIED_SEED",
+    "track_manifest_fingerprint_present": true,
+    "track_manifest_schema_version": "b2-qa2-track-manifest/v1",
+    "track_manifest_valid": true,
+    "unique_case_id_count": 6
+  },
+  "known_bad_count": 3,
+  "known_bad_detection_rate": 1.0,
+  "limitations": [
+    "Frozen synthetic deterministic cases only; no live model/provider performance is measured.",
+    "Fairness and LQE are no-seed design tracks, not formal regression profiles or career claims.",
+    "Observed phenomena do not establish the private source's mechanism hypothesis as causal fact."
+  ],
+  "lqe_formal_family_count": 0,
+  "lqe_receipt_count": 0,
+  "lqe_seed_status": "EXPLORATORY_NO_SEED",
+  "observed_families": [
+    "constraint-action-persistence",
+    "live-assessment-rule-persistence",
+    "live-production-no-ai-persistence"
+  ],
+  "profile": "SAFETY_ROBUSTNESS",
+  "provenance_digest_match_rate": 1.0,
+  "provenance_trace_rate": 1.0,
+  "receipt_fingerprint": "sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062",
+  "run_id": "B2-QA2-SAFETY_ROBUSTNESS-DETERMINISTIC-001",
+  "runner": "python-unittest-compatible/deterministic",
+  "safety_formal_family_count": 3,
+  "safety_formal_family_ids": [
+    "constraint-action-persistence",
+    "live-assessment-rule-persistence",
+    "live-production-no-ai-persistence"
+  ],
+  "safety_receipt_paths": [
+    "results/b2/qa2-robustness-validation.json"
+  ],
+  "safety_seed_status": "VERIFIED_SEED",
+  "schema_version": "b2-qa2-receipt/v1",
+  "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA2_A_FIXTURE_SET",
+  "terminal_statuses": [
+    "FAIL",
+    "PASS"
+  ],
+  "track_manifest_fingerprint": "sha256:5ee13f51a9d85c2c9d2147605533e4100754159e07b1733291232460d0dd8f16",
+  "track_manifest_fingerprint_present": true,
+  "track_manifest_schema_version": "b2-qa2-track-manifest/v1",
+  "track_manifest_valid": true,
+  "unique_case_id_count": 6
+}

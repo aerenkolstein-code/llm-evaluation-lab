@@ -1,0 +1,29 @@
+{
+  "schema_version": "b2-qa2-track-manifest/v1",
+  "tracks": [
+    {
+      "track": "SAFETY_ROBUSTNESS",
+      "seed_status": "VERIFIED_SEED",
+      "formal_family_ids": [
+        "constraint-action-persistence",
+        "live-assessment-rule-persistence",
+        "live-production-no-ai-persistence"
+      ],
+      "receipt_paths": [
+        "results/b2/qa2-robustness-validation.json"
+      ]
+    },
+    {
+      "track": "FAIRNESS",
+      "seed_status": "EXPLORATORY_NO_SEED",
+      "formal_family_ids": [],
+      "receipt_paths": []
+    },
+    {
+      "track": "LQE",
+      "seed_status": "EXPLORATORY_NO_SEED",
+      "formal_family_ids": [],
+      "receipt_paths": []
+    }
+  ]
+}

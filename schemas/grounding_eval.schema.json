@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://example.org/schemas/grounding-eval.schema.json","title":"B2 QA1 Grounding Evaluation Case","allOf":[{"$ref":"b2_public_seed.schema.json"}],"properties":{"family_id":{"enum":["entity-attribute-binding","inventory-evidence-scope","source-modality"]}}}

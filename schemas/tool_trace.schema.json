@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://example.org/schemas/tool-trace.schema.json","title":"B2 QA1 Tool and Agent Workflow Case","allOf":[{"$ref":"b2_public_seed.schema.json"}],"properties":{"family_id":{"enum":["connector-schema-retry","capability-routing","destructive-write-recovery"]}}}

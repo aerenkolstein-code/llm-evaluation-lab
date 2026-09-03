@@ -1,0 +1,42 @@
+{
+  "case_count": 6,
+  "control_count": 3,
+  "control_false_reject_rate": 0.0,
+  "evidence_completeness_rate": 1.0,
+  "fixture_fingerprints": {
+    "B2-QA1-T-ROUTE-CTRL-001": "sha256:fadac9a93a2751bb725d1b6d0f53ad6d68a41ad6b9bcd28479157014e9613436",
+    "B2-QA1-T-ROUTE-KB-001": "sha256:b5e000d6214e997b2ce6dc1f57fae93121c1e16ace841a6e3c62a47069fcf1f4",
+    "B2-QA1-T-SCHEMA-CTRL-001": "sha256:aaa76e51db8056881432a0073f66c7fe70c4b423dcec76c4e553ef9c40d75551",
+    "B2-QA1-T-SCHEMA-KB-001": "sha256:22561f37ee3a8db89947756b9609bbaf56e81f0fcae049672dbc3cd0182fe675",
+    "B2-QA1-T-WRITE-CTRL-001": "sha256:55ef82e911e8bab61bb9d3967b9bc8f97126cdb270f4181c0f69e8d272b0ba4e",
+    "B2-QA1-T-WRITE-KB-001": "sha256:3af71f3af6f78bc1288146346363ca976b7c7cf01d4e9321408168fb4e02789b"
+  },
+  "gate": "PASS",
+  "gate_criteria": {
+    "case_count": 6,
+    "control_count": 3,
+    "control_false_reject_rate": 0.0,
+    "evidence_completeness_rate": 1.0,
+    "known_bad_count": 3,
+    "known_bad_detection_rate": 1.0,
+    "provenance_trace_rate": 1.0
+  },
+  "known_bad_count": 3,
+  "known_bad_detection_rate": 1.0,
+  "limitations": [
+    "Frozen synthetic deterministic cases only.",
+    "No live model or provider performance is measured."
+  ],
+  "profile": "TOOL_AGENT",
+  "provenance_trace_rate": 1.0,
+  "receipt_fingerprint": "sha256:2eb435bf626037269d6647f1b5d31a8453716841ca511ba22637e96e55ce8bb1",
+  "run_id": "B2-QA1-TOOL_AGENT-DETERMINISTIC-001",
+  "runner": "python-unittest-compatible/deterministic",
+  "schema_version": "b2-qa1-receipt/v1",
+  "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+  "terminal_statuses": [
+    "ERROR",
+    "FAIL",
+    "PASS"
+  ]
+}

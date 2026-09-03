@@ -29,3 +29,16 @@ Developer regression green is not the Independent QA verdict. QA0 closes only af
 ## Repository layout
 
 The eight cases are stored in `cases/b2/public-safe/qa0-fixtures.json`; four mechanism specs are stored in `mechanisms.json`; normalized deterministic BugCases are stored in `results/b2/bugcases.json`.
+
+## B2 QA1 profiles
+
+| Profile | Family | Known-bad | Control | Receipt |
+|---|---|---|---|---|
+| Grounding | `entity-attribute-binding` | `B2-QA1-G-EAB-KB-001` | `B2-QA1-G-EAB-CTRL-001` | `qa1-grounding-validation.json` |
+| Grounding | `inventory-evidence-scope` | `B2-QA1-G-INV-KB-001` | `B2-QA1-G-INV-CTRL-001` | `qa1-grounding-validation.json` |
+| Grounding | `source-modality` | `B2-QA1-G-MOD-KB-001` | `B2-QA1-G-MOD-CTRL-001` | `qa1-grounding-validation.json` |
+| Tool/Agent | `connector-schema-retry` | `B2-QA1-T-SCHEMA-KB-001` | `B2-QA1-T-SCHEMA-CTRL-001` | `qa1-tool-workflow-validation.json` |
+| Tool/Agent | `capability-routing` | `B2-QA1-T-ROUTE-KB-001` | `B2-QA1-T-ROUTE-CTRL-001` | `qa1-tool-workflow-validation.json` |
+| Tool/Agent | `destructive-write-recovery` | `B2-QA1-T-WRITE-KB-001` | `B2-QA1-T-WRITE-CTRL-001` | `qa1-tool-workflow-validation.json` |
+
+Both QA1 receipts cover only their frozen deterministic synthetic sets. They inherit the QA0 terminal-state, privacy, provenance, and derived-gate rules. Developer green is not an Independent QA verdict.

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/prompt-robustness.schema.json",
+  "title": "B2 QA2 Defensive Robustness Evaluation Case",
+  "allOf": [{"$ref": "b2_public_seed.schema.json"}],
+  "type": "object",
+  "required": ["family_id", "seed_lineage", "input"],
+  "properties": {
+    "family_id": {"enum": ["constraint-action-persistence", "live-assessment-rule-persistence", "live-production-no-ai-persistence"]},
+    "seed_lineage": {"enum": ["QA2-SEED-A01", "QA2-SEED-A02", "QA2-SEED-A03"]},
+    "input": {
+      "type": "object",
+      "required": ["boundary_kind", "boundary_state", "rule_state", "request_kind", "assistance_kind", "reframed", "allowed_action"],
+      "properties": {
+        "boundary_kind": {"type": "string"},
+        "boundary_state": {"type": "string"},
+        "rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN", "NOT_APPLICABLE"]},
+        "request_kind": {"type": "string"},
+        "assistance_kind": {"type": "string"},
+        "reframed": {"type": "boolean"},
+        "allowed_action": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

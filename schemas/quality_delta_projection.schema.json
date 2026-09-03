@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/quality-delta-projection.schema.json",
+  "title": "B2 QA3 Read-only Quality Delta Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "projection_id",
+    "authority",
+    "source_snapshot",
+    "source_manifest",
+    "profiles",
+    "quality_deltas",
+    "regression_recurrence",
+    "terminal_state_visibility",
+    "performance",
+    "brand_adapters",
+    "limitations",
+    "projection_fingerprint"
+  ],
+  "properties": {
+    "schema_version": {"const": "b2-qa3-quality-delta-projection/v1"},
+    "projection_id": {"type": "string", "minLength": 1},
+    "authority": {"const": "DERIVED_READ_ONLY_PROJECTION"},
+    "source_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshot_id", "git_commit", "observed_at", "single_snapshot_only"],
+      "properties": {
+        "snapshot_id": {"type": "string", "minLength": 1},
+        "git_commit": {"$ref": "#/$defs/gitCommit"},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "single_snapshot_only": {"const": true}
+      }
+    },
+    "source_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selection_predicate",
+        "declared_source_ids",
+        "included_source_ids",
+        "excluded_source_ids",
+        "source_count",
+        "included_count",
+        "excluded_count",
+        "dedupe_identity",
+        "completeness_status",
+        "evidence_refs"
+      ],
+      "properties": {
+        "selection_predicate": {"type": "string", "minLength": 1},
+        "declared_source_ids": {"$ref": "#/$defs/uniqueStrings"},
+        "included_source_ids": {"$ref": "#/$defs/uniqueStrings"},
+        "excluded_source_ids": {"$ref": "#/$defs/uniqueStrings"},
+        "source_count": {"type": "integer", "minimum": 1},
+        "included_count": {"type": "integer", "minimum": 1},
+        "excluded_count": {"type": "integer", "minimum": 0},
+        "dedupe_identity": {"const": "CanonicalEvidenceRef.source_id"},
+        "completeness_status": {"const": "PASS"},
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidenceRef"}
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/profile"}
+    },
+    "quality_deltas": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/delta"}
+    },
+    "regression_recurrence": {"$ref": "#/$defs/unavailableSeries"},
+    "terminal_state_visibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statuses",
+        "preserves_unknown",
+        "preserves_not_evaluable",
+        "preserves_error",
+        "evidence_refs"
+      ],
+      "properties": {
+        "statuses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/terminal"}
+        },
+        "preserves_unknown": {"const": true},
+        "preserves_not_evaluable": {"const": true},
+        "preserves_error": {"const": true},
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidenceRef"}
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminal_status", "reason", "metrics", "evidence_refs"],
+      "properties": {
+        "terminal_status": {"const": "NOT_EVALUABLE"},
+        "reason": {"const": "NO_CANONICAL_PERFORMANCE_METRICS_IN_SELECTED_RECEIPTS"},
+        "metrics": {"type": "array", "maxItems": 0},
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidenceRef"}
+        }
+      }
+    },
+    "brand_adapters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "claims_unlocked"],
+      "properties": {
+        "status": {"const": "OPTIONAL_NOT_SELECTED"},
+        "claims_unlocked": {"type": "array", "maxItems": 0}
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "projection_fingerprint": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "gitCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "uniqueStrings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "terminal": {
+      "enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "source_id",
+        "source_locator",
+        "source_fingerprint",
+        "git_commit",
+        "scope"
+      ],
+      "properties": {
+        "kind": {"enum": ["B2_RECEIPT", "SQLITE_RUN"]},
+        "source_id": {
+          "type": "string",
+          "pattern": "^(B2_RECEIPT|SQLITE_RUN):.+$"
+        },
+        "source_locator": {"type": "string", "minLength": 1},
+        "source_fingerprint": {"$ref": "#/$defs/sha256"},
+        "git_commit": {"$ref": "#/$defs/gitCommit"},
+        "scope": {"type": "string", "minLength": 1}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "gate",
+        "formal_family_count",
+        "case_count",
+        "known_bad_count",
+        "control_count",
+        "terminal_statuses",
+        "field_semantics",
+        "scope_type",
+        "scope_id",
+        "observed_at",
+        "evidence_ref"
+      ],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1},
+        "gate": {"const": "PASS"},
+        "formal_family_count": {"type": "integer", "minimum": 0},
+        "case_count": {"type": "integer", "minimum": 0},
+        "known_bad_count": {"type": "integer", "minimum": 0},
+        "control_count": {"type": "integer", "minimum": 0},
+        "terminal_statuses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/terminal"}
+        },
+        "field_semantics": {"const": "profile_checked_receipt_summary"},
+        "scope_type": {"const": "PROFILE"},
+        "scope_id": {"type": "string", "minLength": 1},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "evidence_ref": {"$ref": "#/$defs/evidenceRef"}
+      }
+    },
+    "delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "metric_id",
+        "terminal_status",
+        "reason",
+        "baseline_value",
+        "current_value",
+        "delta",
+        "scope_type",
+        "scope_id",
+        "observed_at",
+        "evidence_ref"
+      ],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1},
+        "metric_id": {"const": "profile_gate_delta"},
+        "terminal_status": {"const": "NOT_EVALUABLE"},
+        "reason": {"const": "NO_BASELINE"},
+        "baseline_value": {"type": "null"},
+        "current_value": {"type": "null"},
+        "delta": {"type": "null"},
+        "scope_type": {"const": "PROFILE"},
+        "scope_id": {"type": "string", "minLength": 1},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "evidence_ref": {"$ref": "#/$defs/evidenceRef"}
+      }
+    },
+    "unavailableSeries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminal_status", "reason", "series", "evidence_refs"],
+      "properties": {
+        "terminal_status": {"const": "NOT_EVALUABLE"},
+        "reason": {"const": "NO_CANONICAL_RECURRENCE_SERIES"},
+        "series": {"type": "array", "maxItems": 0},
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidenceRef"}
+        }
+      }
+    }
+  }
+}

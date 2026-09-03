@@ -1,0 +1,70 @@
+{
+  "adapter_id": "vendor-neutral-reference/v1",
+  "canonical_mutation_rate": 0.0,
+  "case_count": 9,
+  "case_fingerprints": {
+    "B2-QA3-A-DIGEST-001": "sha256:dd6fc214f878f1367c1d7ac3c9df2c64738c6bf449eb1e9b05e9395066cfd550",
+    "B2-QA3-A-EXACT-001": "sha256:1a170a76e15e072c1b74b1ca1d6623f78147902c19c0ee3b96b34de6d535d8c1",
+    "B2-QA3-A-LOSSY-001": "sha256:0508c215a879d3066a513b63fbc2c485aabd6524eb7867fb74984ef680df5bd7",
+    "B2-QA3-A-METRIC-001": "sha256:eb3618db90261203e0d46e36f7c53ceb554f1eed014a95992747d5e46958d49e",
+    "B2-QA3-A-SCOPE-001": "sha256:ce80db0e2bc035297bfce1d53d0b5293c0c9042cccd54a4728d9c472553adc3b",
+    "B2-QA3-A-SILENT-DROP-001": "sha256:93ccb095ae5ba7c2d368253668fbb764317268d56d168fc29de5eb10b22c5181",
+    "B2-QA3-A-TERMINAL-001": "sha256:4885e78bdb486d5c39f22b44844739ec1bfc05d6bee29aace80e10d05c383a0a",
+    "B2-QA3-A-UNAVAILABLE-001": "sha256:071d3a9e580d90b5b21ec07e909acb98b6c368fb5352d5977a83f1941eb0e8b1",
+    "B2-QA3-A-VALUE-001": "sha256:a595e4db26bd1bee3374ed587ff17d7782e83d3198ebb98ce2698db1a2560303"
+  },
+  "exact_scenario_set": true,
+  "expected_outcome_match_rate": 1.0,
+  "gate": "PASS",
+  "gate_criteria": {
+    "canonical_mutation_rate": 0.0,
+    "case_count": 9,
+    "exact_scenario_set": true,
+    "expected_outcome_match_rate": 1.0,
+    "loss_disclosure_rate": 1.0,
+    "mismatch_detection_rate": 1.0,
+    "observed_scenarios": [
+      "ADAPTER_UNAVAILABLE",
+      "DIGEST_MISMATCH",
+      "EXACT_ROUNDTRIP",
+      "LOSSY_OPTIONAL_EXPLICIT",
+      "METRIC_SEMANTICS_MISMATCH",
+      "SCOPE_MISMATCH",
+      "SILENT_CRITICAL_DROP",
+      "TERMINAL_MISMATCH",
+      "VALUE_MISMATCH"
+    ],
+    "roundtrip_pass_rate": 1.0,
+    "scenario_count": 9,
+    "unavailable_quality_failure_rate": 0.0,
+    "unique_case_id_count": 9,
+    "writeback_permitted_rate": 0.0
+  },
+  "limitations": [
+    "Vendor-neutral deterministic reference adapter only.",
+    "No external account, credential, network call, paid service, or brand-specific SDK is used.",
+    "Adapter infrastructure status never replaces the canonical evaluation verdict."
+  ],
+  "loss_disclosure_rate": 1.0,
+  "mismatch_detection_rate": 1.0,
+  "observed_scenarios": [
+    "ADAPTER_UNAVAILABLE",
+    "DIGEST_MISMATCH",
+    "EXACT_ROUNDTRIP",
+    "LOSSY_OPTIONAL_EXPLICIT",
+    "METRIC_SEMANTICS_MISMATCH",
+    "SCOPE_MISMATCH",
+    "SILENT_CRITICAL_DROP",
+    "TERMINAL_MISMATCH",
+    "VALUE_MISMATCH"
+  ],
+  "receipt_fingerprint": "sha256:e7e212d664d3f69c0181b29a7e67ffcaa844050738212ea46d09b83edc6f64f5",
+  "roundtrip_pass_rate": 1.0,
+  "run_id": "B2-QA3-REFERENCE-ADAPTER-DETERMINISTIC-001",
+  "scenario_count": 9,
+  "schema_version": "b2-qa3-adapter-validation-receipt/v1",
+  "scope": "FROZEN_DETERMINISTIC_VENDOR_NEUTRAL_ADAPTER_FIXTURE_SET",
+  "unavailable_quality_failure_rate": 0.0,
+  "unique_case_id_count": 9,
+  "writeback_permitted_rate": 0.0
+}

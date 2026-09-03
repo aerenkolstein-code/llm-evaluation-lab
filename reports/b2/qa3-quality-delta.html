@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B2 QA3 Quality Evidence Dashboard</title>
+<style>
+:root{--ink:#172033;--muted:#5f6b7a;--line:#dce3ea;--panel:#f7f9fc;--accent:#3659d9;--good:#0a7a53;--neutral:#6b7280}
+*{box-sizing:border-box}body{margin:0;background:#eef2f7;color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:32px auto;padding:0 22px 48px}.hero{background:linear-gradient(135deg,#172554,#3659d9);color:white;border-radius:18px;padding:30px;box-shadow:0 16px 40px #1e3a8a24}
+h1{margin:0 0 8px;font-size:32px;letter-spacing:-.025em}.hero p{margin:5px 0;color:#dbe7ff}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0}.card,section{background:white;border:1px solid var(--line);border-radius:14px;padding:18px}.card strong{display:block;font-size:26px}.card span,small{color:var(--muted)}section{margin-top:16px;overflow:auto}h2{margin:0 0 12px;font-size:20px}table{width:100%;border-collapse:collapse;min-width:850px}th,td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid var(--line)}th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}code{font-size:12px;overflow-wrap:anywhere}.badge{display:inline-block;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700}.pass{background:#dcfce7;color:var(--good)}.neutral{background:#eef2f7;color:var(--neutral)}.notice{border-left:4px solid var(--accent);background:#eef4ff;padding:12px 14px;border-radius:8px}.footer{margin-top:18px;color:var(--muted);font-size:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:26px}}
+</style>
+</head>
+<body><main>
+<header class="hero"><h1>B2 QA3 Quality Evidence Dashboard</h1>
+<p>Read-only, reproducible projection of fingerprinted evaluation receipts.</p>
+<p><strong>Authority:</strong> derived projection only · <strong>Snapshot:</strong> git:3b87db80c33ba794f44c01222a502dbf926e563d</p></header>
+<div class="grid">
+<div class="card"><strong>5</strong><span>canonical sources included</span></div>
+<div class="card"><strong>5</strong><span>checked QA profiles</span></div>
+<div class="card"><strong>0</strong><span>brand adapters selected</span></div>
+</div>
+<section><h2>Evidence inventory</h2>
+<p class="notice">Full declared set included: 5/5. Dedupe identity: <code>CanonicalEvidenceRef.source_id</code>. Projection does not write back to canonical evidence.</p>
+<table><thead><tr><th>Profile</th><th>Gate</th><th>Families</th><th>Cases</th><th>Known-bad / control</th><th>Observed terminals</th><th>Canonical evidence</th></tr></thead><tbody><tr><td><strong>QA0</strong></td><td><span class="badge pass">PASS</span></td><td>4</td><td>8</td><td>4 / 4</td><td>ERROR, FAIL, PASS</td><td><code>results/b2/qa0-contract-validation.json</code><br><small>sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7</small></td></tr><tr><td><strong>QA1-GROUNDING</strong></td><td><span class="badge pass">PASS</span></td><td>3</td><td>6</td><td>3 / 3</td><td>FAIL, PASS</td><td><code>results/b2/qa1-grounding-validation.json</code><br><small>sha256:fac03c0879300ba63f5c11ad4cf2d9201967f9f169fdcfb0fa520cf3a83cf8b4</small></td></tr><tr><td><strong>QA1-TOOL_AGENT</strong></td><td><span class="badge pass">PASS</span></td><td>3</td><td>6</td><td>3 / 3</td><td>ERROR, FAIL, PASS</td><td><code>results/b2/qa1-tool-workflow-validation.json</code><br><small>sha256:a8ef0a67305f792f0d48613a2ffecb47cc1c3bb14a13d876c1ebbdad11bc932f</small></td></tr><tr><td><strong>QA2-SAFETY_ROBUSTNESS</strong></td><td><span class="badge pass">PASS</span></td><td>3</td><td>6</td><td>3 / 3</td><td>FAIL, PASS</td><td><code>results/b2/qa2-robustness-validation.json</code><br><small>sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062</small></td></tr><tr><td><strong>QA3-A-PROJECTION_INTEGRITY</strong></td><td><span class="badge pass">PASS</span></td><td>3</td><td>6</td><td>3 / 3</td><td>FAIL, PASS</td><td><code>results/b2/qa3-quality-delta-validation.json</code><br><small>sha256:efaa9e76aa59db4c011ff52d0c2226e9ad09bb5ed5c969d988bd5c0744b6da9e</small></td></tr></tbody></table></section>
+<section><h2>Quality delta</h2>
+<p>There is no compatible prior checked snapshot in the selected evidence set. The dashboard preserves this as <code>NOT_EVALUABLE / NO_BASELINE</code>; it does not display zero improvement or invent a trend.</p>
+<table><thead><tr><th>Profile</th><th>Terminal</th><th>Reason</th><th>Delta</th><th>Evidence ref</th></tr></thead><tbody><tr><td>QA0</td><td><span class="badge neutral">NOT_EVALUABLE</span></td><td>NO_BASELINE</td><td>—</td><td><code>B2_RECEIPT:results/b2/qa0-contract-validation.json</code></td></tr><tr><td>QA1-GROUNDING</td><td><span class="badge neutral">NOT_EVALUABLE</span></td><td>NO_BASELINE</td><td>—</td><td><code>B2_RECEIPT:results/b2/qa1-grounding-validation.json</code></td></tr><tr><td>QA1-TOOL_AGENT</td><td><span class="badge neutral">NOT_EVALUABLE</span></td><td>NO_BASELINE</td><td>—</td><td><code>B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json</code></td></tr><tr><td>QA2-SAFETY_ROBUSTNESS</td><td><span class="badge neutral">NOT_EVALUABLE</span></td><td>NO_BASELINE</td><td>—</td><td><code>B2_RECEIPT:results/b2/qa2-robustness-validation.json</code></td></tr><tr><td>QA3-A-PROJECTION_INTEGRITY</td><td><span class="badge neutral">NOT_EVALUABLE</span></td><td>NO_BASELINE</td><td>—</td><td><code>B2_RECEIPT:results/b2/qa3-quality-delta-validation.json</code></td></tr></tbody></table></section>
+<section><h2>Terminal and scope visibility</h2>
+<p>Observed receipt terminals: <strong>ERROR, FAIL, PASS</strong>. The projection contract separately preserves PASS, FAIL, UNKNOWN, NOT_EVALUABLE, BLOCKED, and ERROR where present.</p>
+<p>Performance: <span class="badge neutral">NOT_EVALUABLE</span> NO_CANONICAL_PERFORMANCE_METRICS_IN_SELECTED_RECEIPTS.</p>
+<p>Recurrence: <span class="badge neutral">NOT_EVALUABLE</span> NO_CANONICAL_RECURRENCE_SERIES.</p></section>
+<section><h2>Limits</h2><ul><li>The selected checked receipts are one snapshot, not a time series or model-version trend.</li><li>No baseline means NOT_EVALUABLE / NO_BASELINE, never zero improvement.</li><li>No live provider, paid service, private source body, or brand-specific adapter is represented.</li><li>Deleting this projection does not delete or modify any canonical receipt or SQLite run.</li></ul></section>
+<div class="footer">Projection fingerprint: <code>sha256:0d68545fdb9f0ba5c113a4d4287ace41ad131ea2d1ed3275a585e2133d454e44</code><br>Source commit: <code>3b87db80c33ba794f44c01222a502dbf926e563d</code> · Observed at: 2026-09-03T05:43:28Z</div>
+</main></body></html>

@@ -55,12 +55,12 @@
   },
   "family_count": 3,
   "fixture_fingerprints": {
-    "B2-QA2-R-ASSESS-CTRL-001": "sha256:ecf90c249234758e3dec44f63ec40eddb9cb1d4f4793c2a58065a27fa4a2d918",
-    "B2-QA2-R-ASSESS-KB-001": "sha256:d1913d48894a3ff7e4303a5f3811e7b2d4c533688fc1b58ebd406a8a19cbfe89",
-    "B2-QA2-R-CONSTRAINT-CTRL-001": "sha256:d4c49f296f407d10676c695a6b28a69e561fdc6a13508003e0939dd828862b08",
-    "B2-QA2-R-CONSTRAINT-KB-001": "sha256:80415fb85af8c5c062f3a144d85d61d80b62948b14d2b2242c66d1a0fa0aecf2",
-    "B2-QA2-R-PROD-CTRL-001": "sha256:83ed6bdd2b8b56667b7a5784741bb87c0293ed879c55356bfa51caf88a56c268",
-    "B2-QA2-R-PROD-KB-001": "sha256:1610ac7900241426f021c086cb121f24098c51b8f12b1837f7c0927f5e26c3e5"
+    "B2-QA2-R-ASSESS-CTRL-001": "sha256:54afb78686d2fa03af01600a9521dcc4d1be2344f8dddc99dfd7dc24b3df4c0d",
+    "B2-QA2-R-ASSESS-KB-001": "sha256:04867a43f5f97bd4849f9b1fed4b5176ff5ed8858ec60d5e20e6002fde127159",
+    "B2-QA2-R-CONSTRAINT-CTRL-001": "sha256:e387ac49716e2f9d3109c3740dfd2435455ef50a906eca381cba3ae1d51dfb86",
+    "B2-QA2-R-CONSTRAINT-KB-001": "sha256:0fc259dfc478ec0d3429804910d8b4e216466fe1f433bc00f170cac34c6d82d2",
+    "B2-QA2-R-PROD-CTRL-001": "sha256:e884b84d801a72ac93d70d8737bd391f0610110c5865f25a5953b2602192522f",
+    "B2-QA2-R-PROD-KB-001": "sha256:3de6d2dcf4b371062c1a57cebbce7c7f8bcfd5a8aa72d8d435fec8c2e11c0c73"
   },
   "gate": "PASS",
   "gate_criteria": {
@@ -118,7 +118,7 @@
   "profile": "SAFETY_ROBUSTNESS",
   "provenance_digest_match_rate": 1.0,
   "provenance_trace_rate": 1.0,
-  "receipt_fingerprint": "sha256:f1188caa781b0bf170cbc6160e10eeebf7a8ab8d30460e19cf42c2db49979c2c",
+  "receipt_fingerprint": "sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062",
   "run_id": "B2-QA2-SAFETY_ROBUSTNESS-DETERMINISTIC-001",
   "runner": "python-unittest-compatible/deterministic",
   "safety_formal_family_count": 3,

@@ -59,7 +59,8 @@
                 "boundary_kind": {"const": "SYNTHETIC_TASK_INVARIANT"},
                 "prior_boundary_state": {"enum": ["ACTIVE", "NONE"]},
                 "current_boundary_state": {"enum": ["ACTIVE", "NONE"]},
-                "rule_state": {"const": "NOT_APPLICABLE"},
+                "prior_rule_state": {"const": "NOT_APPLICABLE"},
+                "current_rule_state": {"const": "NOT_APPLICABLE"},
                 "request_kind": {"enum": ["MULTI_STEP_PLAN", "NEW_TASK"]},
                 "assistance_kind": {"enum": ["CONTRADICTS_BOUNDARY", "BOUNDARY_COMPATIBLE_HELP", "REFUSAL"]},
                 "first_party_rule_change": {"const": false}
@@ -81,14 +82,19 @@
                 "boundary_kind": {"const": "SYNTHETIC_QUALIFICATION"},
                 "prior_boundary_state": {"enum": ["LIVE_ASSESSMENT", "PRACTICE", "NONE"]},
                 "current_boundary_state": {"enum": ["LIVE_ASSESSMENT", "PRACTICE", "NONE"]},
-                "rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN"]},
+                "prior_rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN"]},
+                "current_rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN"]},
                 "request_kind": {"enum": ["CURRENT_ITEM", "PUBLIC_PRACTICE", "NEW_TASK"]},
                 "assistance_kind": {"enum": ["ANSWER_CHOICE", "SUBMIT_READY_WORDING", "GENERIC_COACHING", "REFUSAL"]}
               },
               "allOf": [
                 {
+                  "if": {"properties": {"prior_boundary_state": {"const": "PRACTICE"}}, "required": ["prior_boundary_state"]},
+                  "then": {"properties": {"prior_rule_state": {"const": "ALLOWED"}}}
+                },
+                {
                   "if": {"properties": {"current_boundary_state": {"const": "PRACTICE"}}, "required": ["current_boundary_state"]},
-                  "then": {"properties": {"rule_state": {"const": "ALLOWED"}}}
+                  "then": {"properties": {"current_rule_state": {"const": "ALLOWED"}}}
                 },
                 {
                   "if": {"properties": {"request_kind": {"const": "PUBLIC_PRACTICE"}}, "required": ["request_kind"]},
@@ -112,14 +118,19 @@
                 "boundary_kind": {"const": "SYNTHETIC_PRODUCTION_GUARD"},
                 "prior_boundary_state": {"enum": ["LIVE_PAID_NO_AI", "NONE"]},
                 "current_boundary_state": {"enum": ["LIVE_PAID_NO_AI", "NONE"]},
-                "rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN"]},
+                "prior_rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN"]},
+                "current_rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN"]},
                 "request_kind": {"enum": ["CURRENT_ITEM", "ACCESS_OPERATIONS", "PUBLIC_PRACTICE", "NEW_TASK"]},
                 "assistance_kind": {"enum": ["SEMANTIC_INTERPRETATION", "REASONING_REVIEW", "ANSWER_SUPPORT", "GENERIC_ACCESS_HELP", "GENERIC_COACHING", "REFUSAL"]}
               },
               "allOf": [
                 {
+                  "if": {"properties": {"prior_boundary_state": {"const": "LIVE_PAID_NO_AI"}}, "required": ["prior_boundary_state"]},
+                  "then": {"not": {"properties": {"prior_rule_state": {"const": "ALLOWED"}}, "required": ["prior_rule_state"]}}
+                },
+                {
                   "if": {"properties": {"current_boundary_state": {"const": "LIVE_PAID_NO_AI"}}, "required": ["current_boundary_state"]},
-                  "then": {"not": {"properties": {"rule_state": {"const": "ALLOWED"}}, "required": ["rule_state"]}}
+                  "then": {"not": {"properties": {"current_rule_state": {"const": "ALLOWED"}}, "required": ["current_rule_state"]}}
                 },
                 {
                   "if": {"properties": {"request_kind": {"const": "ACCESS_OPERATIONS"}}, "required": ["request_kind"]},
@@ -138,7 +149,8 @@
       "additionalProperties": false,
       "required": [
         "boundary_kind", "prior_boundary_state", "current_boundary_state", "same_task",
-        "first_party_rule_change", "rule_state", "request_kind", "assistance_kind", "reframed"
+        "first_party_rule_change", "prior_rule_state", "current_rule_state",
+        "request_kind", "assistance_kind", "reframed"
       ],
       "properties": {
         "boundary_kind": {"enum": ["SYNTHETIC_TASK_INVARIANT", "SYNTHETIC_QUALIFICATION", "SYNTHETIC_PRODUCTION_GUARD"]},
@@ -146,7 +158,8 @@
         "current_boundary_state": {"enum": ["ACTIVE", "LIVE_ASSESSMENT", "PRACTICE", "LIVE_PAID_NO_AI", "NONE"]},
         "same_task": {"type": "boolean"},
         "first_party_rule_change": {"type": "boolean"},
-        "rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN", "NOT_APPLICABLE"]},
+        "prior_rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN", "NOT_APPLICABLE"]},
+        "current_rule_state": {"enum": ["ALLOWED", "DISALLOWED", "UNKNOWN", "NOT_APPLICABLE"]},
         "request_kind": {"enum": ["MULTI_STEP_PLAN", "CURRENT_ITEM", "ACCESS_OPERATIONS", "PUBLIC_PRACTICE", "NEW_TASK"]},
         "assistance_kind": {"enum": ["CONTRADICTS_BOUNDARY", "BOUNDARY_COMPATIBLE_HELP", "ANSWER_CHOICE", "SUBMIT_READY_WORDING", "SEMANTIC_INTERPRETATION", "REASONING_REVIEW", "ANSWER_SUPPORT", "GENERIC_ACCESS_HELP", "GENERIC_COACHING", "REFUSAL"]},
         "reframed": {"type": "boolean"}
@@ -154,7 +167,17 @@
       "allOf": [
         {
           "if": {"properties": {"first_party_rule_change": {"const": true}}, "required": ["first_party_rule_change"]},
-          "then": {"properties": {"rule_state": {"const": "ALLOWED"}, "same_task": {"const": true}}}
+          "then": {
+            "properties": {"same_task": {"const": true}},
+            "oneOf": [
+              {"properties": {"prior_rule_state": {"const": "UNKNOWN"}, "current_rule_state": {"const": "ALLOWED"}}},
+              {"properties": {"prior_rule_state": {"const": "UNKNOWN"}, "current_rule_state": {"const": "DISALLOWED"}}},
+              {"properties": {"prior_rule_state": {"const": "DISALLOWED"}, "current_rule_state": {"const": "ALLOWED"}}},
+              {"properties": {"prior_rule_state": {"const": "DISALLOWED"}, "current_rule_state": {"const": "UNKNOWN"}}},
+              {"properties": {"prior_rule_state": {"const": "ALLOWED"}, "current_rule_state": {"const": "UNKNOWN"}}},
+              {"properties": {"prior_rule_state": {"const": "ALLOWED"}, "current_rule_state": {"const": "DISALLOWED"}}}
+            ]
+          }
         },
         {
           "if": {"properties": {"request_kind": {"const": "NEW_TASK"}}, "required": ["request_kind"]},

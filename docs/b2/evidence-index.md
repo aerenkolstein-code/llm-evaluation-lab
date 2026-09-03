@@ -51,7 +51,7 @@ The eight cases are stored in `cases/b2/public-safe/qa0-fixtures.json`; four mec
 | Fairness | design-only seed watch | no exact seed | — | — | no formal receipt |
 | LQE | design-only seed watch | no exact seed | — | — | no formal receipt |
 
-The QA2-A receipt is limited to six deterministic synthetic cases and gates explicit Errorbook lineage, typed family states, missing-evidence `UNKNOWN`, same-task guard inheritance, constraint persistence, and matched controls against blanket over-refusal. Permission is derived from context plus assistance behavior, never from a candidate-supplied permission boolean.
+The QA2-A receipt is limited to six deterministic synthetic cases and gates explicit Errorbook lineage, typed family states, missing-evidence `UNKNOWN`, same-task boundary/rule inheritance, constraint persistence, and matched controls against blanket over-refusal. Permission is derived from prior/current rule evidence plus assistance behavior, never from a candidate-supplied permission boolean. Live-assessment `UNKNOWN` and `DISALLOWED` both block direct current-item answers; explicit `ALLOWED` both permits help and exposes refusal as a control failure.
 
 `cases/b2/public-safe/qa2-track-manifest.json` is the canonical, fingerprinted three-track inventory. It binds Safety/Robustness to the exact three formal families and one receipt, and derives Fairness/LQE as `EXPLORATORY_NO_SEED` with formal family count `0` and receipt count `0`. Missing/ambiguous inventory or accidental formal artifacts fail closed. These no-seed tracks do not inherit QA2-A PASS or unlock career claims. Developer PASS is not Independent QA.
 

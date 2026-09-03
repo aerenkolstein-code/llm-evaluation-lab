@@ -828,10 +828,30 @@ class B2QA3Tests(unittest.TestCase):
         adapter_definition = adapter_schema["$defs"]["adapterRepresentation"]
         self.assertFalse(adapter_definition["properties"]["writeback_permitted"]["const"])
 
-    def test_static_dashboard_report_rebuilds_byte_exactly(self):
+    def test_static_dashboard_report_rebuilds_or_fails_closed_without_source_commit(self):
         checked = json.loads(DASHBOARD_JSON.read_text(encoding="utf-8"))
         source_commit = checked["source_snapshot"]["git_commit"]
         observed_at = checked["source_snapshot"]["observed_at"]
+        source_object = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "cat-file",
+                "-e",
+                f"{source_commit}^{{commit}}",
+            ],
+            check=False,
+            capture_output=True,
+        )
+        if source_object.returncode != 0:
+            with self.assertRaisesRegex(
+                ValueError, "not a Git commit object"
+            ):
+                build_checked_dashboard(
+                    ROOT, source_commit=source_commit, observed_at=observed_at
+                )
+            return
         rebuilt = build_checked_dashboard(
             ROOT, source_commit=source_commit, observed_at=observed_at
         )

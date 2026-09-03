@@ -120,7 +120,11 @@ The report's `source_snapshot.git_commit` names the commit that contains the
 canonical source receipts. The later commit that adds the derived JSON/HTML can
 therefore have a different identity without creating a self-referential hash.
 Given the same source files, source commit, and explicit UTC timestamp, both
-outputs rebuild byte-for-byte.
+outputs rebuild byte-for-byte. The named commit object must be present in the
+local Git object database; a shallow checkout that omits it fails closed rather
+than substituting current working-tree files. CI or other rebuild environments
+that need the byte-exact rebuild must fetch or otherwise provide that exact
+commit object.
 
 Run the bounded verification with:
 

@@ -41,4 +41,4 @@ The eight cases are stored in `cases/b2/public-safe/qa0-fixtures.json`; four mec
 | Tool/Agent | `capability-routing` | `B2-QA1-T-ROUTE-KB-001` | `B2-QA1-T-ROUTE-CTRL-001` | `qa1-tool-workflow-validation.json` |
 | Tool/Agent | `destructive-write-recovery` | `B2-QA1-T-WRITE-KB-001` | `B2-QA1-T-WRITE-CTRL-001` | `qa1-tool-workflow-validation.json` |
 
-Both QA1 receipts cover only their frozen deterministic synthetic sets. They inherit the QA0 terminal-state, privacy, provenance, and derived-gate rules. Developer green is not an Independent QA verdict.
+Both QA1 receipts cover only their frozen deterministic synthetic sets. Each receipt gates on the exact required family set, one matched `KNOWN_BAD`/`CONTROL` pair per family, six unique case IDs, complete evidence, and deterministic family-specific public seed digests. Partial missing evidence routes to `UNKNOWN`; capability claims are bound independently from permission; retry ordering and duplicate-side-effect paths have direct contract tests. Developer green is not an Independent QA verdict.

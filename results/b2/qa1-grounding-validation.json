@@ -3,13 +3,55 @@
   "control_count": 3,
   "control_false_reject_rate": 0.0,
   "evidence_completeness_rate": 1.0,
+  "exact_family_pairing": true,
+  "expected_families": [
+    "entity-attribute-binding",
+    "inventory-evidence-scope",
+    "source-modality"
+  ],
+  "family_composition": {
+    "entity-attribute-binding": {
+      "case_count": 2,
+      "expected_seed_digest": "sha256:4ca9a61a64b6e4c7aaca6622191c2ea450dd1e7bccba2f70b09c894ca46ea36f",
+      "provenance_digests": [
+        "sha256:4ca9a61a64b6e4c7aaca6622191c2ea450dd1e7bccba2f70b09c894ca46ea36f"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    },
+    "inventory-evidence-scope": {
+      "case_count": 2,
+      "expected_seed_digest": "sha256:c492cdb09582eab81fa46b60232c53df6900fa3384808b1efb49ab877e8f314c",
+      "provenance_digests": [
+        "sha256:c492cdb09582eab81fa46b60232c53df6900fa3384808b1efb49ab877e8f314c"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    },
+    "source-modality": {
+      "case_count": 2,
+      "expected_seed_digest": "sha256:d5c78738802ba20d11b5b38875864513666ae671871c43392e1b4402dd868367",
+      "provenance_digests": [
+        "sha256:d5c78738802ba20d11b5b38875864513666ae671871c43392e1b4402dd868367"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    }
+  },
+  "family_count": 3,
   "fixture_fingerprints": {
-    "B2-QA1-G-EAB-CTRL-001": "sha256:54d8a5623124b18e3d723f003372baaa799890c43b4b4f686e37148d573d32a2",
-    "B2-QA1-G-EAB-KB-001": "sha256:aeb47c977b4abb09688cba0f927eeea2414e76619bb68378c224367963bdbcdd",
-    "B2-QA1-G-INV-CTRL-001": "sha256:4cde6f11f614aa11e365da210457ad3f4d854dc8e13a5ed70fac12506872080b",
-    "B2-QA1-G-INV-KB-001": "sha256:284ac7b9a1728c3193b3fb97856e48ab2bec2e4ee6abccc0e598bf05e590f0e5",
-    "B2-QA1-G-MOD-CTRL-001": "sha256:540a30167d25467d9a50f5dae866fca64d2247981e4227115b1fc72c686d9884",
-    "B2-QA1-G-MOD-KB-001": "sha256:4f05413d8df9fc14bd9749607c62d12b6def9a491fa6f22374952e3d70939416"
+    "B2-QA1-G-EAB-CTRL-001": "sha256:9d3240db777c9db847bf9094770c24479e28079ef70e8b9978bb0310264d918a",
+    "B2-QA1-G-EAB-KB-001": "sha256:d2ff7de0ebd692bc22c6fa83c107b9ce1a358d50ff3c1aa89a41b28de71bcf0d",
+    "B2-QA1-G-INV-CTRL-001": "sha256:198736acffd45fd57e475d360c2da1e88e2f9a693034729d3bdd84a13b796c68",
+    "B2-QA1-G-INV-KB-001": "sha256:96b9c0649f8093c4d611e5603873d5f9bf0df61fa685f4401bfc739efc63eaa5",
+    "B2-QA1-G-MOD-CTRL-001": "sha256:536348cb3cb68453e86d49e5a9e2f31519f7059629a170cb3ef887f48ff27b98",
+    "B2-QA1-G-MOD-KB-001": "sha256:2e64ee7f5b55b8b7d4a7024335a33a50c71e9b0463fc0f5e8fd9739b2b3678c0"
   },
   "gate": "PASS",
   "gate_criteria": {
@@ -17,9 +59,18 @@
     "control_count": 3,
     "control_false_reject_rate": 0.0,
     "evidence_completeness_rate": 1.0,
+    "exact_family_pairing": true,
+    "family_count": 3,
     "known_bad_count": 3,
     "known_bad_detection_rate": 1.0,
-    "provenance_trace_rate": 1.0
+    "observed_families": [
+      "entity-attribute-binding",
+      "inventory-evidence-scope",
+      "source-modality"
+    ],
+    "provenance_digest_match_rate": 1.0,
+    "provenance_trace_rate": 1.0,
+    "unique_case_id_count": 6
   },
   "known_bad_count": 3,
   "known_bad_detection_rate": 1.0,
@@ -27,9 +78,15 @@
     "Frozen synthetic deterministic cases only.",
     "No live model or provider performance is measured."
   ],
+  "observed_families": [
+    "entity-attribute-binding",
+    "inventory-evidence-scope",
+    "source-modality"
+  ],
   "profile": "GROUNDING",
+  "provenance_digest_match_rate": 1.0,
   "provenance_trace_rate": 1.0,
-  "receipt_fingerprint": "sha256:1cca4fdf4b92e585e69e994c43d7f55cb71721e0fad712edaf3149dbdcaab1c1",
+  "receipt_fingerprint": "sha256:fac03c0879300ba63f5c11ad4cf2d9201967f9f169fdcfb0fa520cf3a83cf8b4",
   "run_id": "B2-QA1-GROUNDING-DETERMINISTIC-001",
   "runner": "python-unittest-compatible/deterministic",
   "schema_version": "b2-qa1-receipt/v1",
@@ -37,5 +94,6 @@
   "terminal_statuses": [
     "FAIL",
     "PASS"
-  ]
+  ],
+  "unique_case_id_count": 6
 }

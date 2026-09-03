@@ -1,1 +1,17 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://example.org/schemas/grounding-eval.schema.json","title":"B2 QA1 Grounding Evaluation Case","allOf":[{"$ref":"b2_public_seed.schema.json"}],"properties":{"family_id":{"enum":["entity-attribute-binding","inventory-evidence-scope","source-modality"]}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/grounding-eval.schema.json",
+  "title": "B2 QA1 Grounding Evaluation Case",
+  "allOf": [{"$ref": "b2_public_seed.schema.json"}],
+  "type": "object",
+  "required": ["family_id", "input"],
+  "properties": {
+    "family_id": {"enum": ["entity-attribute-binding", "inventory-evidence-scope", "source-modality"]},
+    "input": {"type": "object"}
+  },
+  "oneOf": [
+    {"properties": {"family_id": {"const": "entity-attribute-binding"}, "input": {"required": ["claim", "evidence"], "properties": {"claim": {"type": "object", "required": ["entity_id", "scope_id", "attribute", "value"]}, "evidence": {"type": "object", "required": ["entity_id", "scope_id", "attribute", "value"]}}}}},
+    {"properties": {"family_id": {"const": "inventory-evidence-scope"}, "input": {"required": ["claim", "source"], "properties": {"claim": {"type": "object", "required": ["attribute", "value"]}, "source": {"type": "object", "required": ["surface_type"]}}}}},
+    {"properties": {"family_id": {"const": "source-modality"}, "input": {"required": ["claim", "source"], "properties": {"claim": {"type": "object", "required": ["value", "provenance_level"]}, "source": {"type": "object", "required": ["value", "provenance_level"]}}}}}
+  ]
+}

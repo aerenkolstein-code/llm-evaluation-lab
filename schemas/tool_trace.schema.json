@@ -1,1 +1,17 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://example.org/schemas/tool-trace.schema.json","title":"B2 QA1 Tool and Agent Workflow Case","allOf":[{"$ref":"b2_public_seed.schema.json"}],"properties":{"family_id":{"enum":["connector-schema-retry","capability-routing","destructive-write-recovery"]}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/tool-trace.schema.json",
+  "title": "B2 QA1 Tool and Agent Workflow Case",
+  "allOf": [{"$ref": "b2_public_seed.schema.json"}],
+  "type": "object",
+  "required": ["family_id", "input"],
+  "properties": {
+    "family_id": {"enum": ["connector-schema-retry", "capability-routing", "destructive-write-recovery"]},
+    "input": {"type": "object"}
+  },
+  "oneOf": [
+    {"properties": {"family_id": {"const": "connector-schema-retry"}, "input": {"required": ["allowed_keys", "request", "outcome", "readback", "retry"], "properties": {"allowed_keys": {"type": "array", "items": {"type": "string"}}, "request": {"type": "object"}, "outcome": {"type": "object", "required": ["status", "committed"]}, "readback": {"type": "object", "required": ["performed", "state_unchanged"]}, "retry": {"type": "object", "required": ["performed", "side_effect_count"], "allOf": [{"if": {"properties": {"performed": {"const": true}}, "required": ["performed"]}, "then": {"required": ["after_readback"]}}]}}}}},
+    {"properties": {"family_id": {"const": "capability-routing"}, "input": {"required": ["registry_checked", "matching_action_attempted", "claim", "permission_state", "capability_state"]}}},
+    {"properties": {"family_id": {"const": "destructive-write-recovery"}, "input": {"required": ["live_target_bound", "revision_guard", "pilot_write", "neighbor_readback", "recovery_evidence", "side_effect_count"]}}}
+  ]
+}

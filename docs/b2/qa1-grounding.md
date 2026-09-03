@@ -8,9 +8,9 @@ QA1-A is a deterministic, public-safe grounding profile built on three abstract 
 - `inventory-evidence-scope`: only a current inventory/list/filter/account surface can establish a current count.
 - `source-modality`: a claim may not assert a stronger provenance level than its source.
 
-Missing claim/source evidence returns `UNKNOWN`; it does not count as known-bad detection. Wrong binding, wrong source scope, or provenance upgrade is a hard failure and cannot be offset by a soft score.
+Required fields are frozen per family. Missing nested claim/source fields return `UNKNOWN`, set `evidence_complete=false`, and do not count as known-bad detection. For an allowed inventory surface, `current_count` is required; a detail-only surface remains an ordinary scope failure. Wrong binding, wrong source scope, or provenance upgrade is a hard failure and cannot be offset by a soft score.
 
-The frozen suite contains three known-bad cases and three matched controls. Its receipt is derived by code and fingerprints the complete gate payload.
+The frozen suite contains three known-bad cases and three matched controls. Its receipt derives and fingerprints the exact three-family set, one known-bad/control pair per family, unique case IDs, and family-specific deterministic public seed digests.
 
 ## Boundary
 

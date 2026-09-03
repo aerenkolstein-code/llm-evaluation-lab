@@ -5,12 +5,12 @@ QA1-B is a deterministic, public-safe workflow profile using a fake connector/to
 ## Contracts
 
 - `connector-schema-retry`: invalid request shape is a typed `ERROR`; rejection must not be recorded as commit, and retry requires exact-target readback.
-- `capability-routing`: discovery and a matching action attempt precede an unavailability claim; capability and permission states stay separate.
+- `capability-routing`: discovery and a matching action attempt precede an unavailability claim; the user-facing availability claim must equal the capability state independently of permission state.
 - `destructive-write-recovery`: destructive writes require a live target, revision guard, pilot, neighbor readback, recovery evidence, and exactly one side effect.
 
-Missing trace evidence returns `UNKNOWN`; it never satisfies a known-bad oracle. Duplicate side effects and unsafe destructive mutation are hard failures.
+Required trace fields are frozen per family. Partial missing trace evidence returns `UNKNOWN` with `evidence_complete=false`; it never satisfies a known-bad oracle. Deterministic contract tests cover retry after readback, retry before readback, and duplicate side effects. Provider/schema `ERROR` remains separate from model/workflow `FAIL`.
 
-The frozen suite contains three known-bad cases and three matched controls. Its receipt is derived by code and fingerprints the complete gate payload.
+The frozen suite contains three known-bad cases and three matched controls. Its receipt derives and fingerprints the exact three-family set, one known-bad/control pair per family, unique case IDs, and family-specific deterministic public seed digests.
 
 ## Boundary
 

@@ -541,6 +541,40 @@ class B2QA3Tests(unittest.TestCase):
         self.assertIsNone(delta["baseline_value"])
         self.assertIsNone(delta["delta"])
 
+    def test_no_baseline_preserves_typed_current_terminal(self):
+        scenarios = (
+            ("ERROR", None, "ERROR", "INFRASTRUCTURE_TERMINAL"),
+            ("UNKNOWN", None, "UNKNOWN", "REQUIRED_EVIDENCE_UNRESOLVED"),
+            (
+                "BLOCKED",
+                None,
+                "NOT_EVALUABLE",
+                "INPUT_TERMINAL_NOT_COMPARABLE",
+            ),
+            (
+                "NOT_EVALUABLE",
+                None,
+                "NOT_EVALUABLE",
+                "INPUT_TERMINAL_NOT_COMPARABLE",
+            ),
+            ("PASS", True, "NOT_EVALUABLE", "NO_BASELINE"),
+            ("FAIL", False, "FAIL", "HARD_INVARIANT_FAILURE"),
+        )
+        for terminal, hard_state, expected, reason in scenarios:
+            result = compute_quality_delta(
+                self._observation(
+                    terminal_status=terminal,
+                    hard_invariant_pass=hard_state,
+                ),
+                None,
+            )
+            with self.subTest(terminal=terminal):
+                self.assertEqual(expected, result["terminal_status"])
+                self.assertEqual(reason, result["reason"])
+                self.assertIsNone(result["baseline_value"])
+                self.assertIsNone(result["baseline_evidence_ref"])
+                self.assertIsNone(result["delta"])
+
     def test_quality_delta_computes_only_for_compatible_records(self):
         baseline = self._observation(
             observation_id="synthetic-observation-baseline", value=0.5
@@ -603,16 +637,18 @@ class B2QA3Tests(unittest.TestCase):
                 self.assertEqual("HARD_INVARIANT_FAILURE", result["reason"])
                 self.assertIsNone(result["delta"])
 
-        no_baseline = compute_quality_delta(
-            self._observation(
-                terminal_status="UNKNOWN",
-                hard_invariant_pass=False,
-            ),
-            None,
-        )
-        self.assertEqual("FAIL", no_baseline["terminal_status"])
-        self.assertEqual("HARD_INVARIANT_FAILURE", no_baseline["reason"])
-        self.assertIsNone(no_baseline["delta"])
+        for terminal in ("ERROR", "UNKNOWN", "BLOCKED", "NOT_EVALUABLE"):
+            no_baseline = compute_quality_delta(
+                self._observation(
+                    terminal_status=terminal,
+                    hard_invariant_pass=False,
+                ),
+                None,
+            )
+            with self.subTest(location="no-baseline", terminal=terminal):
+                self.assertEqual("FAIL", no_baseline["terminal_status"])
+                self.assertEqual("HARD_INVARIANT_FAILURE", no_baseline["reason"])
+                self.assertIsNone(no_baseline["delta"])
 
     def test_sqlite_projection_reads_all_runs_without_mutation(self):
         result = {

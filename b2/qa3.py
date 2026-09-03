@@ -1152,18 +1152,18 @@ def compute_quality_delta(current: object, baseline: object | None) -> dict[str,
     )
     if baseline is None:
         if current_hard_failure:
-            return {
-                "terminal_status": "FAIL",
-                "reason": "HARD_INVARIANT_FAILURE",
-                "baseline_value": None,
-                "current_value": current_row["value"],
-                "delta": None,
-                "current_evidence_ref": current_row["evidence_ref"],
-                "baseline_evidence_ref": None,
-            }
+            status, reason = "FAIL", "HARD_INVARIANT_FAILURE"
+        elif current_row["terminal_status"] == "ERROR":
+            status, reason = "ERROR", "INFRASTRUCTURE_TERMINAL"
+        elif current_row["terminal_status"] == "UNKNOWN":
+            status, reason = "UNKNOWN", "REQUIRED_EVIDENCE_UNRESOLVED"
+        elif current_row["terminal_status"] in {"BLOCKED", "NOT_EVALUABLE"}:
+            status, reason = "NOT_EVALUABLE", "INPUT_TERMINAL_NOT_COMPARABLE"
+        else:
+            status, reason = "NOT_EVALUABLE", "NO_BASELINE"
         return {
-            "terminal_status": "NOT_EVALUABLE",
-            "reason": "NO_BASELINE",
+            "terminal_status": status,
+            "reason": reason,
             "baseline_value": None,
             "current_value": current_row["value"],
             "delta": None,

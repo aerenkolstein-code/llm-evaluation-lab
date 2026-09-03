@@ -71,8 +71,9 @@ Terminal behavior is fail-closed:
 | Condition | Output terminal | Delta |
 |---|---|---:|
 | Complete and comparable | `PASS / COMPARABLE` | computed |
-| No baseline | `NOT_EVALUABLE / NO_BASELINE` | `null` |
+| Otherwise-PASS current; no baseline | `NOT_EVALUABLE / NO_BASELINE` | `null` |
 | Required evidence unresolved | `UNKNOWN` | `null` |
+| Blocked/not-evaluable current input | `NOT_EVALUABLE / INPUT_TERMINAL_NOT_COMPARABLE` | `null` |
 | Incompatible comparison | `FAIL / NOT_COMPARABLE` | `null` |
 | Infrastructure terminal | `ERROR` | `null` |
 | Hard-invariant failure | `FAIL / HARD_INVARIANT_FAILURE` | `null` |
@@ -88,7 +89,11 @@ Terminal composition is typed and fail-closed. A `FAIL` terminal or
 `BLOCKED`, and `NOT_EVALUABLE`; the remaining precedence is `ERROR`, `UNKNOWN`,
 `BLOCKED`/`NOT_EVALUABLE`, then `PASS`. This rule also applies when a hard
 failure is present but no baseline exists, so a zero-tolerance failure cannot be
-relabeled as merely unavailable comparison evidence. The hard-invariant field
+relabeled as merely unavailable comparison evidence. Without a baseline, an
+ordinary `ERROR` or `UNKNOWN` likewise retains its typed terminal and a
+`BLOCKED`/`NOT_EVALUABLE` current input remains input-terminal-not-comparable;
+only an otherwise-PASS current observation becomes `NOT_EVALUABLE /
+NO_BASELINE`. The hard-invariant field
 is tri-state for metric observations: `true` means all represented invariants
 passed, `false` means a known hard failure exists, and `null` means the result is
 unresolved rather than failed.

@@ -83,20 +83,38 @@ snapshot and contain no compatible earlier snapshot, the checked report emits
 `NOT_EVALUABLE / NO_BASELINE` for every profile. It does not invent a trend,
 recurrence series, causal improvement, latency, token, or cost metric.
 
+Terminal composition is typed and fail-closed. A `FAIL` terminal or
+`hard_invariant_pass=false` has non-maskable precedence over `ERROR`, `UNKNOWN`,
+`BLOCKED`, and `NOT_EVALUABLE`; the remaining precedence is `ERROR`, `UNKNOWN`,
+`BLOCKED`/`NOT_EVALUABLE`, then `PASS`. This rule also applies when a hard
+failure is present but no baseline exists, so a zero-tolerance failure cannot be
+relabeled as merely unavailable comparison evidence. The hard-invariant field
+is tri-state for metric observations: `true` means all represented invariants
+passed, `false` means a known hard failure exists, and `null` means the result is
+unresolved rather than failed.
+
 SQLite accuracy deltas use the canonical run's `regression_status` together
 with matching terminal semantics inside `result_json`; optional integration or
-top-level terminals can only make the derived terminal stricter. Column/result
-status disagreement, unsupported terminals, evidence-ref mismatch, or duplicated
-accuracy values that disagree with `result_json` fail closed. Only an all-PASS
-canonical run receives `hard_invariant_pass=true` and may yield a numerical
-delta.
+top-level terminals are composed under the same non-maskable-failure rule.
+Column/result status disagreement, unsupported terminals, evidence-ref mismatch,
+or duplicated accuracy values that disagree with `result_json` fail closed.
+Only an all-PASS canonical run receives `hard_invariant_pass=true` and may yield
+a numerical delta; a composed `FAIL` receives `false`, while unresolved
+non-PASS terminals receive `null`.
 
 ## Reproducible build
 
-`build_checked_dashboard` reads the five checked receipts, verifies their
-fingerprints, binds them to one full source commit, rehydrates the projected
-summary, and produces deterministic JSON. `render_dashboard_html` repeats the
-canonical receipt binding and summary verification before rendering it.
+`build_checked_dashboard` obtains all five checked receipts with exact
+`git show <commit>:<path>` reads, verifies their fingerprints, binds them to one
+full source commit, rehydrates the projected summary, and produces deterministic
+JSON. It never substitutes working-tree receipt contents for the declared
+commit. `build_dashboard_projection` requires a repository root and rejects any
+caller-supplied source whose canonical JSON differs from the receipt at its
+claimed path and commit. `verify_dashboard_projection` independently repeats
+that exact-Git resolution; an injected source set is accepted only as a
+canonical-JSON-equivalent copy proven against the supplied repository.
+`render_dashboard_html` repeats the same binding and summary verification before
+rendering it.
 
 The report's `source_snapshot.git_commit` names the commit that contains the
 canonical source receipts. The later commit that adds the derived JSON/HTML can

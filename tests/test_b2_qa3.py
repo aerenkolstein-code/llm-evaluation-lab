@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 from b2.qa0 import abstract_seed_digest, sha256_json
@@ -143,14 +144,61 @@ class B2QA3Tests(unittest.TestCase):
         row.update(changes)
         return row
 
-    def _dashboard(self):
-        sources, declared = self._receipt_sources()
-        return build_dashboard_projection(
+    @contextmanager
+    def _canonical_receipt_repository(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            subprocess.run(["git", "init", "-q", str(repository)], check=True)
+            sources, _ = self._receipt_sources()
+            for source in sources:
+                path = repository / source["path"]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    json.dumps(source["receipt"], ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            subprocess.run(["git", "-C", str(repository), "add", "results/b2"], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repository),
+                    "-c",
+                    "user.name=QA3 Test",
+                    "-c",
+                    "user.email=qa3@example.invalid",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "canonical receipts",
+                ],
+                check=True,
+            )
+            commit = subprocess.run(
+                ["git", "-C", str(repository), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            bound_sources, declared = self._receipt_sources(source_commit=commit)
+            yield repository, commit, bound_sources, declared
+
+    @contextmanager
+    def _dashboard_context(self):
+        with self._canonical_receipt_repository() as (
+            repository,
+            commit,
             sources,
-            declared_source_ids=declared,
-            observed_at="2026-09-03T00:00:00Z",
-            snapshot_id=f"git:{SOURCE_COMMIT}",
-        )
+            declared,
+        ):
+            dashboard = build_dashboard_projection(
+                sources,
+                declared_source_ids=declared,
+                observed_at="2026-09-03T00:00:00Z",
+                snapshot_id=f"git:{commit}",
+                repository_root=repository,
+            )
+            yield dashboard, repository, commit, sources, declared
 
     def test_exact_seed_lineage_and_matched_family_set(self):
         families = {}
@@ -286,8 +334,13 @@ class B2QA3Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_evidence_ref(invalid)
         receipt = build_qa3_receipt(self.projection_rows)
-        with self.assertRaises(ValueError):
-            receipt_evidence_ref("../outside.json", receipt, SOURCE_COMMIT)
+        for path in (
+            "../outside.json",
+            "results/b2/./synthetic-receipt.json",
+            "results/b2//synthetic-receipt.json",
+        ):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                receipt_evidence_ref(path, receipt, SOURCE_COMMIT)
 
     def test_dashboard_requires_complete_unique_single_snapshot_sources(self):
         sources, declared = self._receipt_sources()
@@ -317,10 +370,10 @@ class B2QA3Tests(unittest.TestCase):
             )
 
     def test_dashboard_profiles_and_scalars_retain_canonical_refs(self):
-        sources, _ = self._receipt_sources()
-        dashboard = verify_dashboard_projection(
-            self._dashboard(), receipt_sources=sources
-        )
+        with self._dashboard_context() as (dashboard, repository, _, _, _):
+            dashboard = verify_dashboard_projection(
+                dashboard, repository_root=repository
+            )
         manifest_ids = set(dashboard["source_manifest"]["included_source_ids"])
         self.assertEqual(5, dashboard["source_manifest"]["source_count"])
         self.assertEqual(manifest_ids, {
@@ -333,101 +386,132 @@ class B2QA3Tests(unittest.TestCase):
             self.assertIsNone(delta["delta"])
 
     def test_dashboard_semantic_tampering_fails_even_after_refingerprint(self):
-        dashboard = self._dashboard()
-        sources, _ = self._receipt_sources()
-        mutations = []
-        partial = copy.deepcopy(dashboard)
-        partial["source_manifest"]["included_source_ids"].pop()
-        partial["source_manifest"]["excluded_source_ids"].append(
-            partial["source_manifest"]["declared_source_ids"][-1]
-        )
-        partial["source_manifest"]["included_count"] -= 1
-        partial["source_manifest"]["excluded_count"] = 1
-        mutations.append(partial)
-        trend = copy.deepcopy(dashboard)
-        trend["regression_recurrence"]["terminal_status"] = "PASS"
-        trend["regression_recurrence"]["series"] = [0.0]
-        mutations.append(trend)
-        invented_delta = copy.deepcopy(dashboard)
-        invented_delta["quality_deltas"][0].update(
-            {"terminal_status": "PASS", "reason": "COMPARABLE", "delta": 0.0}
-        )
-        mutations.append(invented_delta)
-        second_authority = copy.deepcopy(dashboard)
-        second_authority["authority"] = "CANONICAL"
-        mutations.append(second_authority)
-        for mutation in mutations:
-            with self.subTest(mutation=mutations.index(mutation)), self.assertRaises(ValueError):
-                verify_dashboard_projection(
-                    refingerprint(mutation, "projection_fingerprint"),
-                    receipt_sources=sources,
-                )
+        with self._dashboard_context() as (dashboard, repository, _, _, _):
+            mutations = []
+            partial = copy.deepcopy(dashboard)
+            partial["source_manifest"]["included_source_ids"].pop()
+            partial["source_manifest"]["excluded_source_ids"].append(
+                partial["source_manifest"]["declared_source_ids"][-1]
+            )
+            partial["source_manifest"]["included_count"] -= 1
+            partial["source_manifest"]["excluded_count"] = 1
+            mutations.append(partial)
+            trend = copy.deepcopy(dashboard)
+            trend["regression_recurrence"]["terminal_status"] = "PASS"
+            trend["regression_recurrence"]["series"] = [0.0]
+            mutations.append(trend)
+            invented_delta = copy.deepcopy(dashboard)
+            invented_delta["quality_deltas"][0].update(
+                {"terminal_status": "PASS", "reason": "COMPARABLE", "delta": 0.0}
+            )
+            mutations.append(invented_delta)
+            second_authority = copy.deepcopy(dashboard)
+            second_authority["authority"] = "CANONICAL"
+            mutations.append(second_authority)
+            for mutation in mutations:
+                with self.subTest(mutation=mutations.index(mutation)), self.assertRaises(ValueError):
+                    verify_dashboard_projection(
+                        refingerprint(mutation, "projection_fingerprint"),
+                        repository_root=repository,
+                    )
 
     def test_dashboard_scalar_and_terminal_tampering_cannot_refingerprint_away(self):
-        dashboard = self._dashboard()
-        sources, _ = self._receipt_sources()
-        mutations = {
-            "formal_family_count": dashboard["profiles"][0]["formal_family_count"] + 1,
-            "case_count": dashboard["profiles"][0]["case_count"] + 1,
-            "known_bad_count": dashboard["profiles"][0]["known_bad_count"] + 1,
-            "control_count": dashboard["profiles"][0]["control_count"] + 1,
-            "terminal_statuses": ["PASS"],
-        }
-        for field, value in mutations.items():
-            changed = copy.deepcopy(dashboard)
-            changed["profiles"][0][field] = value
-            changed = refingerprint(changed, "projection_fingerprint")
-            with self.subTest(field=field), self.assertRaisesRegex(
-                ValueError, "does not rehydrate"
-            ):
-                verify_dashboard_projection(changed, receipt_sources=sources)
+        with self._dashboard_context() as (dashboard, repository, _, _, _):
+            mutations = {
+                "formal_family_count": dashboard["profiles"][0]["formal_family_count"] + 1,
+                "case_count": dashboard["profiles"][0]["case_count"] + 1,
+                "known_bad_count": dashboard["profiles"][0]["known_bad_count"] + 1,
+                "control_count": dashboard["profiles"][0]["control_count"] + 1,
+                "terminal_statuses": ["PASS"],
+            }
+            for field, value in mutations.items():
+                changed = copy.deepcopy(dashboard)
+                changed["profiles"][0][field] = value
+                changed = refingerprint(changed, "projection_fingerprint")
+                with self.subTest(field=field), self.assertRaisesRegex(
+                    ValueError, "does not rehydrate"
+                ):
+                    verify_dashboard_projection(
+                        changed, repository_root=repository
+                    )
 
     def test_dashboard_verification_resolves_exact_git_path_and_commit(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            repository = Path(temporary)
-            subprocess.run(["git", "init", "-q", str(repository)], check=True)
-            sources, declared = self._receipt_sources()
-            for source in sources:
-                path = repository / source["path"]
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(
-                    json.dumps(source["receipt"], ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8",
-                )
-            subprocess.run(["git", "-C", str(repository), "add", "results/b2"], check=True)
-            subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(repository),
-                    "-c",
-                    "user.name=QA3 Test",
-                    "-c",
-                    "user.email=qa3@example.invalid",
-                    "commit",
-                    "-q",
-                    "-m",
-                    "canonical receipts",
-                ],
-                check=True,
-            )
-            commit = subprocess.run(
-                ["git", "-C", str(repository), "rev-parse", "HEAD"],
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-            bound_sources, declared = self._receipt_sources(source_commit=commit)
-            dashboard = build_dashboard_projection(
-                bound_sources,
-                declared_source_ids=declared,
-                observed_at="2026-09-03T00:00:00Z",
-                snapshot_id=f"git:{commit}",
-            )
+        with self._dashboard_context() as (dashboard, repository, commit, _, _):
             verified = verify_dashboard_projection(
                 dashboard, repository_root=repository
             )
         self.assertEqual(commit, verified["source_snapshot"]["git_commit"])
+
+    def test_checked_dashboard_rejects_worktree_receipt_claimed_as_old_commit(self):
+        with self._dashboard_context() as (
+            dashboard,
+            repository,
+            commit,
+            sources,
+            declared,
+        ):
+            forged_sources = copy.deepcopy(sources)
+            forged_receipt = forged_sources[0]["receipt"]
+            forged_receipt["case_count"] += 1
+            forged_sources[0]["receipt"] = refingerprint(
+                forged_receipt, "receipt_fingerprint"
+            )
+            path = repository / forged_sources[0]["path"]
+            path.write_text(
+                json.dumps(forged_sources[0]["receipt"], ensure_ascii=False, indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rebuilt = build_checked_dashboard(
+                repository,
+                source_commit=commit,
+                observed_at="2026-09-03T00:00:00Z",
+            )
+            self.assertEqual(dashboard, rebuilt)
+            with self.assertRaisesRegex(ValueError, "repository_root"):
+                verify_dashboard_projection(
+                    dashboard,
+                    receipt_sources=forged_sources,
+                )
+            with self.assertRaisesRegex(ValueError, "exact Git"):
+                verify_dashboard_projection(
+                    dashboard,
+                    receipt_sources=forged_sources,
+                    repository_root=repository,
+                )
+            with self.assertRaisesRegex(ValueError, "exact Git"):
+                build_dashboard_projection(
+                    forged_sources,
+                    declared_source_ids=declared,
+                    observed_at="2026-09-03T00:00:00Z",
+                    snapshot_id=f"git:{commit}",
+                    repository_root=repository,
+                )
+
+    def test_dashboard_rejects_tree_object_claimed_as_source_commit(self):
+        with self._canonical_receipt_repository() as (
+            repository,
+            commit,
+            sources,
+            declared,
+        ):
+            tree = subprocess.run(
+                ["git", "-C", str(repository), "rev-parse", f"{commit}^{{tree}}"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            for source in sources:
+                source["git_commit"] = tree
+            with self.assertRaisesRegex(ValueError, "not a Git commit object"):
+                build_dashboard_projection(
+                    sources,
+                    declared_source_ids=declared,
+                    observed_at="2026-09-03T00:00:00Z",
+                    snapshot_id=f"git:{tree}",
+                    repository_root=repository,
+                )
 
     def test_metric_observation_freezes_every_comparability_dimension(self):
         row = self._observation()
@@ -438,6 +522,17 @@ class B2QA3Tests(unittest.TestCase):
             broken["comparable_key"].pop(field)
             with self.subTest(field=field), self.assertRaises(ValueError):
                 validate_metric_observation(broken)
+
+    def test_metric_observation_rejects_inconsistent_hard_invariant_state(self):
+        for terminal, hard_state in (("PASS", None), ("FAIL", True)):
+            observation = self._observation(
+                terminal_status=terminal,
+                hard_invariant_pass=hard_state,
+            )
+            with self.subTest(terminal=terminal), self.assertRaisesRegex(
+                ValueError, "requires hard_invariant_pass"
+            ):
+                validate_metric_observation(observation)
 
     def test_no_baseline_is_not_evaluable_and_never_zero_delta(self):
         delta = compute_quality_delta(self._observation(), None)
@@ -480,6 +575,45 @@ class B2QA3Tests(unittest.TestCase):
                 self.assertEqual(reason, result["reason"])
                 self.assertIsNone(result["delta"])
 
+    def test_hard_failure_has_non_maskable_delta_precedence(self):
+        baseline = self._observation(
+            observation_id="synthetic-observation-baseline", value=0.5
+        )
+        for terminal in ("ERROR", "UNKNOWN", "BLOCKED", "NOT_EVALUABLE"):
+            current = self._observation(
+                terminal_status=terminal,
+                hard_invariant_pass=False,
+            )
+            result = compute_quality_delta(current, baseline)
+            with self.subTest(location="current", terminal=terminal):
+                self.assertEqual("FAIL", result["terminal_status"])
+                self.assertEqual("HARD_INVARIANT_FAILURE", result["reason"])
+                self.assertIsNone(result["delta"])
+
+            failed_baseline = self._observation(
+                observation_id="synthetic-observation-baseline",
+                value=0.5,
+                terminal_status="FAIL",
+                hard_invariant_pass=False,
+            )
+            current = self._observation(terminal_status=terminal)
+            result = compute_quality_delta(current, failed_baseline)
+            with self.subTest(location="baseline", terminal=terminal):
+                self.assertEqual("FAIL", result["terminal_status"])
+                self.assertEqual("HARD_INVARIANT_FAILURE", result["reason"])
+                self.assertIsNone(result["delta"])
+
+        no_baseline = compute_quality_delta(
+            self._observation(
+                terminal_status="UNKNOWN",
+                hard_invariant_pass=False,
+            ),
+            None,
+        )
+        self.assertEqual("FAIL", no_baseline["terminal_status"])
+        self.assertEqual("HARD_INVARIANT_FAILURE", no_baseline["reason"])
+        self.assertIsNone(no_baseline["delta"])
+
     def test_sqlite_projection_reads_all_runs_without_mutation(self):
         result = {
             "run_id": "RUN-QA3-SYNTHETIC-001",
@@ -515,14 +649,25 @@ class B2QA3Tests(unittest.TestCase):
 
     def test_sqlite_non_pass_terminals_and_hard_failures_never_become_delta_pass(self):
         scenarios = (
-            ("FAIL", None, "FAIL", "HARD_INVARIANT_FAILURE"),
-            ("UNKNOWN", None, "UNKNOWN", "REQUIRED_EVIDENCE_UNRESOLVED"),
-            ("ERROR", None, "ERROR", "INFRASTRUCTURE_TERMINAL"),
-            ("BLOCKED", None, "NOT_EVALUABLE", "INPUT_TERMINAL_NOT_COMPARABLE"),
-            ("NOT_EVALUABLE", None, "NOT_EVALUABLE", "INPUT_TERMINAL_NOT_COMPARABLE"),
-            ("PASS", "FAIL", "FAIL", "HARD_INVARIANT_FAILURE"),
+            ("FAIL", None, None, "FAIL", "HARD_INVARIANT_FAILURE"),
+            ("UNKNOWN", None, None, "UNKNOWN", "REQUIRED_EVIDENCE_UNRESOLVED"),
+            ("ERROR", None, None, "ERROR", "INFRASTRUCTURE_TERMINAL"),
+            ("BLOCKED", None, None, "NOT_EVALUABLE", "INPUT_TERMINAL_NOT_COMPARABLE"),
+            ("NOT_EVALUABLE", None, None, "NOT_EVALUABLE", "INPUT_TERMINAL_NOT_COMPARABLE"),
+            ("PASS", "FAIL", None, "FAIL", "HARD_INVARIANT_FAILURE"),
+            ("FAIL", "ERROR", None, "FAIL", "HARD_INVARIANT_FAILURE"),
+            ("FAIL", None, "UNKNOWN", "FAIL", "HARD_INVARIANT_FAILURE"),
+            ("UNKNOWN", "FAIL", "ERROR", "FAIL", "HARD_INVARIANT_FAILURE"),
+            ("ERROR", "FAIL", None, "FAIL", "HARD_INVARIANT_FAILURE"),
         )
-        for index, (regression_status, integration_status, expected, reason) in enumerate(scenarios):
+        for index, scenario in enumerate(scenarios):
+            (
+                regression_status,
+                integration_status,
+                top_level_status,
+                expected,
+                reason,
+            ) = scenario
             result = {
                 "run_id": f"RUN-QA3-TERMINAL-{index:03d}",
                 "case_id": "SYNTHETIC-CASE-SET-v1",
@@ -532,6 +677,8 @@ class B2QA3Tests(unittest.TestCase):
             }
             if integration_status is not None:
                 result["integration"] = {"status": integration_status}
+            if top_level_status is not None:
+                result["terminal_status"] = top_level_status
             with tempfile.TemporaryDirectory() as temporary:
                 store = Path(temporary) / "runs.sqlite3"
                 persist_experiment_run(
@@ -547,7 +694,11 @@ class B2QA3Tests(unittest.TestCase):
                 )
                 run = load_sqlite_runs_read_only(store)["runs"][0]
             delta = sqlite_accuracy_delta(run)
-            with self.subTest(regression=regression_status, integration=integration_status):
+            with self.subTest(
+                regression=regression_status,
+                integration=integration_status,
+                top_level=top_level_status,
+            ):
                 self.assertEqual(expected, delta["terminal_status"])
                 self.assertEqual(reason, delta["reason"])
                 self.assertIsNone(delta["delta"])
@@ -685,10 +836,9 @@ class B2QA3Tests(unittest.TestCase):
             ROOT, source_commit=source_commit, observed_at=observed_at
         )
         self.assertEqual(checked, rebuilt)
-        sources, _ = self._receipt_sources(source_commit=source_commit)
         self.assertEqual(
             DASHBOARD_HTML.read_text(encoding="utf-8"),
-            render_dashboard_html(rebuilt, receipt_sources=sources),
+            render_dashboard_html(rebuilt, repository_root=ROOT),
         )
         self.assertEqual("OPTIONAL_NOT_SELECTED", checked["brand_adapters"]["status"])
         self.assertEqual([], checked["brand_adapters"]["claims_unlocked"])

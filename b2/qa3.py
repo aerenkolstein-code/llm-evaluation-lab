@@ -15,7 +15,7 @@ import re
 import sqlite3
 import subprocess
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .qa0 import (
@@ -507,9 +507,22 @@ def validate_evidence_ref(reference: object) -> dict[str, Any]:
     return ref
 
 
-def receipt_evidence_ref(path: str, receipt: object, git_commit: str) -> dict[str, Any]:
-    if Path(path).is_absolute() or ".." in Path(path).parts or not path.startswith("results/b2/"):
+def _bounded_receipt_path(path: object) -> str:
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("receipt path must be a non-empty string")
+    normalized = path.strip()
+    if (
+        PurePosixPath(normalized).is_absolute()
+        or ".." in PurePosixPath(normalized).parts
+        or PurePosixPath(normalized).as_posix() != normalized
+        or not normalized.startswith("results/b2/")
+    ):
         raise ValueError("receipt path must be a bounded repository-relative B2 result path")
+    return normalized
+
+
+def receipt_evidence_ref(path: str, receipt: object, git_commit: str) -> dict[str, Any]:
+    path = _bounded_receipt_path(path)
     checked = verify_checked_receipt(receipt)
     return validate_evidence_ref(
         {
@@ -531,7 +544,7 @@ def _normalize_receipt_sources(
         source = dict(_obj(source_value, f"receipt source {index}"))
         if set(source) != {"path", "git_commit", "receipt"}:
             raise ValueError(f"receipt source {index} has an invalid shape")
-        path = str(source["path"])
+        path = _bounded_receipt_path(source["path"])
         git_commit = str(source["git_commit"])
         checked = verify_checked_receipt(source["receipt"])
         normalized.append(
@@ -543,50 +556,111 @@ def _normalize_receipt_sources(
     return normalized
 
 
+def _receipt_at_git_commit(
+    repository_root: str | Path,
+    *,
+    path: str,
+    git_commit: str,
+) -> object:
+    root = Path(repository_root)
+    if not root.is_dir():
+        raise ValueError("canonical receipt repository root does not exist")
+    path = _bounded_receipt_path(path)
+    if not _is_git_commit(git_commit):
+        raise ValueError("canonical receipt git_commit must be a full commit SHA")
+    object_type = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "-t", git_commit],
+        check=False,
+        capture_output=True,
+    )
+    if object_type.returncode != 0 or object_type.stdout.strip() != b"commit":
+        raise ValueError("canonical receipt git_commit is not a Git commit object")
+    completed = subprocess.run(
+        ["git", "-C", str(root), "show", "--no-ext-diff", f"{git_commit}:{path}"],
+        check=False,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        raise ValueError("canonical receipt is unavailable at its declared path+commit")
+    try:
+        return json.loads(completed.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            "canonical receipt at the declared path+commit is invalid JSON"
+        ) from exc
+
+
+def _load_receipt_paths_at_git_commit(
+    paths: Sequence[str],
+    git_commit: str,
+    repository_root: str | Path,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "path": _bounded_receipt_path(path),
+            "git_commit": git_commit,
+            "receipt": _receipt_at_git_commit(
+                repository_root,
+                path=path,
+                git_commit=git_commit,
+            ),
+        }
+        for path in paths
+    ]
+
+
 def _load_receipt_sources_at_git_commit(
     evidence_refs: Sequence[Mapping[str, Any]],
     repository_root: str | Path,
 ) -> list[dict[str, Any]]:
-    root = Path(repository_root)
-    if not root.is_dir():
-        raise ValueError("canonical receipt repository root does not exist")
     sources: list[dict[str, Any]] = []
     for reference in evidence_refs:
         ref = validate_evidence_ref(reference)
         if ref["kind"] != "B2_RECEIPT":
             raise ValueError("dashboard profiles require B2_RECEIPT canonical sources")
-        path = ref["source_locator"]
-        if (
-            Path(path).is_absolute()
-            or ".." in Path(path).parts
-            or not path.startswith("results/b2/")
-            or ref["source_id"] != f"B2_RECEIPT:{path}"
-        ):
+        path = _bounded_receipt_path(ref["source_locator"])
+        if ref["source_id"] != f"B2_RECEIPT:{path}":
             raise ValueError("canonical receipt locator is not a bounded B2 path")
-        revision_path = f"{ref['git_commit']}:{path}"
-        completed = subprocess.run(
-            ["git", "-C", str(root), "show", "--no-ext-diff", revision_path],
-            check=False,
-            capture_output=True,
-        )
-        if completed.returncode != 0:
-            raise ValueError(
-                "canonical receipt is unavailable at its declared path+commit"
-            )
-        try:
-            receipt = json.loads(completed.stdout.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(
-                "canonical receipt at the declared path+commit is invalid JSON"
-            ) from exc
         sources.append(
             {
                 "path": path,
                 "git_commit": ref["git_commit"],
-                "receipt": receipt,
+                "receipt": _receipt_at_git_commit(
+                    repository_root,
+                    path=path,
+                    git_commit=ref["git_commit"],
+                ),
             }
         )
     return sources
+
+
+def _bind_receipt_sources_to_git(
+    receipt_sources: Iterable[Mapping[str, Any]],
+    repository_root: str | Path,
+) -> list[dict[str, Any]]:
+    """Return exact-Git sources only after rejecting any claimed-source mismatch."""
+
+    claimed = _normalize_receipt_sources(receipt_sources)
+    exact = _normalize_receipt_sources(
+        _load_receipt_sources_at_git_commit(
+            [item["evidence_ref"] for item in claimed],
+            repository_root,
+        )
+    )
+    claimed_by_id = {
+        item["evidence_ref"]["source_id"]: item for item in claimed
+    }
+    exact_by_id = {item["evidence_ref"]["source_id"]: item for item in exact}
+    if (
+        len(claimed_by_id) != len(claimed)
+        or len(exact_by_id) != len(exact)
+        or claimed_by_id != exact_by_id
+    ):
+        raise ValueError(
+            "claimed receipt sources do not match exact Git path+commit evidence"
+        )
+    return exact
 
 
 def _profile_id(receipt: Mapping[str, Any]) -> str:
@@ -649,6 +723,7 @@ def build_dashboard_projection(
     declared_source_ids: Sequence[str],
     observed_at: str,
     snapshot_id: str,
+    repository_root: str | Path | None = None,
 ) -> dict[str, Any]:
     sources = [dict(source) for source in receipt_sources]
     declared = list(declared_source_ids)
@@ -659,15 +734,20 @@ def build_dashboard_projection(
     if not isinstance(snapshot_id, str) or not snapshot_id.strip():
         raise ValueError("snapshot_id must be a non-empty string")
 
-    normalized = _normalize_receipt_sources(sources)
-    observed_ids = [item["evidence_ref"]["source_id"] for item in normalized]
+    claimed = _normalize_receipt_sources(sources)
+    observed_ids = [item["evidence_ref"]["source_id"] for item in claimed]
     if len(observed_ids) != len(set(observed_ids)):
         raise ValueError("duplicate canonical source identity")
     if set(observed_ids) != set(declared):
         raise ValueError("global projection requires the complete declared source set")
-    commits = {item["evidence_ref"]["git_commit"] for item in normalized}
+    commits = {item["evidence_ref"]["git_commit"] for item in claimed}
     if len(commits) != 1:
         raise ValueError("one static snapshot cannot silently mix git contexts")
+    if repository_root is None:
+        raise ValueError(
+            "repository_root is required to bind receipt sources to exact Git evidence"
+        )
+    normalized = _bind_receipt_sources_to_git(sources, repository_root)
 
     profiles: list[dict[str, Any]] = []
     for item in normalized:
@@ -843,12 +923,17 @@ def verify_dashboard_projection(
         raise ValueError("source_manifest evidence refs do not reproduce included identities")
     if any(ref["git_commit"] != snapshot["git_commit"] for ref in manifest_refs):
         raise ValueError("projection cannot mix canonical git contexts")
-    if receipt_sources is not None and repository_root is not None:
-        raise ValueError("select one canonical receipt resolution mechanism")
+    root = repository_root or Path(__file__).resolve().parents[1]
     if receipt_sources is None:
-        root = repository_root or Path(__file__).resolve().parents[1]
-        receipt_sources = _load_receipt_sources_at_git_commit(manifest_refs, root)
-    canonical_sources = _normalize_receipt_sources(receipt_sources)
+        canonical_sources = _normalize_receipt_sources(
+            _load_receipt_sources_at_git_commit(manifest_refs, root)
+        )
+    else:
+        if repository_root is None:
+            raise ValueError(
+                "caller-supplied receipt sources require repository_root for exact Git binding"
+            )
+        canonical_sources = _bind_receipt_sources_to_git(receipt_sources, root)
     canonical_by_id = {
         item["evidence_ref"]["source_id"]: item for item in canonical_sources
     }
@@ -1043,8 +1128,13 @@ def validate_metric_observation(document: object) -> dict[str, Any]:
         _number(value, "metric observation.value")
     if observation["terminal_status"] not in TERMINAL_STATUSES:
         raise ValueError("metric observation terminal status is unsupported")
-    if not isinstance(observation["hard_invariant_pass"], bool):
-        raise ValueError("hard_invariant_pass must be boolean")
+    hard_invariant_pass = observation["hard_invariant_pass"]
+    if hard_invariant_pass is not None and not isinstance(hard_invariant_pass, bool):
+        raise ValueError("hard_invariant_pass must be boolean or null")
+    if observation["terminal_status"] == "PASS" and hard_invariant_pass is not True:
+        raise ValueError("PASS requires hard_invariant_pass=true")
+    if observation["terminal_status"] == "FAIL" and hard_invariant_pass is not False:
+        raise ValueError("FAIL requires hard_invariant_pass=false")
     if observation["provenance_state"] not in PROVENANCE_STATES:
         raise ValueError("metric provenance state is unsupported")
     if observation["causal_attribution"] not in PROVENANCE_STATES:
@@ -1056,7 +1146,21 @@ def validate_metric_observation(document: object) -> dict[str, Any]:
 
 def compute_quality_delta(current: object, baseline: object | None) -> dict[str, Any]:
     current_row = validate_metric_observation(current)
+    current_hard_failure = (
+        current_row["hard_invariant_pass"] is False
+        or current_row["terminal_status"] == "FAIL"
+    )
     if baseline is None:
+        if current_hard_failure:
+            return {
+                "terminal_status": "FAIL",
+                "reason": "HARD_INVARIANT_FAILURE",
+                "baseline_value": None,
+                "current_value": current_row["value"],
+                "delta": None,
+                "current_evidence_ref": current_row["evidence_ref"],
+                "baseline_evidence_ref": None,
+            }
         return {
             "terminal_status": "NOT_EVALUABLE",
             "reason": "NO_BASELINE",
@@ -1068,7 +1172,14 @@ def compute_quality_delta(current: object, baseline: object | None) -> dict[str,
         }
     baseline_row = validate_metric_observation(baseline)
     statuses = {current_row["terminal_status"], baseline_row["terminal_status"]}
-    if "ERROR" in statuses:
+    hard_failure = (
+        current_hard_failure
+        or baseline_row["hard_invariant_pass"] is False
+        or "FAIL" in statuses
+    )
+    if hard_failure:
+        status, reason = "FAIL", "HARD_INVARIANT_FAILURE"
+    elif "ERROR" in statuses:
         status, reason = "ERROR", "INFRASTRUCTURE_TERMINAL"
     elif "UNKNOWN" in statuses:
         status, reason = "UNKNOWN", "REQUIRED_EVIDENCE_UNRESOLVED"
@@ -1076,12 +1187,6 @@ def compute_quality_delta(current: object, baseline: object | None) -> dict[str,
         status, reason = "NOT_EVALUABLE", "INPUT_TERMINAL_NOT_COMPARABLE"
     elif current_row["comparable_key"] != baseline_row["comparable_key"]:
         status, reason = "FAIL", "NOT_COMPARABLE"
-    elif (
-        not current_row["hard_invariant_pass"]
-        or not baseline_row["hard_invariant_pass"]
-        or "FAIL" in statuses
-    ):
-        status, reason = "FAIL", "HARD_INVARIANT_FAILURE"
     elif current_row["value"] is None or baseline_row["value"] is None:
         status, reason = "UNKNOWN", "METRIC_VALUE_MISSING"
     else:
@@ -1160,7 +1265,9 @@ def load_sqlite_runs_read_only(store_path: str | Path) -> dict[str, Any]:
     }
 
 
-def _sqlite_terminal_semantics(record: Mapping[str, Any]) -> tuple[str, bool]:
+def _sqlite_terminal_semantics(
+    record: Mapping[str, Any],
+) -> tuple[str, bool | None]:
     column_status = record.get("regression_status")
     if not isinstance(column_status, str) or column_status not in TERMINAL_STATUSES:
         raise ValueError("SQLite regression_status is unsupported")
@@ -1183,7 +1290,9 @@ def _sqlite_terminal_semantics(record: Mapping[str, Any]) -> tuple[str, bool]:
         if top_level_status not in TERMINAL_STATUSES:
             raise ValueError("SQLite result terminal_status is unsupported")
         statuses.append(str(top_level_status))
-    if "ERROR" in statuses:
+    if "FAIL" in statuses:
+        terminal = "FAIL"
+    elif "ERROR" in statuses:
         terminal = "ERROR"
     elif "UNKNOWN" in statuses:
         terminal = "UNKNOWN"
@@ -1191,11 +1300,15 @@ def _sqlite_terminal_semantics(record: Mapping[str, Any]) -> tuple[str, bool]:
         terminal = "BLOCKED"
     elif "NOT_EVALUABLE" in statuses:
         terminal = "NOT_EVALUABLE"
-    elif "FAIL" in statuses:
-        terminal = "FAIL"
     else:
         terminal = "PASS"
-    return terminal, all(status == "PASS" for status in statuses)
+    if terminal == "FAIL":
+        hard_invariant_pass: bool | None = False
+    elif terminal == "PASS":
+        hard_invariant_pass = True
+    else:
+        hard_invariant_pass = None
+    return terminal, hard_invariant_pass
 
 
 def _verify_sqlite_run(run: object) -> dict[str, Any]:
@@ -1661,21 +1774,15 @@ def build_checked_dashboard(
         "results/b2/qa2-robustness-validation.json",
         "results/b2/qa3-quality-delta-validation.json",
     )
-    sources = [
-        {
-            "path": path,
-            "git_commit": source_commit,
-            "receipt": json.loads((root_path / path).read_text(encoding="utf-8")),
-        }
-        for path in paths
-    ]
+    sources = _load_receipt_paths_at_git_commit(paths, source_commit, root_path)
     projection = build_dashboard_projection(
         sources,
         declared_source_ids=[f"B2_RECEIPT:{path}" for path in paths],
         observed_at=observed_at,
         snapshot_id=f"git:{source_commit}",
+        repository_root=root_path,
     )
-    return verify_dashboard_projection(projection, receipt_sources=sources)
+    return verify_dashboard_projection(projection, repository_root=root_path)
 
 
 def render_dashboard_html(

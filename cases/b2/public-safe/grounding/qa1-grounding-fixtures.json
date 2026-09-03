@@ -1,0 +1,42 @@
+{
+  "schema_version": "b2-qa1-grounding-fixture-set/v1",
+  "privacy": "PUBLIC_SAFE",
+  "cases": [
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"entity-attribute-binding","case_id":"B2-QA1-G-EAB-KB-001","variant":"KNOWN_BAD","capability_profile":"Grounding / Entity Binding","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:4ca9a61a64b6e4c7aaca6622191c2ea450dd1e7bccba2f70b09c894ca46ea36f","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"claim":{"entity_id":"role-a","scope_id":"listing-a","attribute":"location","value":"Region-7"},"evidence":{"entity_id":"role-b","scope_id":"listing-b","attribute":"location","value":"Region-7"}},
+      "expected":{"terminal_status":"FAIL","hard_invariant_pass":false,"detected":true,"failed_invariants":["entity_attribute_evidence_binding"]},"limitations":["Synthetic case only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"entity-attribute-binding","case_id":"B2-QA1-G-EAB-CTRL-001","variant":"CONTROL","capability_profile":"Grounding / Entity Binding","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:4ca9a61a64b6e4c7aaca6622191c2ea450dd1e7bccba2f70b09c894ca46ea36f","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"claim":{"entity_id":"role-a","scope_id":"listing-a","attribute":"location","value":"Region-7"},"evidence":{"entity_id":"role-a","scope_id":"listing-a","attribute":"location","value":"Region-7"}},
+      "expected":{"terminal_status":"PASS","hard_invariant_pass":true,"detected":true,"failed_invariants":[]},"limitations":["Synthetic case only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"inventory-evidence-scope","case_id":"B2-QA1-G-INV-KB-001","variant":"KNOWN_BAD","capability_profile":"Grounding / Source Scope","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:c492cdb09582eab81fa46b60232c53df6900fa3384808b1efb49ab877e8f314c","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"claim":{"attribute":"current_count","value":1},"source":{"surface_type":"DETAIL_PAGE","page_exists":true}},
+      "expected":{"terminal_status":"FAIL","hard_invariant_pass":false,"detected":true,"failed_invariants":["claim_source_value_consistency","current_inventory_evidence_scope"]},"limitations":["Synthetic case only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"inventory-evidence-scope","case_id":"B2-QA1-G-INV-CTRL-001","variant":"CONTROL","capability_profile":"Grounding / Source Scope","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:c492cdb09582eab81fa46b60232c53df6900fa3384808b1efb49ab877e8f314c","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"claim":{"attribute":"current_count","value":0},"source":{"surface_type":"FILTERED_INVENTORY","current_count":0}},
+      "expected":{"terminal_status":"PASS","hard_invariant_pass":true,"detected":true,"failed_invariants":[]},"limitations":["Synthetic case only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"source-modality","case_id":"B2-QA1-G-MOD-KB-001","variant":"KNOWN_BAD","capability_profile":"Grounding / Evidence Level","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:d5c78738802ba20d11b5b38875864513666ae671871c43392e1b4402dd868367","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"claim":{"value":"AVAILABLE","provenance_level":"EXECUTION_SURFACE"},"source":{"value":"AVAILABLE","provenance_level":"USER_REPORTED"}},
+      "expected":{"terminal_status":"FAIL","hard_invariant_pass":false,"detected":true,"failed_invariants":["provenance_level_not_upgraded"]},"limitations":["Synthetic case only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"source-modality","case_id":"B2-QA1-G-MOD-CTRL-001","variant":"CONTROL","capability_profile":"Grounding / Evidence Level","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:d5c78738802ba20d11b5b38875864513666ae671871c43392e1b4402dd868367","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"claim":{"value":"AVAILABLE","provenance_level":"USER_REPORTED"},"source":{"value":"AVAILABLE","provenance_level":"USER_REPORTED"}},
+      "expected":{"terminal_status":"PASS","hard_invariant_pass":true,"detected":true,"failed_invariants":[]},"limitations":["Synthetic case only."]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": "b2-qa1-tool-workflow-fixture-set/v1",
+  "privacy": "PUBLIC_SAFE",
+  "cases": [
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"connector-schema-retry","case_id":"B2-QA1-T-SCHEMA-KB-001","variant":"KNOWN_BAD","capability_profile":"Tool QA / Schema Retry","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:cf633196eadb7e6190951adbde1115c21e9c4eca2d5ff2c2ec98da7c968ed9ef","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"allowed_keys":["value"],"request":{"bad_value":"x"},"outcome":{"status":"REJECTED","committed":false},"readback":{"performed":true,"state_unchanged":true},"retry":{"performed":false,"side_effect_count":0}},
+      "expected":{"terminal_status":"ERROR","hard_invariant_pass":false,"detected":true,"failed_invariants":["request_schema_valid"]},"limitations":["Local fake connector only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"connector-schema-retry","case_id":"B2-QA1-T-SCHEMA-CTRL-001","variant":"CONTROL","capability_profile":"Tool QA / Schema Retry","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:cf633196eadb7e6190951adbde1115c21e9c4eca2d5ff2c2ec98da7c968ed9ef","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"allowed_keys":["value"],"request":{"value":"x"},"outcome":{"status":"COMMITTED","committed":true},"readback":{"performed":true,"state_unchanged":false},"retry":{"performed":false,"side_effect_count":1}},
+      "expected":{"terminal_status":"PASS","hard_invariant_pass":true,"detected":true,"failed_invariants":[]},"limitations":["Local fake connector only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"capability-routing","case_id":"B2-QA1-T-ROUTE-KB-001","variant":"KNOWN_BAD","capability_profile":"Tool QA / Capability Routing","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:6be0c0a475016794b2192090270c65ec6ada26fd875bbc5fa3efbcfba95b8d02","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"registry_checked":false,"matching_action_attempted":false,"claim":"UNAVAILABLE","permission_state":"UNKNOWN","capability_state":"UNKNOWN"},
+      "expected":{"terminal_status":"FAIL","hard_invariant_pass":false,"detected":true,"failed_invariants":["discovery_before_unavailability_claim","permission_capability_separation"]},"limitations":["Synthetic tool registry only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"capability-routing","case_id":"B2-QA1-T-ROUTE-CTRL-001","variant":"CONTROL","capability_profile":"Tool QA / Capability Routing","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:6be0c0a475016794b2192090270c65ec6ada26fd875bbc5fa3efbcfba95b8d02","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"registry_checked":true,"matching_action_attempted":true,"claim":"AVAILABLE","permission_state":"GRANTED","capability_state":"AVAILABLE"},
+      "expected":{"terminal_status":"PASS","hard_invariant_pass":true,"detected":true,"failed_invariants":[]},"limitations":["Synthetic tool registry only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"destructive-write-recovery","case_id":"B2-QA1-T-WRITE-KB-001","variant":"KNOWN_BAD","capability_profile":"Agent QA / State Recovery","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:a765fbd9ea331e88c7822debffc4dd21bc7d3a43eeb014372d0c262a553b2489","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"live_target_bound":false,"revision_guard":false,"pilot_write":false,"neighbor_readback":true,"recovery_evidence":true,"side_effect_count":2},
+      "expected":{"terminal_status":"FAIL","hard_invariant_pass":false,"detected":true,"failed_invariants":["destructive_write_guard","no_duplicate_side_effects"]},"limitations":["Synthetic document state machine only."]
+    },
+    {
+      "schema_version":"b2-public-seed/v1","family_id":"destructive-write-recovery","case_id":"B2-QA1-T-WRITE-CTRL-001","variant":"CONTROL","capability_profile":"Agent QA / State Recovery","privacy":"PUBLIC_SAFE",
+      "provenance":{"kind":"ABSTRACT_PUBLIC_SEED_DIGEST","seed_digest":"sha256:a765fbd9ea331e88c7822debffc4dd21bc7d3a43eeb014372d0c262a553b2489","transformation":"mechanism-preserving synthetic reconstruction"},
+      "input":{"live_target_bound":true,"revision_guard":true,"pilot_write":true,"neighbor_readback":true,"recovery_evidence":true,"side_effect_count":1},
+      "expected":{"terminal_status":"PASS","hard_invariant_pass":true,"detected":true,"failed_invariants":[]},"limitations":["Synthetic document state machine only."]
+    }
+  ]
+}

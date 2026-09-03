@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+import sqlite3
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,7 +74,7 @@ class B2QA3Tests(unittest.TestCase):
             run_adapter_fixture(case) for case in cls.adapter_set["cases"]
         ]
 
-    def _receipt_sources(self):
+    def _receipt_sources(self, source_commit=SOURCE_COMMIT):
         paths = (
             "results/b2/qa0-contract-validation.json",
             "results/b2/qa1-grounding-validation.json",
@@ -82,7 +84,7 @@ class B2QA3Tests(unittest.TestCase):
         sources = [
             {
                 "path": path,
-                "git_commit": SOURCE_COMMIT,
+                "git_commit": source_commit,
                 "receipt": json.loads((ROOT / path).read_text(encoding="utf-8")),
             }
             for path in paths
@@ -91,7 +93,7 @@ class B2QA3Tests(unittest.TestCase):
         sources.append(
             {
                 "path": qa3_path,
-                "git_commit": SOURCE_COMMIT,
+                "git_commit": source_commit,
                 "receipt": build_qa3_receipt(self.projection_rows),
             }
         )
@@ -315,7 +317,10 @@ class B2QA3Tests(unittest.TestCase):
             )
 
     def test_dashboard_profiles_and_scalars_retain_canonical_refs(self):
-        dashboard = verify_dashboard_projection(self._dashboard())
+        sources, _ = self._receipt_sources()
+        dashboard = verify_dashboard_projection(
+            self._dashboard(), receipt_sources=sources
+        )
         manifest_ids = set(dashboard["source_manifest"]["included_source_ids"])
         self.assertEqual(5, dashboard["source_manifest"]["source_count"])
         self.assertEqual(manifest_ids, {
@@ -329,6 +334,7 @@ class B2QA3Tests(unittest.TestCase):
 
     def test_dashboard_semantic_tampering_fails_even_after_refingerprint(self):
         dashboard = self._dashboard()
+        sources, _ = self._receipt_sources()
         mutations = []
         partial = copy.deepcopy(dashboard)
         partial["source_manifest"]["included_source_ids"].pop()
@@ -352,7 +358,76 @@ class B2QA3Tests(unittest.TestCase):
         mutations.append(second_authority)
         for mutation in mutations:
             with self.subTest(mutation=mutations.index(mutation)), self.assertRaises(ValueError):
-                verify_dashboard_projection(refingerprint(mutation, "projection_fingerprint"))
+                verify_dashboard_projection(
+                    refingerprint(mutation, "projection_fingerprint"),
+                    receipt_sources=sources,
+                )
+
+    def test_dashboard_scalar_and_terminal_tampering_cannot_refingerprint_away(self):
+        dashboard = self._dashboard()
+        sources, _ = self._receipt_sources()
+        mutations = {
+            "formal_family_count": dashboard["profiles"][0]["formal_family_count"] + 1,
+            "case_count": dashboard["profiles"][0]["case_count"] + 1,
+            "known_bad_count": dashboard["profiles"][0]["known_bad_count"] + 1,
+            "control_count": dashboard["profiles"][0]["control_count"] + 1,
+            "terminal_statuses": ["PASS"],
+        }
+        for field, value in mutations.items():
+            changed = copy.deepcopy(dashboard)
+            changed["profiles"][0][field] = value
+            changed = refingerprint(changed, "projection_fingerprint")
+            with self.subTest(field=field), self.assertRaisesRegex(
+                ValueError, "does not rehydrate"
+            ):
+                verify_dashboard_projection(changed, receipt_sources=sources)
+
+    def test_dashboard_verification_resolves_exact_git_path_and_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            subprocess.run(["git", "init", "-q", str(repository)], check=True)
+            sources, declared = self._receipt_sources()
+            for source in sources:
+                path = repository / source["path"]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    json.dumps(source["receipt"], ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            subprocess.run(["git", "-C", str(repository), "add", "results/b2"], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repository),
+                    "-c",
+                    "user.name=QA3 Test",
+                    "-c",
+                    "user.email=qa3@example.invalid",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "canonical receipts",
+                ],
+                check=True,
+            )
+            commit = subprocess.run(
+                ["git", "-C", str(repository), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            bound_sources, declared = self._receipt_sources(source_commit=commit)
+            dashboard = build_dashboard_projection(
+                bound_sources,
+                declared_source_ids=declared,
+                observed_at="2026-09-03T00:00:00Z",
+                snapshot_id=f"git:{commit}",
+            )
+            verified = verify_dashboard_projection(
+                dashboard, repository_root=repository
+            )
+        self.assertEqual(commit, verified["source_snapshot"]["git_commit"])
 
     def test_metric_observation_freezes_every_comparability_dimension(self):
         row = self._observation()
@@ -437,6 +512,77 @@ class B2QA3Tests(unittest.TestCase):
         delta = sqlite_accuracy_delta(projection["runs"][0])
         self.assertEqual("PASS", delta["terminal_status"])
         self.assertEqual(0.5, delta["delta"])
+
+    def test_sqlite_non_pass_terminals_and_hard_failures_never_become_delta_pass(self):
+        scenarios = (
+            ("FAIL", None, "FAIL", "HARD_INVARIANT_FAILURE"),
+            ("UNKNOWN", None, "UNKNOWN", "REQUIRED_EVIDENCE_UNRESOLVED"),
+            ("ERROR", None, "ERROR", "INFRASTRUCTURE_TERMINAL"),
+            ("BLOCKED", None, "NOT_EVALUABLE", "INPUT_TERMINAL_NOT_COMPARABLE"),
+            ("NOT_EVALUABLE", None, "NOT_EVALUABLE", "INPUT_TERMINAL_NOT_COMPARABLE"),
+            ("PASS", "FAIL", "FAIL", "HARD_INVARIANT_FAILURE"),
+        )
+        for index, (regression_status, integration_status, expected, reason) in enumerate(scenarios):
+            result = {
+                "run_id": f"RUN-QA3-TERMINAL-{index:03d}",
+                "case_id": "SYNTHETIC-CASE-SET-v1",
+                "baseline": {"accuracy": 0.25},
+                "treatment": {"accuracy": 0.75},
+                "regression": {"status": regression_status},
+            }
+            if integration_status is not None:
+                result["integration"] = {"status": integration_status}
+            with tempfile.TemporaryDirectory() as temporary:
+                store = Path(temporary) / "runs.sqlite3"
+                persist_experiment_run(
+                    store,
+                    result,
+                    suite="historical",
+                    model="deterministic-reference",
+                    prompt_version="synthetic-v1",
+                    git_commit=SOURCE_COMMIT,
+                    latency_ms=3.0,
+                    token_cost=0.0,
+                    created_at_utc="2026-09-03T00:00:00Z",
+                )
+                run = load_sqlite_runs_read_only(store)["runs"][0]
+            delta = sqlite_accuracy_delta(run)
+            with self.subTest(regression=regression_status, integration=integration_status):
+                self.assertEqual(expected, delta["terminal_status"])
+                self.assertEqual(reason, delta["reason"])
+                self.assertIsNone(delta["delta"])
+
+    def test_sqlite_unsupported_or_disagreeing_terminal_fails_closed(self):
+        for status in ("UNSUPPORTED", "PASS"):
+            result = {
+                "run_id": f"RUN-QA3-INVALID-{status}",
+                "case_id": "SYNTHETIC-CASE-SET-v1",
+                "baseline": {"accuracy": 0.25},
+                "treatment": {"accuracy": 0.75},
+                "regression": {"status": status},
+            }
+            with tempfile.TemporaryDirectory() as temporary:
+                store = Path(temporary) / "runs.sqlite3"
+                persist_experiment_run(
+                    store,
+                    result,
+                    suite="historical",
+                    model="deterministic-reference",
+                    prompt_version="synthetic-v1",
+                    git_commit=SOURCE_COMMIT,
+                    latency_ms=3.0,
+                    token_cost=0.0,
+                    created_at_utc="2026-09-03T00:00:00Z",
+                )
+                if status == "PASS":
+                    with sqlite3.connect(store) as connection:
+                        connection.execute(
+                            "UPDATE experiment_runs SET regression_status = 'FAIL'"
+                        )
+                with self.subTest(status=status), self.assertRaisesRegex(
+                    ValueError, "unsupported|disagree"
+                ):
+                    load_sqlite_runs_read_only(store)
 
     def test_adapter_fixture_set_is_exact_and_all_outcomes_match(self):
         scenarios = {row["scenario"] for row in self.adapter_rows}
@@ -539,9 +685,10 @@ class B2QA3Tests(unittest.TestCase):
             ROOT, source_commit=source_commit, observed_at=observed_at
         )
         self.assertEqual(checked, rebuilt)
+        sources, _ = self._receipt_sources(source_commit=source_commit)
         self.assertEqual(
             DASHBOARD_HTML.read_text(encoding="utf-8"),
-            render_dashboard_html(rebuilt),
+            render_dashboard_html(rebuilt, receipt_sources=sources),
         )
         self.assertEqual("OPTIONAL_NOT_SELECTED", checked["brand_adapters"]["status"])
         self.assertEqual([], checked["brand_adapters"]["claims_unlocked"])

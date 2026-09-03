@@ -32,7 +32,12 @@ A global projection is rejected when a declared source is missing, duplicated,
 ambiguous, or bound to a different Git snapshot. A valid fingerprint alone is
 not sufficient: verification rechecks the complete manifest, counts,
 one-to-one profile/source mapping, scopes, terminal visibility, and every
-no-baseline delta row.
+no-baseline delta row. GREEN verification also resolves each canonical receipt
+at its declared repository path and Git commit (or consumes an explicitly
+supplied equivalent canonical source set), verifies the checked-receipt
+fingerprint, and rehydrates every displayed family/case/known-bad/control count
+and terminal-status set. Re-fingerprinting a tampered projection cannot replace
+that canonical readback.
 
 ## QA3-A frozen projection-integrity cases
 
@@ -78,11 +83,20 @@ snapshot and contain no compatible earlier snapshot, the checked report emits
 `NOT_EVALUABLE / NO_BASELINE` for every profile. It does not invent a trend,
 recurrence series, causal improvement, latency, token, or cost metric.
 
+SQLite accuracy deltas use the canonical run's `regression_status` together
+with matching terminal semantics inside `result_json`; optional integration or
+top-level terminals can only make the derived terminal stricter. Column/result
+status disagreement, unsupported terminals, evidence-ref mismatch, or duplicated
+accuracy values that disagree with `result_json` fail closed. Only an all-PASS
+canonical run receives `hard_invariant_pass=true` and may yield a numerical
+delta.
+
 ## Reproducible build
 
 `build_checked_dashboard` reads the five checked receipts, verifies their
-fingerprints, binds them to one full source commit, and produces canonical JSON.
-`render_dashboard_html` verifies that JSON before rendering it.
+fingerprints, binds them to one full source commit, rehydrates the projected
+summary, and produces deterministic JSON. `render_dashboard_html` repeats the
+canonical receipt binding and summary verification before rendering it.
 
 The report's `source_snapshot.git_commit` names the commit that contains the
 canonical source receipts. The later commit that adds the derived JSON/HTML can

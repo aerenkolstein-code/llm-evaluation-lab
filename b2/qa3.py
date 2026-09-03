@@ -13,6 +13,7 @@ import html
 import json
 import re
 import sqlite3
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -522,6 +523,72 @@ def receipt_evidence_ref(path: str, receipt: object, git_commit: str) -> dict[st
     )
 
 
+def _normalize_receipt_sources(
+    receipt_sources: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for index, source_value in enumerate(receipt_sources):
+        source = dict(_obj(source_value, f"receipt source {index}"))
+        if set(source) != {"path", "git_commit", "receipt"}:
+            raise ValueError(f"receipt source {index} has an invalid shape")
+        path = str(source["path"])
+        git_commit = str(source["git_commit"])
+        checked = verify_checked_receipt(source["receipt"])
+        normalized.append(
+            {
+                "receipt": checked,
+                "evidence_ref": receipt_evidence_ref(path, checked, git_commit),
+            }
+        )
+    return normalized
+
+
+def _load_receipt_sources_at_git_commit(
+    evidence_refs: Sequence[Mapping[str, Any]],
+    repository_root: str | Path,
+) -> list[dict[str, Any]]:
+    root = Path(repository_root)
+    if not root.is_dir():
+        raise ValueError("canonical receipt repository root does not exist")
+    sources: list[dict[str, Any]] = []
+    for reference in evidence_refs:
+        ref = validate_evidence_ref(reference)
+        if ref["kind"] != "B2_RECEIPT":
+            raise ValueError("dashboard profiles require B2_RECEIPT canonical sources")
+        path = ref["source_locator"]
+        if (
+            Path(path).is_absolute()
+            or ".." in Path(path).parts
+            or not path.startswith("results/b2/")
+            or ref["source_id"] != f"B2_RECEIPT:{path}"
+        ):
+            raise ValueError("canonical receipt locator is not a bounded B2 path")
+        revision_path = f"{ref['git_commit']}:{path}"
+        completed = subprocess.run(
+            ["git", "-C", str(root), "show", "--no-ext-diff", revision_path],
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            raise ValueError(
+                "canonical receipt is unavailable at its declared path+commit"
+            )
+        try:
+            receipt = json.loads(completed.stdout.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "canonical receipt at the declared path+commit is invalid JSON"
+            ) from exc
+        sources.append(
+            {
+                "path": path,
+                "git_commit": ref["git_commit"],
+                "receipt": receipt,
+            }
+        )
+    return sources
+
+
 def _profile_id(receipt: Mapping[str, Any]) -> str:
     schema = receipt.get("schema_version")
     if schema == "b2-qa0-receipt/v1":
@@ -550,6 +617,32 @@ def _family_count(receipt: Mapping[str, Any]) -> int:
     raise ValueError("checked receipt does not expose an auditable family count")
 
 
+def _receipt_profile_summary(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for field in ("case_count", "known_bad_count", "control_count"):
+        value = receipt.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"checked receipt {field} must be a non-negative integer")
+        counts[field] = value
+    terminals = _string_list(
+        receipt.get("terminal_statuses"),
+        "checked receipt terminal_statuses",
+        allow_empty=False,
+    )
+    if (
+        len(terminals) != len(set(terminals))
+        or any(status not in TERMINAL_STATUSES for status in terminals)
+    ):
+        raise ValueError("checked receipt terminal statuses are invalid")
+    return {
+        "profile_id": _profile_id(receipt),
+        "gate": receipt["gate"],
+        "formal_family_count": _family_count(receipt),
+        **counts,
+        "terminal_statuses": terminals,
+    }
+
+
 def build_dashboard_projection(
     receipt_sources: Iterable[Mapping[str, Any]],
     *,
@@ -566,13 +659,7 @@ def build_dashboard_projection(
     if not isinstance(snapshot_id, str) or not snapshot_id.strip():
         raise ValueError("snapshot_id must be a non-empty string")
 
-    normalized: list[dict[str, Any]] = []
-    for index, source in enumerate(sources):
-        if set(source) != {"path", "git_commit", "receipt"}:
-            raise ValueError(f"receipt source {index} has an invalid shape")
-        checked = verify_checked_receipt(source["receipt"])
-        ref = receipt_evidence_ref(str(source["path"]), checked, str(source["git_commit"]))
-        normalized.append({"receipt": checked, "evidence_ref": ref})
+    normalized = _normalize_receipt_sources(sources)
     observed_ids = [item["evidence_ref"]["source_id"] for item in normalized]
     if len(observed_ids) != len(set(observed_ids)):
         raise ValueError("duplicate canonical source identity")
@@ -585,17 +672,12 @@ def build_dashboard_projection(
     profiles: list[dict[str, Any]] = []
     for item in normalized:
         receipt = item["receipt"]
+        summary = _receipt_profile_summary(receipt)
         profile = {
-            "profile_id": _profile_id(receipt),
-            "gate": receipt["gate"],
-            "formal_family_count": _family_count(receipt),
-            "case_count": int(receipt["case_count"]),
-            "known_bad_count": int(receipt["known_bad_count"]),
-            "control_count": int(receipt["control_count"]),
-            "terminal_statuses": list(receipt.get("terminal_statuses", [])),
+            **summary,
             "field_semantics": "profile_checked_receipt_summary",
             "scope_type": "PROFILE",
-            "scope_id": _profile_id(receipt),
+            "scope_id": summary["profile_id"],
             "observed_at": observed_at,
             "evidence_ref": item["evidence_ref"],
         }
@@ -679,7 +761,12 @@ def build_dashboard_projection(
     return projection
 
 
-def verify_dashboard_projection(document: object) -> dict[str, Any]:
+def verify_dashboard_projection(
+    document: object,
+    *,
+    receipt_sources: Iterable[Mapping[str, Any]] | None = None,
+    repository_root: str | Path | None = None,
+) -> dict[str, Any]:
     projection = dict(_obj(document, "quality projection"))
     fingerprint = projection.pop("projection_fingerprint", None)
     required = {
@@ -756,6 +843,25 @@ def verify_dashboard_projection(document: object) -> dict[str, Any]:
         raise ValueError("source_manifest evidence refs do not reproduce included identities")
     if any(ref["git_commit"] != snapshot["git_commit"] for ref in manifest_refs):
         raise ValueError("projection cannot mix canonical git contexts")
+    if receipt_sources is not None and repository_root is not None:
+        raise ValueError("select one canonical receipt resolution mechanism")
+    if receipt_sources is None:
+        root = repository_root or Path(__file__).resolve().parents[1]
+        receipt_sources = _load_receipt_sources_at_git_commit(manifest_refs, root)
+    canonical_sources = _normalize_receipt_sources(receipt_sources)
+    canonical_by_id = {
+        item["evidence_ref"]["source_id"]: item for item in canonical_sources
+    }
+    if len(canonical_by_id) != len(canonical_sources):
+        raise ValueError("canonical receipt source identities must be unique")
+    if set(canonical_by_id) != set(included):
+        raise ValueError("canonical receipt sources do not reproduce the declared set")
+    manifest_refs_by_id = {ref["source_id"]: ref for ref in manifest_refs}
+    if any(
+        canonical_by_id[source_id]["evidence_ref"] != manifest_refs_by_id[source_id]
+        for source_id in included
+    ):
+        raise ValueError("canonical receipt refs do not match declared path+commit evidence")
 
     profiles_value = projection.get("profiles")
     if not isinstance(profiles_value, list) or not profiles_value:
@@ -798,6 +904,26 @@ def verify_dashboard_projection(document: object) -> dict[str, Any]:
         ref = validate_evidence_ref(profile.get("evidence_ref"))
         if ref["source_id"] not in included or ref["git_commit"] != snapshot["git_commit"]:
             raise ValueError("profile evidence ref is outside the declared snapshot")
+        canonical_source = canonical_by_id[ref["source_id"]]
+        if ref != canonical_source["evidence_ref"]:
+            raise ValueError("profile evidence ref does not bind to canonical receipt")
+        expected_summary = _receipt_profile_summary(canonical_source["receipt"])
+        observed_summary = {
+            key: profile[key]
+            for key in (
+                "profile_id",
+                "gate",
+                "formal_family_count",
+                "case_count",
+                "known_bad_count",
+                "control_count",
+                "terminal_statuses",
+            )
+        }
+        if observed_summary != expected_summary:
+            raise ValueError(
+                "profile scalar/status summary does not rehydrate from canonical receipt"
+            )
         profiles.append(profile)
     profile_ids = [profile["profile_id"] for profile in profiles]
     profile_ref_ids = [profile["evidence_ref"]["source_id"] for profile in profiles]
@@ -1018,7 +1144,7 @@ def load_sqlite_runs_read_only(store_path: str | Path) -> dict[str, Any]:
                 "scope": f"{record['suite']}:{record['case_suite_version']}",
             }
         )
-        records.append({**canonical_record, "evidence_ref": ref})
+        records.append(_verify_sqlite_run({**canonical_record, "evidence_ref": ref}))
     after = _sha256_bytes(path.read_bytes())
     if before != after:
         raise RuntimeError("read-only SQLite projection mutated canonical evidence")
@@ -1034,9 +1160,105 @@ def load_sqlite_runs_read_only(store_path: str | Path) -> dict[str, Any]:
     }
 
 
+def _sqlite_terminal_semantics(record: Mapping[str, Any]) -> tuple[str, bool]:
+    column_status = record.get("regression_status")
+    if not isinstance(column_status, str) or column_status not in TERMINAL_STATUSES:
+        raise ValueError("SQLite regression_status is unsupported")
+    result = _obj(record.get("result"), "SQLite canonical result")
+    regression = _obj(result.get("regression"), "SQLite canonical result regression")
+    result_status = regression.get("status")
+    if result_status != column_status:
+        raise ValueError("SQLite column and canonical result terminal statuses disagree")
+    statuses = [column_status]
+    integration = result.get("integration")
+    if integration is not None:
+        integration_status = _obj(
+            integration, "SQLite canonical result integration"
+        ).get("status")
+        if integration_status not in TERMINAL_STATUSES:
+            raise ValueError("SQLite integration terminal status is unsupported")
+        statuses.append(str(integration_status))
+    top_level_status = result.get("terminal_status")
+    if top_level_status is not None:
+        if top_level_status not in TERMINAL_STATUSES:
+            raise ValueError("SQLite result terminal_status is unsupported")
+        statuses.append(str(top_level_status))
+    if "ERROR" in statuses:
+        terminal = "ERROR"
+    elif "UNKNOWN" in statuses:
+        terminal = "UNKNOWN"
+    elif "BLOCKED" in statuses:
+        terminal = "BLOCKED"
+    elif "NOT_EVALUABLE" in statuses:
+        terminal = "NOT_EVALUABLE"
+    elif "FAIL" in statuses:
+        terminal = "FAIL"
+    else:
+        terminal = "PASS"
+    return terminal, all(status == "PASS" for status in statuses)
+
+
+def _verify_sqlite_run(run: object) -> dict[str, Any]:
+    record = dict(_obj(run, "SQLite run"))
+    required = {
+        "run_id",
+        "suite",
+        "case_suite_version",
+        "model",
+        "prompt_version",
+        "git_commit",
+        "created_at_utc",
+        "latency_ms",
+        "token_cost",
+        "baseline_accuracy",
+        "treatment_accuracy",
+        "regression_status",
+        "result",
+        "evidence_ref",
+    }
+    if set(record) != required:
+        raise ValueError("SQLite run has an invalid canonical shape")
+    ref = validate_evidence_ref(record["evidence_ref"])
+    run_id = _text(record, "run_id", "SQLite run")
+    suite = _text(record, "suite", "SQLite run")
+    case_suite_version = _text(record, "case_suite_version", "SQLite run")
+    if (
+        ref["source_id"] != f"SQLITE_RUN:{run_id}"
+        or ref["source_locator"] != f"experiment_runs/{run_id}"
+        or ref["git_commit"] != record["git_commit"]
+        or ref["scope"] != f"{suite}:{case_suite_version}"
+    ):
+        raise ValueError("SQLite run evidence ref does not reproduce canonical identity")
+    canonical_record = {
+        key: value for key, value in record.items() if key != "evidence_ref"
+    }
+    if ref["source_fingerprint"] != sha256_json(canonical_record):
+        raise ValueError("SQLite run evidence fingerprint does not reproduce")
+    result = _obj(record["result"], "SQLite canonical result")
+    if result.get("run_id") != run_id:
+        raise ValueError("SQLite metadata and canonical result run identity disagree")
+    for column, policy_name in (
+        ("baseline_accuracy", "baseline"),
+        ("treatment_accuracy", "treatment"),
+    ):
+        policy = _obj(result.get(policy_name), f"SQLite canonical result {policy_name}")
+        result_accuracy = _number(
+            policy.get("accuracy"),
+            f"SQLite canonical result {policy_name}.accuracy",
+        )
+        column_accuracy = _number(record[column], f"SQLite run.{column}")
+        if column_accuracy != result_accuracy:
+            raise ValueError(
+                f"SQLite {column} and canonical result {policy_name}.accuracy disagree"
+            )
+    _sqlite_terminal_semantics(record)
+    return record
+
+
 def sqlite_accuracy_delta(run: object) -> dict[str, Any]:
-    record = _obj(run, "SQLite run")
-    ref = validate_evidence_ref(record.get("evidence_ref"))
+    record = _verify_sqlite_run(run)
+    ref = record["evidence_ref"]
+    terminal_status, hard_invariant_pass = _sqlite_terminal_semantics(record)
     key = {
         "profile": "CORE_REGRESSION",
         "suite_id": str(record["suite"]),
@@ -1053,8 +1275,8 @@ def sqlite_accuracy_delta(run: object) -> dict[str, Any]:
         "observation_id": f"{record['run_id']}:baseline_accuracy",
         "comparable_key": key,
         "value": record["baseline_accuracy"],
-        "terminal_status": "PASS",
-        "hard_invariant_pass": True,
+        "terminal_status": terminal_status,
+        "hard_invariant_pass": hard_invariant_pass,
         "provenance_state": "VERIFIED",
         "causal_attribution": "UNKNOWN",
         "evidence_ref": ref,
@@ -1447,16 +1669,26 @@ def build_checked_dashboard(
         }
         for path in paths
     ]
-    return build_dashboard_projection(
+    projection = build_dashboard_projection(
         sources,
         declared_source_ids=[f"B2_RECEIPT:{path}" for path in paths],
         observed_at=observed_at,
         snapshot_id=f"git:{source_commit}",
     )
+    return verify_dashboard_projection(projection, receipt_sources=sources)
 
 
-def render_dashboard_html(document: object) -> str:
-    projection = verify_dashboard_projection(document)
+def render_dashboard_html(
+    document: object,
+    *,
+    receipt_sources: Iterable[Mapping[str, Any]] | None = None,
+    repository_root: str | Path | None = None,
+) -> str:
+    projection = verify_dashboard_projection(
+        document,
+        receipt_sources=receipt_sources,
+        repository_root=repository_root,
+    )
     escape = lambda value: html.escape(str(value), quote=True)
     profile_rows = []
     for profile in projection["profiles"]:

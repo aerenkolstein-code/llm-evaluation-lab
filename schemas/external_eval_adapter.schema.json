@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/external-eval-adapter.schema.json",
+  "title": "B2 QA3 Vendor-neutral Evaluation Adapter Contract",
+  "oneOf": [
+    {"$ref": "#/$defs/neutralRecord"},
+    {"$ref": "#/$defs/adapterRepresentation"},
+    {"$ref": "#/$defs/reconciliation"}
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "gitCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "terminal": {
+      "enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]
+    },
+    "provenanceState": {
+      "enum": ["VERIFIED", "USER_REPORTED", "INFERRED", "UNKNOWN"]
+    },
+    "scopeType": {
+      "enum": [
+        "PERSONAL_CURRENT",
+        "PERSONAL_HISTORY",
+        "GLOBAL_CURRENT",
+        "GLOBAL_HISTORY",
+        "RUN",
+        "PROFILE",
+        "UNKNOWN"
+      ]
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "source_id",
+        "source_locator",
+        "source_fingerprint",
+        "git_commit",
+        "scope"
+      ],
+      "properties": {
+        "kind": {"enum": ["B2_RECEIPT", "SQLITE_RUN"]},
+        "source_id": {"type": "string", "pattern": "^(B2_RECEIPT|SQLITE_RUN):.+$"},
+        "source_locator": {"type": "string", "minLength": 1},
+        "source_fingerprint": {"$ref": "#/$defs/sha256"},
+        "git_commit": {"$ref": "#/$defs/gitCommit"},
+        "scope": {"type": "string", "minLength": 1}
+      }
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_id",
+        "metric_version",
+        "definition",
+        "value",
+        "unit",
+        "scope_type",
+        "scope_id",
+        "observed_at",
+        "provenance_state",
+        "causal_attribution"
+      ],
+      "properties": {
+        "metric_id": {"type": "string", "minLength": 1},
+        "metric_version": {"type": "string", "minLength": 1},
+        "definition": {"type": "string", "minLength": 1},
+        "value": {"type": ["number", "null"]},
+        "unit": {"type": "string", "minLength": 1},
+        "scope_type": {"$ref": "#/$defs/scopeType"},
+        "scope_id": {"type": "string", "minLength": 1},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "provenance_state": {"$ref": "#/$defs/provenanceState"},
+        "causal_attribution": {"$ref": "#/$defs/provenanceState"}
+      }
+    },
+    "neutralRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_id",
+        "evidence_ref",
+        "metric",
+        "terminal_status",
+        "hard_invariant_pass"
+      ],
+      "properties": {
+        "schema_version": {"const": "b2-qa3-neutral-projection-record/v1"},
+        "record_id": {"type": "string", "minLength": 1},
+        "evidence_ref": {"$ref": "#/$defs/evidenceRef"},
+        "metric": {"$ref": "#/$defs/metric"},
+        "terminal_status": {"$ref": "#/$defs/terminal"},
+        "hard_invariant_pass": {"type": "boolean"},
+        "optional_metadata": {"type": "object"}
+      }
+    },
+    "adapterRepresentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "adapter_id",
+        "adapter_record_id",
+        "source_digest",
+        "canonical_ref",
+        "metric",
+        "terminal_status",
+        "hard_invariant_pass",
+        "writeback_permitted",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": {"const": "b2-qa3-reference-adapter/v1"},
+        "adapter_id": {"const": "vendor-neutral-reference/v1"},
+        "adapter_record_id": {"type": "string", "minLength": 1},
+        "source_digest": {"$ref": "#/$defs/sha256"},
+        "canonical_ref": {"$ref": "#/$defs/evidenceRef"},
+        "metric": {"$ref": "#/$defs/metric"},
+        "terminal_status": {"$ref": "#/$defs/terminal"},
+        "hard_invariant_pass": {"type": "boolean"},
+        "writeback_permitted": {"const": false},
+        "limitations": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "reason",
+        "mismatches",
+        "canonical_terminal_status",
+        "quality_verdict_unchanged",
+        "canonical_fingerprint_before",
+        "canonical_fingerprint_after",
+        "canonical_mutated",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": {"const": "b2-qa3-adapter-reconciliation/v1"},
+        "status": {"enum": ["PASS", "FAIL", "ERROR"]},
+        "reason": {"enum": ["RECONCILED", "NOT_RECONCILED", "ADAPTER_UNAVAILABLE"]},
+        "mismatches": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "canonical_terminal_status": {"$ref": "#/$defs/terminal"},
+        "quality_verdict_unchanged": {"const": true},
+        "canonical_fingerprint_before": {"$ref": "#/$defs/sha256"},
+        "canonical_fingerprint_after": {"$ref": "#/$defs/sha256"},
+        "canonical_mutated": {"const": false},
+        "limitations": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,386 @@
+{
+  "schema_version": "b2-qa3-adapter-fixture-set/v1",
+  "privacy": "PUBLIC_SAFE",
+  "cases": [
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-EXACT-001",
+      "scenario": "EXACT_ROUNDTRIP",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-exact-001",
+        "evidence_ref": {
+          "kind": "B2_RECEIPT",
+          "source_id": "B2_RECEIPT:results/b2/synthetic-source.json",
+          "source_locator": "results/b2/synthetic-source.json",
+          "source_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "SYNTHETIC_PROFILE_FIXTURE"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "PROFILE",
+          "scope_id": "synthetic-profile",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true
+      },
+      "mutations": [],
+      "expected": {
+        "status": "PASS",
+        "reason": "RECONCILED",
+        "required_mismatches": []
+      }
+    },
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-DIGEST-001",
+      "scenario": "DIGEST_MISMATCH",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-digest-001",
+        "evidence_ref": {
+          "kind": "SQLITE_RUN",
+          "source_id": "SQLITE_RUN:synthetic-run-digest-001",
+          "source_locator": "experiment_runs/synthetic-run-digest-001",
+          "source_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "synthetic-suite:v1"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "RUN",
+          "scope_id": "synthetic-run-digest-001",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true
+      },
+      "mutations": [
+        {
+          "path": "source_digest",
+          "operation": "SET",
+          "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "expected": {
+        "status": "FAIL",
+        "reason": "NOT_RECONCILED",
+        "required_mismatches": ["source_digest"]
+      }
+    },
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-METRIC-001",
+      "scenario": "METRIC_SEMANTICS_MISMATCH",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-metric-001",
+        "evidence_ref": {
+          "kind": "B2_RECEIPT",
+          "source_id": "B2_RECEIPT:results/b2/synthetic-source.json",
+          "source_locator": "results/b2/synthetic-source.json",
+          "source_fingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "SYNTHETIC_PROFILE_FIXTURE"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "PROFILE",
+          "scope_id": "synthetic-profile",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true
+      },
+      "mutations": [
+        {
+          "path": "metric.definition",
+          "operation": "SET",
+          "value": "a different denominator and population"
+        }
+      ],
+      "expected": {
+        "status": "FAIL",
+        "reason": "NOT_RECONCILED",
+        "required_mismatches": ["metric.definition"]
+      }
+    },
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-TERMINAL-001",
+      "scenario": "TERMINAL_MISMATCH",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-terminal-001",
+        "evidence_ref": {
+          "kind": "B2_RECEIPT",
+          "source_id": "B2_RECEIPT:results/b2/synthetic-source.json",
+          "source_locator": "results/b2/synthetic-source.json",
+          "source_fingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "SYNTHETIC_PROFILE_FIXTURE"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "PROFILE",
+          "scope_id": "synthetic-profile",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "UNKNOWN",
+        "hard_invariant_pass": false
+      },
+      "mutations": [
+        {
+          "path": "terminal_status",
+          "operation": "SET",
+          "value": "PASS"
+        }
+      ],
+      "expected": {
+        "status": "FAIL",
+        "reason": "NOT_RECONCILED",
+        "required_mismatches": ["terminal_status"]
+      }
+    },
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-SCOPE-001",
+      "scenario": "SCOPE_MISMATCH",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-scope-001",
+        "evidence_ref": {
+          "kind": "SQLITE_RUN",
+          "source_id": "SQLITE_RUN:synthetic-run-scope-001",
+          "source_locator": "experiment_runs/synthetic-run-scope-001",
+          "source_fingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "synthetic-suite:v1"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "RUN",
+          "scope_id": "synthetic-run-scope-001",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true
+      },
+      "mutations": [
+        {
+          "path": "metric.scope_type",
+          "operation": "SET",
+          "value": "PERSONAL_CURRENT"
+        }
+      ],
+      "expected": {
+        "status": "FAIL",
+        "reason": "NOT_RECONCILED",
+        "required_mismatches": ["metric.scope_type"]
+      }
+    },
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-VALUE-001",
+      "scenario": "VALUE_MISMATCH",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-value-001",
+        "evidence_ref": {
+          "kind": "B2_RECEIPT",
+          "source_id": "B2_RECEIPT:results/b2/synthetic-source.json",
+          "source_locator": "results/b2/synthetic-source.json",
+          "source_fingerprint": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "SYNTHETIC_PROFILE_FIXTURE"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "PROFILE",
+          "scope_id": "synthetic-profile",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true
+      },
+      "mutations": [
+        {
+          "path": "metric.value",
+          "operation": "SET",
+          "value": 1.0
+        }
+      ],
+      "expected": {
+        "status": "FAIL",
+        "reason": "NOT_RECONCILED",
+        "required_mismatches": ["metric.value"]
+      }
+    },
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-UNAVAILABLE-001",
+      "scenario": "ADAPTER_UNAVAILABLE",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-unavailable-001",
+        "evidence_ref": {
+          "kind": "B2_RECEIPT",
+          "source_id": "B2_RECEIPT:results/b2/synthetic-source.json",
+          "source_locator": "results/b2/synthetic-source.json",
+          "source_fingerprint": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "SYNTHETIC_PROFILE_FIXTURE"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "PROFILE",
+          "scope_id": "synthetic-profile",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true
+      },
+      "mutations": [],
+      "expected": {
+        "status": "ERROR",
+        "reason": "ADAPTER_UNAVAILABLE",
+        "required_mismatches": []
+      }
+    },
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-LOSSY-001",
+      "scenario": "LOSSY_OPTIONAL_EXPLICIT",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-lossy-001",
+        "evidence_ref": {
+          "kind": "B2_RECEIPT",
+          "source_id": "B2_RECEIPT:results/b2/synthetic-source.json",
+          "source_locator": "results/b2/synthetic-source.json",
+          "source_fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "SYNTHETIC_PROFILE_FIXTURE"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "PROFILE",
+          "scope_id": "synthetic-profile",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true,
+        "optional_metadata": {
+          "display_hint": "optional synthetic label"
+        }
+      },
+      "mutations": [],
+      "expected": {
+        "status": "PASS",
+        "reason": "RECONCILED",
+        "required_mismatches": []
+      }
+    },
+    {
+      "schema_version": "b2-qa3-adapter-fixture/v1",
+      "case_id": "B2-QA3-A-SILENT-DROP-001",
+      "scenario": "SILENT_CRITICAL_DROP",
+      "privacy": "PUBLIC_SAFE",
+      "canonical_record": {
+        "schema_version": "b2-qa3-neutral-projection-record/v1",
+        "record_id": "neutral-record-silent-drop-001",
+        "evidence_ref": {
+          "kind": "SQLITE_RUN",
+          "source_id": "SQLITE_RUN:synthetic-run-silent-drop-001",
+          "source_locator": "experiment_runs/synthetic-run-silent-drop-001",
+          "source_fingerprint": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "git_commit": "c96178af647cdb2244f3aceb415a0796746a5b01",
+          "scope": "synthetic-suite:v1"
+        },
+        "metric": {
+          "metric_id": "synthetic_accuracy",
+          "metric_version": "v1",
+          "definition": "correct cases divided by the declared synthetic case set",
+          "value": 0.75,
+          "unit": "ratio",
+          "scope_type": "RUN",
+          "scope_id": "synthetic-run-silent-drop-001",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "provenance_state": "VERIFIED",
+          "causal_attribution": "UNKNOWN"
+        },
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true
+      },
+      "mutations": [
+        {
+          "path": "metric.provenance_state",
+          "operation": "DELETE"
+        }
+      ],
+      "expected": {
+        "status": "FAIL",
+        "reason": "NOT_RECONCILED",
+        "required_mismatches": ["metric.provenance_state"]
+      }
+    }
+  ]
+}

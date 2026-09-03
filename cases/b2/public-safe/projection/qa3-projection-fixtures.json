@@ -1,0 +1,236 @@
+{
+  "schema_version": "b2-qa3-projection-fixture-set/v1",
+  "privacy": "PUBLIC_SAFE",
+  "cases": [
+    {
+      "schema_version": "b2-public-seed/v1",
+      "family_id": "full-set-projection-completeness",
+      "seed_lineage": "QA3-SEED-P01",
+      "case_id": "B2-QA3-P-COMPLETE-KB-001",
+      "variant": "KNOWN_BAD",
+      "capability_profile": "Projection Integrity / Full-set Completeness",
+      "privacy": "PUBLIC_SAFE",
+      "provenance": {
+        "kind": "ABSTRACT_PUBLIC_SEED_DIGEST",
+        "seed_digest": "sha256:064fe0ec742d5f1cb24882041a468c0d455664041b1f9fb8f7d9e5fa94709262",
+        "transformation": "mechanism-preserving synthetic reconstruction"
+      },
+      "input": {
+        "selection_predicate": "all declared immutable synthetic runs",
+        "declared_source_ids": ["run-a", "run-b", "run-c"],
+        "available_source_ids": ["run-a", "run-b", "run-c"],
+        "sampled_source_ids": ["run-a"],
+        "projected_source_ids": ["run-a"],
+        "source_identities_unambiguous": true,
+        "output_envelope_fingerprint_valid": true,
+        "claim_scope": "GLOBAL"
+      },
+      "expected": {
+        "terminal_status": "FAIL",
+        "hard_invariant_pass": false,
+        "detected": true,
+        "failed_invariants": [
+          "declared_source_set_complete",
+          "sample_not_global_evidence"
+        ]
+      },
+      "limitations": [
+        "Synthetic run identities only; no private registry or source locator."
+      ]
+    },
+    {
+      "schema_version": "b2-public-seed/v1",
+      "family_id": "full-set-projection-completeness",
+      "seed_lineage": "QA3-SEED-P01",
+      "case_id": "B2-QA3-P-COMPLETE-CTRL-001",
+      "variant": "CONTROL",
+      "capability_profile": "Projection Integrity / Full-set Completeness",
+      "privacy": "PUBLIC_SAFE",
+      "provenance": {
+        "kind": "ABSTRACT_PUBLIC_SEED_DIGEST",
+        "seed_digest": "sha256:064fe0ec742d5f1cb24882041a468c0d455664041b1f9fb8f7d9e5fa94709262",
+        "transformation": "mechanism-preserving synthetic reconstruction"
+      },
+      "input": {
+        "selection_predicate": "all declared immutable synthetic runs",
+        "declared_source_ids": ["run-a", "run-b", "run-c"],
+        "available_source_ids": ["run-a", "run-b", "run-c"],
+        "sampled_source_ids": ["run-a", "run-b", "run-c"],
+        "projected_source_ids": ["run-a", "run-b", "run-c"],
+        "source_identities_unambiguous": true,
+        "output_envelope_fingerprint_valid": true,
+        "claim_scope": "GLOBAL"
+      },
+      "expected": {
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true,
+        "detected": true,
+        "failed_invariants": []
+      },
+      "limitations": [
+        "Synthetic run identities only; no private registry or source locator."
+      ]
+    },
+    {
+      "schema_version": "b2-public-seed/v1",
+      "family_id": "metric-attribution-provenance-separation",
+      "seed_lineage": "QA3-SEED-P02",
+      "case_id": "B2-QA3-P-ATTR-KB-001",
+      "variant": "KNOWN_BAD",
+      "capability_profile": "Quality Metrics / Provenance Separation",
+      "privacy": "PUBLIC_SAFE",
+      "provenance": {
+        "kind": "ABSTRACT_PUBLIC_SEED_DIGEST",
+        "seed_digest": "sha256:8a0a293cd819fe779fe3f6184aaa961f40507985cfcd269ea80e3e7976e77b59",
+        "transformation": "mechanism-preserving synthetic reconstruction"
+      },
+      "input": {
+        "metric_id": "synthetic_success_rate",
+        "metric_version": "v1",
+        "metric_definition": "successful cases divided by the declared evaluated set",
+        "metric_value": 0.8,
+        "source_identity": "synthetic-receipt-001",
+        "scope_type": "PROFILE",
+        "scope_id": "synthetic-profile",
+        "observed_at": "2026-09-03T00:00:00Z",
+        "source_ref": "B2_RECEIPT:results/b2/synthetic-metric-receipt.json",
+        "provenance_state": "UNKNOWN",
+        "attribution_state": "VERIFIED",
+        "causal_evidence_state": "UNKNOWN",
+        "causal_narrative": true,
+        "baseline_ref": null,
+        "claimed_delta": 0
+      },
+      "expected": {
+        "terminal_status": "FAIL",
+        "hard_invariant_pass": false,
+        "detected": true,
+        "failed_invariants": [
+          "causal_attribution_evidenced",
+          "metric_value_provenance_separated",
+          "no_baseline_not_zero_delta"
+        ]
+      },
+      "limitations": [
+        "Synthetic metric only; no commerce, traffic, buyer, or customer data."
+      ]
+    },
+    {
+      "schema_version": "b2-public-seed/v1",
+      "family_id": "metric-attribution-provenance-separation",
+      "seed_lineage": "QA3-SEED-P02",
+      "case_id": "B2-QA3-P-ATTR-CTRL-001",
+      "variant": "CONTROL",
+      "capability_profile": "Quality Metrics / Provenance Separation",
+      "privacy": "PUBLIC_SAFE",
+      "provenance": {
+        "kind": "ABSTRACT_PUBLIC_SEED_DIGEST",
+        "seed_digest": "sha256:8a0a293cd819fe779fe3f6184aaa961f40507985cfcd269ea80e3e7976e77b59",
+        "transformation": "mechanism-preserving synthetic reconstruction"
+      },
+      "input": {
+        "metric_id": "synthetic_success_rate",
+        "metric_version": "v1",
+        "metric_definition": "successful cases divided by the declared evaluated set",
+        "metric_value": 0.8,
+        "source_identity": "synthetic-receipt-001",
+        "scope_type": "PROFILE",
+        "scope_id": "synthetic-profile",
+        "observed_at": "2026-09-03T00:00:00Z",
+        "source_ref": "B2_RECEIPT:results/b2/synthetic-metric-receipt.json",
+        "provenance_state": "UNKNOWN",
+        "attribution_state": "UNKNOWN",
+        "causal_evidence_state": "UNKNOWN",
+        "causal_narrative": false,
+        "baseline_ref": null,
+        "claimed_delta": null
+      },
+      "expected": {
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true,
+        "detected": true,
+        "failed_invariants": []
+      },
+      "limitations": [
+        "Metric value is displayable, while provenance and causal attribution remain explicit UNKNOWN."
+      ]
+    },
+    {
+      "schema_version": "b2-public-seed/v1",
+      "family_id": "dashboard-field-semantics-scope-lock",
+      "seed_lineage": "QA3-SEED-P03",
+      "case_id": "B2-QA3-P-SCOPE-KB-001",
+      "variant": "KNOWN_BAD",
+      "capability_profile": "Dashboard Semantics / Scope Lock",
+      "privacy": "PUBLIC_SAFE",
+      "provenance": {
+        "kind": "ABSTRACT_PUBLIC_SEED_DIGEST",
+        "seed_digest": "sha256:63301226e8c7805a585bc01a441259ab152d3919a95d9aeba62a6307eaeb307f",
+        "transformation": "mechanism-preserving synthetic reconstruction"
+      },
+      "input": {
+        "field_id": "mission_count",
+        "field_semantics": "global_available_inventory_count",
+        "source_semantics": "personal_current_assignment_count",
+        "scope_type": "GLOBAL_CURRENT",
+        "source_scope_type": "PERSONAL_CURRENT",
+        "scope_id": "synthetic-platform",
+        "source_scope_id": "synthetic-account",
+        "observed_at": "2026-09-03T00:00:00Z",
+        "source_ref": "SQLITE_RUN:synthetic-scope-001",
+        "displayed_value": 0,
+        "source_value": 0,
+        "aggregation_eligible": true
+      },
+      "expected": {
+        "terminal_status": "FAIL",
+        "hard_invariant_pass": false,
+        "detected": true,
+        "failed_invariants": [
+          "field_scope_preserved",
+          "field_semantics_preserved"
+        ]
+      },
+      "limitations": [
+        "Synthetic dashboard field only; no platform or account identity."
+      ]
+    },
+    {
+      "schema_version": "b2-public-seed/v1",
+      "family_id": "dashboard-field-semantics-scope-lock",
+      "seed_lineage": "QA3-SEED-P03",
+      "case_id": "B2-QA3-P-SCOPE-CTRL-001",
+      "variant": "CONTROL",
+      "capability_profile": "Dashboard Semantics / Scope Lock",
+      "privacy": "PUBLIC_SAFE",
+      "provenance": {
+        "kind": "ABSTRACT_PUBLIC_SEED_DIGEST",
+        "seed_digest": "sha256:63301226e8c7805a585bc01a441259ab152d3919a95d9aeba62a6307eaeb307f",
+        "transformation": "mechanism-preserving synthetic reconstruction"
+      },
+      "input": {
+        "field_id": "available_inventory_count",
+        "field_semantics": "global_available_inventory_count",
+        "source_semantics": "global_available_inventory_count",
+        "scope_type": "GLOBAL_CURRENT",
+        "source_scope_type": "GLOBAL_CURRENT",
+        "scope_id": "synthetic-platform",
+        "source_scope_id": "synthetic-platform",
+        "observed_at": "2026-09-03T00:00:00Z",
+        "source_ref": "SQLITE_RUN:synthetic-scope-002",
+        "displayed_value": 0,
+        "source_value": 0,
+        "aggregation_eligible": true
+      },
+      "expected": {
+        "terminal_status": "PASS",
+        "hard_invariant_pass": true,
+        "detected": true,
+        "failed_invariants": []
+      },
+      "limitations": [
+        "Synthetic dashboard field only; no platform or account identity."
+      ]
+    }
+  ]
+}

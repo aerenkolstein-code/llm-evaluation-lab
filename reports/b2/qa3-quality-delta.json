@@ -1,0 +1,459 @@
+{
+  "authority": "DERIVED_READ_ONLY_PROJECTION",
+  "brand_adapters": {
+    "claims_unlocked": [],
+    "status": "OPTIONAL_NOT_SELECTED"
+  },
+  "limitations": [
+    "The selected checked receipts are one snapshot, not a time series or model-version trend.",
+    "No baseline means NOT_EVALUABLE / NO_BASELINE, never zero improvement.",
+    "No live provider, paid service, private source body, or brand-specific adapter is represented.",
+    "Deleting this projection does not delete or modify any canonical receipt or SQLite run."
+  ],
+  "performance": {
+    "evidence_refs": [
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
+        "source_fingerprint": "sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7",
+        "source_id": "B2_RECEIPT:results/b2/qa0-contract-validation.json",
+        "source_locator": "results/b2/qa0-contract-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:fac03c0879300ba63f5c11ad4cf2d9201967f9f169fdcfb0fa520cf3a83cf8b4",
+        "source_id": "B2_RECEIPT:results/b2/qa1-grounding-validation.json",
+        "source_locator": "results/b2/qa1-grounding-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:a8ef0a67305f792f0d48613a2ffecb47cc1c3bb14a13d876c1ebbdad11bc932f",
+        "source_id": "B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json",
+        "source_locator": "results/b2/qa1-tool-workflow-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA2_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062",
+        "source_id": "B2_RECEIPT:results/b2/qa2-robustness-validation.json",
+        "source_locator": "results/b2/qa2-robustness-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA3_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:efaa9e76aa59db4c011ff52d0c2226e9ad09bb5ed5c969d988bd5c0744b6da9e",
+        "source_id": "B2_RECEIPT:results/b2/qa3-quality-delta-validation.json",
+        "source_locator": "results/b2/qa3-quality-delta-validation.json"
+      }
+    ],
+    "metrics": [],
+    "reason": "NO_CANONICAL_PERFORMANCE_METRICS_IN_SELECTED_RECEIPTS",
+    "terminal_status": "NOT_EVALUABLE"
+  },
+  "profiles": [
+    {
+      "case_count": 8,
+      "control_count": 4,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
+        "source_fingerprint": "sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7",
+        "source_id": "B2_RECEIPT:results/b2/qa0-contract-validation.json",
+        "source_locator": "results/b2/qa0-contract-validation.json"
+      },
+      "field_semantics": "profile_checked_receipt_summary",
+      "formal_family_count": 4,
+      "gate": "PASS",
+      "known_bad_count": 4,
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA0",
+      "scope_id": "QA0",
+      "scope_type": "PROFILE",
+      "terminal_statuses": [
+        "ERROR",
+        "FAIL",
+        "PASS"
+      ]
+    },
+    {
+      "case_count": 6,
+      "control_count": 3,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:fac03c0879300ba63f5c11ad4cf2d9201967f9f169fdcfb0fa520cf3a83cf8b4",
+        "source_id": "B2_RECEIPT:results/b2/qa1-grounding-validation.json",
+        "source_locator": "results/b2/qa1-grounding-validation.json"
+      },
+      "field_semantics": "profile_checked_receipt_summary",
+      "formal_family_count": 3,
+      "gate": "PASS",
+      "known_bad_count": 3,
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA1-GROUNDING",
+      "scope_id": "QA1-GROUNDING",
+      "scope_type": "PROFILE",
+      "terminal_statuses": [
+        "FAIL",
+        "PASS"
+      ]
+    },
+    {
+      "case_count": 6,
+      "control_count": 3,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:a8ef0a67305f792f0d48613a2ffecb47cc1c3bb14a13d876c1ebbdad11bc932f",
+        "source_id": "B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json",
+        "source_locator": "results/b2/qa1-tool-workflow-validation.json"
+      },
+      "field_semantics": "profile_checked_receipt_summary",
+      "formal_family_count": 3,
+      "gate": "PASS",
+      "known_bad_count": 3,
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA1-TOOL_AGENT",
+      "scope_id": "QA1-TOOL_AGENT",
+      "scope_type": "PROFILE",
+      "terminal_statuses": [
+        "ERROR",
+        "FAIL",
+        "PASS"
+      ]
+    },
+    {
+      "case_count": 6,
+      "control_count": 3,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA2_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062",
+        "source_id": "B2_RECEIPT:results/b2/qa2-robustness-validation.json",
+        "source_locator": "results/b2/qa2-robustness-validation.json"
+      },
+      "field_semantics": "profile_checked_receipt_summary",
+      "formal_family_count": 3,
+      "gate": "PASS",
+      "known_bad_count": 3,
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA2-SAFETY_ROBUSTNESS",
+      "scope_id": "QA2-SAFETY_ROBUSTNESS",
+      "scope_type": "PROFILE",
+      "terminal_statuses": [
+        "FAIL",
+        "PASS"
+      ]
+    },
+    {
+      "case_count": 6,
+      "control_count": 3,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA3_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:efaa9e76aa59db4c011ff52d0c2226e9ad09bb5ed5c969d988bd5c0744b6da9e",
+        "source_id": "B2_RECEIPT:results/b2/qa3-quality-delta-validation.json",
+        "source_locator": "results/b2/qa3-quality-delta-validation.json"
+      },
+      "field_semantics": "profile_checked_receipt_summary",
+      "formal_family_count": 3,
+      "gate": "PASS",
+      "known_bad_count": 3,
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA3-A-PROJECTION_INTEGRITY",
+      "scope_id": "QA3-A-PROJECTION_INTEGRITY",
+      "scope_type": "PROFILE",
+      "terminal_statuses": [
+        "FAIL",
+        "PASS"
+      ]
+    }
+  ],
+  "projection_fingerprint": "sha256:0d68545fdb9f0ba5c113a4d4287ace41ad131ea2d1ed3275a585e2133d454e44",
+  "projection_id": "B2-QA3-STATIC-QUALITY-PROJECTION-001",
+  "quality_deltas": [
+    {
+      "baseline_value": null,
+      "current_value": null,
+      "delta": null,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
+        "source_fingerprint": "sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7",
+        "source_id": "B2_RECEIPT:results/b2/qa0-contract-validation.json",
+        "source_locator": "results/b2/qa0-contract-validation.json"
+      },
+      "metric_id": "profile_gate_delta",
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA0",
+      "reason": "NO_BASELINE",
+      "scope_id": "QA0",
+      "scope_type": "PROFILE",
+      "terminal_status": "NOT_EVALUABLE"
+    },
+    {
+      "baseline_value": null,
+      "current_value": null,
+      "delta": null,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:fac03c0879300ba63f5c11ad4cf2d9201967f9f169fdcfb0fa520cf3a83cf8b4",
+        "source_id": "B2_RECEIPT:results/b2/qa1-grounding-validation.json",
+        "source_locator": "results/b2/qa1-grounding-validation.json"
+      },
+      "metric_id": "profile_gate_delta",
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA1-GROUNDING",
+      "reason": "NO_BASELINE",
+      "scope_id": "QA1-GROUNDING",
+      "scope_type": "PROFILE",
+      "terminal_status": "NOT_EVALUABLE"
+    },
+    {
+      "baseline_value": null,
+      "current_value": null,
+      "delta": null,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:a8ef0a67305f792f0d48613a2ffecb47cc1c3bb14a13d876c1ebbdad11bc932f",
+        "source_id": "B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json",
+        "source_locator": "results/b2/qa1-tool-workflow-validation.json"
+      },
+      "metric_id": "profile_gate_delta",
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA1-TOOL_AGENT",
+      "reason": "NO_BASELINE",
+      "scope_id": "QA1-TOOL_AGENT",
+      "scope_type": "PROFILE",
+      "terminal_status": "NOT_EVALUABLE"
+    },
+    {
+      "baseline_value": null,
+      "current_value": null,
+      "delta": null,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA2_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062",
+        "source_id": "B2_RECEIPT:results/b2/qa2-robustness-validation.json",
+        "source_locator": "results/b2/qa2-robustness-validation.json"
+      },
+      "metric_id": "profile_gate_delta",
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA2-SAFETY_ROBUSTNESS",
+      "reason": "NO_BASELINE",
+      "scope_id": "QA2-SAFETY_ROBUSTNESS",
+      "scope_type": "PROFILE",
+      "terminal_status": "NOT_EVALUABLE"
+    },
+    {
+      "baseline_value": null,
+      "current_value": null,
+      "delta": null,
+      "evidence_ref": {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA3_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:efaa9e76aa59db4c011ff52d0c2226e9ad09bb5ed5c969d988bd5c0744b6da9e",
+        "source_id": "B2_RECEIPT:results/b2/qa3-quality-delta-validation.json",
+        "source_locator": "results/b2/qa3-quality-delta-validation.json"
+      },
+      "metric_id": "profile_gate_delta",
+      "observed_at": "2026-09-03T05:43:28Z",
+      "profile_id": "QA3-A-PROJECTION_INTEGRITY",
+      "reason": "NO_BASELINE",
+      "scope_id": "QA3-A-PROJECTION_INTEGRITY",
+      "scope_type": "PROFILE",
+      "terminal_status": "NOT_EVALUABLE"
+    }
+  ],
+  "regression_recurrence": {
+    "evidence_refs": [
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
+        "source_fingerprint": "sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7",
+        "source_id": "B2_RECEIPT:results/b2/qa0-contract-validation.json",
+        "source_locator": "results/b2/qa0-contract-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:fac03c0879300ba63f5c11ad4cf2d9201967f9f169fdcfb0fa520cf3a83cf8b4",
+        "source_id": "B2_RECEIPT:results/b2/qa1-grounding-validation.json",
+        "source_locator": "results/b2/qa1-grounding-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:a8ef0a67305f792f0d48613a2ffecb47cc1c3bb14a13d876c1ebbdad11bc932f",
+        "source_id": "B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json",
+        "source_locator": "results/b2/qa1-tool-workflow-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA2_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062",
+        "source_id": "B2_RECEIPT:results/b2/qa2-robustness-validation.json",
+        "source_locator": "results/b2/qa2-robustness-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA3_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:efaa9e76aa59db4c011ff52d0c2226e9ad09bb5ed5c969d988bd5c0744b6da9e",
+        "source_id": "B2_RECEIPT:results/b2/qa3-quality-delta-validation.json",
+        "source_locator": "results/b2/qa3-quality-delta-validation.json"
+      }
+    ],
+    "reason": "NO_CANONICAL_RECURRENCE_SERIES",
+    "series": [],
+    "terminal_status": "NOT_EVALUABLE"
+  },
+  "schema_version": "b2-qa3-quality-delta-projection/v1",
+  "source_manifest": {
+    "completeness_status": "PASS",
+    "declared_source_ids": [
+      "B2_RECEIPT:results/b2/qa0-contract-validation.json",
+      "B2_RECEIPT:results/b2/qa1-grounding-validation.json",
+      "B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json",
+      "B2_RECEIPT:results/b2/qa2-robustness-validation.json",
+      "B2_RECEIPT:results/b2/qa3-quality-delta-validation.json"
+    ],
+    "dedupe_identity": "CanonicalEvidenceRef.source_id",
+    "evidence_refs": [
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
+        "source_fingerprint": "sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7",
+        "source_id": "B2_RECEIPT:results/b2/qa0-contract-validation.json",
+        "source_locator": "results/b2/qa0-contract-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:fac03c0879300ba63f5c11ad4cf2d9201967f9f169fdcfb0fa520cf3a83cf8b4",
+        "source_id": "B2_RECEIPT:results/b2/qa1-grounding-validation.json",
+        "source_locator": "results/b2/qa1-grounding-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:a8ef0a67305f792f0d48613a2ffecb47cc1c3bb14a13d876c1ebbdad11bc932f",
+        "source_id": "B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json",
+        "source_locator": "results/b2/qa1-tool-workflow-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA2_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062",
+        "source_id": "B2_RECEIPT:results/b2/qa2-robustness-validation.json",
+        "source_locator": "results/b2/qa2-robustness-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA3_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:efaa9e76aa59db4c011ff52d0c2226e9ad09bb5ed5c969d988bd5c0744b6da9e",
+        "source_id": "B2_RECEIPT:results/b2/qa3-quality-delta-validation.json",
+        "source_locator": "results/b2/qa3-quality-delta-validation.json"
+      }
+    ],
+    "excluded_count": 0,
+    "excluded_source_ids": [],
+    "included_count": 5,
+    "included_source_ids": [
+      "B2_RECEIPT:results/b2/qa0-contract-validation.json",
+      "B2_RECEIPT:results/b2/qa1-grounding-validation.json",
+      "B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json",
+      "B2_RECEIPT:results/b2/qa2-robustness-validation.json",
+      "B2_RECEIPT:results/b2/qa3-quality-delta-validation.json"
+    ],
+    "selection_predicate": "all approved checked B2 QA0 through QA3-A receipts in the declared snapshot",
+    "source_count": 5
+  },
+  "source_snapshot": {
+    "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+    "observed_at": "2026-09-03T05:43:28Z",
+    "single_snapshot_only": true,
+    "snapshot_id": "git:3b87db80c33ba794f44c01222a502dbf926e563d"
+  },
+  "terminal_state_visibility": {
+    "evidence_refs": [
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_QA0_FIXTURE_SET",
+        "source_fingerprint": "sha256:61c4952316575bd487d576303222e292eb32c97e14de116280f7de451b37a1a7",
+        "source_id": "B2_RECEIPT:results/b2/qa0-contract-validation.json",
+        "source_locator": "results/b2/qa0-contract-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:fac03c0879300ba63f5c11ad4cf2d9201967f9f169fdcfb0fa520cf3a83cf8b4",
+        "source_id": "B2_RECEIPT:results/b2/qa1-grounding-validation.json",
+        "source_locator": "results/b2/qa1-grounding-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_FIXTURE_SET",
+        "source_fingerprint": "sha256:a8ef0a67305f792f0d48613a2ffecb47cc1c3bb14a13d876c1ebbdad11bc932f",
+        "source_id": "B2_RECEIPT:results/b2/qa1-tool-workflow-validation.json",
+        "source_locator": "results/b2/qa1-tool-workflow-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA2_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:eff381df0b1cc8d3b5ad9587dbe0e9de638fc7547f623b8416449d7a7ea70062",
+        "source_id": "B2_RECEIPT:results/b2/qa2-robustness-validation.json",
+        "source_locator": "results/b2/qa2-robustness-validation.json"
+      },
+      {
+        "git_commit": "3b87db80c33ba794f44c01222a502dbf926e563d",
+        "kind": "B2_RECEIPT",
+        "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA3_A_FIXTURE_SET",
+        "source_fingerprint": "sha256:efaa9e76aa59db4c011ff52d0c2226e9ad09bb5ed5c969d988bd5c0744b6da9e",
+        "source_id": "B2_RECEIPT:results/b2/qa3-quality-delta-validation.json",
+        "source_locator": "results/b2/qa3-quality-delta-validation.json"
+      }
+    ],
+    "preserves_error": true,
+    "preserves_not_evaluable": true,
+    "preserves_unknown": true,
+    "statuses": [
+      "ERROR",
+      "FAIL",
+      "PASS"
+    ]
+  }
+}

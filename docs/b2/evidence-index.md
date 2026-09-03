@@ -56,3 +56,32 @@ The QA2-A receipt is limited to six deterministic synthetic cases and gates expl
 `cases/b2/public-safe/qa2-track-manifest.json` is the canonical, fingerprinted three-track inventory. It binds Safety/Robustness to the exact three formal families and one receipt, and derives Fairness/LQE as `EXPLORATORY_NO_SEED` with formal family count `0` and receipt count `0`. Missing/ambiguous inventory or accidental formal artifacts fail closed. These no-seed tracks do not inherit QA2-A PASS or unlock career claims. Developer PASS is not Independent QA.
 
 Both QA1 receipts cover only their frozen deterministic synthetic sets. Each receipt gates on the exact required family set, one matched `KNOWN_BAD`/`CONTROL` pair per family, six unique case IDs, complete evidence, and deterministic family-specific public seed digests. Partial missing evidence routes to `UNKNOWN`; capability claims are bound independently from permission; retry ordering and duplicate-side-effect paths have direct contract tests. Developer green is not an Independent QA verdict.
+
+## B2 QA3 projection integrity and adapter evidence
+
+| Track | Family or scenario set | Public lineage | Cases | Checked receipt |
+|---|---|---|---:|---|
+| QA3-A | `full-set-projection-completeness` | `QA3-SEED-P01` | 2 | `qa3-quality-delta-validation.json` |
+| QA3-A | `metric-attribution-provenance-separation` | `QA3-SEED-P02` | 2 | `qa3-quality-delta-validation.json` |
+| QA3-A | `dashboard-field-semantics-scope-lock` | `QA3-SEED-P03` | 2 | `qa3-quality-delta-validation.json` |
+| QA3-B | vendor-neutral reconciliation matrix | synthetic infrastructure contract | 9 | `qa3-adapter-validation.json` |
+
+QA3-A contains exactly three public-safe mechanism lineages with one matched
+`KNOWN_BAD`/`CONTROL` pair per family. Its receipt gates source-set completeness,
+metric/provenance separation, field semantics and scope, oracle detection,
+control preservation, provenance traceability, and evidence completeness.
+
+QA3-B executes exact roundtrip, digest/semantic/terminal/scope/value mismatch,
+adapter-unavailable, disclosed optional loss, and silent critical-drop cases.
+The reference adapter is deterministic and vendor-neutral; it has no canonical
+writeback permission. Adapter unavailability is reported as infrastructure
+`ERROR` while the canonical quality verdict remains unchanged.
+
+The checked static dashboard in `reports/b2/qa3-quality-delta.json` and `.html`
+is a read-only projection of the complete declared QA0-through-QA3-A receipt
+set at one Git snapshot. Every profile and no-baseline delta row retains a
+`CanonicalEvidenceRef`. The projection explicitly marks recurrence,
+performance, and quality delta as `NOT_EVALUABLE` where the canonical snapshot
+does not contain the required series or baseline. No brand-specific adapter or
+brand-specific claim is selected. Developer PASS remains distinct from the
+Independent QA verdict.

@@ -1,0 +1,104 @@
+{
+  "case_count": 6,
+  "control_count": 3,
+  "control_false_reject_rate": 0.0,
+  "evidence_completeness_rate": 1.0,
+  "exact_family_pairing": true,
+  "expected_families": [
+    "dashboard-field-semantics-scope-lock",
+    "full-set-projection-completeness",
+    "metric-attribution-provenance-separation"
+  ],
+  "family_composition": {
+    "dashboard-field-semantics-scope-lock": {
+      "case_count": 2,
+      "provenance_digests": [
+        "sha256:63301226e8c7805a585bc01a441259ab152d3919a95d9aeba62a6307eaeb307f"
+      ],
+      "seed_lineages": [
+        "QA3-SEED-P03"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    },
+    "full-set-projection-completeness": {
+      "case_count": 2,
+      "provenance_digests": [
+        "sha256:064fe0ec742d5f1cb24882041a468c0d455664041b1f9fb8f7d9e5fa94709262"
+      ],
+      "seed_lineages": [
+        "QA3-SEED-P01"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    },
+    "metric-attribution-provenance-separation": {
+      "case_count": 2,
+      "provenance_digests": [
+        "sha256:8a0a293cd819fe779fe3f6184aaa961f40507985cfcd269ea80e3e7976e77b59"
+      ],
+      "seed_lineages": [
+        "QA3-SEED-P02"
+      ],
+      "variants": [
+        "CONTROL",
+        "KNOWN_BAD"
+      ]
+    }
+  },
+  "family_count": 3,
+  "fixture_fingerprints": {
+    "B2-QA3-P-ATTR-CTRL-001": "sha256:ab02c01c6c663728c5bdd469ad4e6f1ad33f8cedae384a42834c094ca97fed60",
+    "B2-QA3-P-ATTR-KB-001": "sha256:7b1ffa167471ccb8acfcfa7eb46999350016781ddaeefe17480d38497ff7969c",
+    "B2-QA3-P-COMPLETE-CTRL-001": "sha256:b241929cef1f40845030e41e829394b2ec48f316bdea4add57e8373f19c876ce",
+    "B2-QA3-P-COMPLETE-KB-001": "sha256:25640478eba52827e21dc5ac4db6e737a73a146478da2b70ee98269cebd24ad3",
+    "B2-QA3-P-SCOPE-CTRL-001": "sha256:dcdbba484f91acbf46ce2728d6fa91072620e2a96a277cc5b8bb14e6f9405b8d",
+    "B2-QA3-P-SCOPE-KB-001": "sha256:50b95d049034419db6c8ceec214be2691ac23d967687c83970a5dc555ea3d144"
+  },
+  "gate": "PASS",
+  "gate_criteria": {
+    "case_count": 6,
+    "control_count": 3,
+    "control_false_reject_rate": 0.0,
+    "evidence_completeness_rate": 1.0,
+    "exact_family_pairing": true,
+    "family_count": 3,
+    "known_bad_count": 3,
+    "known_bad_detection_rate": 1.0,
+    "observed_families": [
+      "dashboard-field-semantics-scope-lock",
+      "full-set-projection-completeness",
+      "metric-attribution-provenance-separation"
+    ],
+    "provenance_trace_rate": 1.0,
+    "unique_case_id_count": 6
+  },
+  "known_bad_count": 3,
+  "known_bad_detection_rate": 1.0,
+  "limitations": [
+    "Frozen synthetic deterministic projection-integrity cases only.",
+    "No live model, provider, private source body, or brand-specific adapter is evaluated.",
+    "A single checked snapshot does not establish a model trend or broad generalization claim."
+  ],
+  "observed_families": [
+    "dashboard-field-semantics-scope-lock",
+    "full-set-projection-completeness",
+    "metric-attribution-provenance-separation"
+  ],
+  "profile": "PROJECTION_INTEGRITY",
+  "provenance_trace_rate": 1.0,
+  "receipt_fingerprint": "sha256:efaa9e76aa59db4c011ff52d0c2226e9ad09bb5ed5c969d988bd5c0744b6da9e",
+  "run_id": "B2-QA3-PROJECTION-INTEGRITY-DETERMINISTIC-001",
+  "runner": "python-unittest-compatible/deterministic",
+  "schema_version": "b2-qa3-projection-integrity-receipt/v1",
+  "scope": "FROZEN_DETERMINISTIC_SYNTHETIC_QA3_A_FIXTURE_SET",
+  "terminal_statuses": [
+    "FAIL",
+    "PASS"
+  ],
+  "unique_case_id_count": 6
+}

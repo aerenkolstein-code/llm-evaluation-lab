@@ -3,7 +3,7 @@
 The bridge sends two byte-frozen UTF-8 inputs (long context + prompt) through
 one explicitly authorized provider request and returns the raw answer separately
 from a sanitized, body-free receipt. It never scores model quality, calls tools
-or search, or retries a provider automatically.
+or search, follows provider redirects, or retries a provider automatically.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -26,6 +27,8 @@ BLIND_INPUT_ENVELOPE_VERSION = "b2-blind-input-envelope/v1"
 OPENAI_COMPATIBLE_PROTOCOL = "openai-compatible-chat-completions/v1"
 AUTOMATIC_RETRIES = 0
 TERMINAL_STATUSES = {"PASS", "NOT_EVALUABLE", "ERROR"}
+_PROVIDER_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,127}$")
+_PROVIDER_RESPONSE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$")
 
 
 def _utc_now() -> str:
@@ -56,6 +59,26 @@ def _safe_error_message(message: object, secrets: Sequence[str]) -> str:
     if len(text) > 500:
         text = text[:500] + "…"
     return text
+
+
+def _safe_provider_metadata(value: object, *, kind: str) -> str | None:
+    """Keep only short ASCII token-like provider metadata; omit everything else.
+
+    These fields are provider-controlled and therefore cannot be copied verbatim
+    into a public-safe receipt. Model identifiers may contain one provider/model
+    slash; response IDs are deliberately stricter. URLs and locator-like values
+    are rejected even when they otherwise fit the character class.
+    """
+
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate or "://" in candidate:
+        return None
+    pattern = _PROVIDER_MODEL_RE if kind == "model" else _PROVIDER_RESPONSE_ID_RE
+    if pattern.fullmatch(candidate) is None:
+        return None
+    return candidate
 
 
 def build_input_envelope(context_bytes: bytes, prompt_bytes: bytes) -> bytes:
@@ -157,10 +180,22 @@ class ProviderCallError(RuntimeError):
         self.http_status = http_status
 
 
+class OutputCommitError(RuntimeError):
+    """Private output pair could not be committed without ambiguity."""
+
+
+class _NoRedirectHandler(request.HTTPRedirectHandler):
+    """Fail closed on all redirects; never construct a follow-up request."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
 Transport = Callable[[str, Mapping[str, str], Mapping[str, object], float], ProviderHTTPResponse]
 CredentialLookup = Callable[[str], str | None]
 NowFn = Callable[[], str]
 PerfFn = Callable[[], float]
+ReplaceFn = Callable[[str, str], object]
 
 
 def _default_transport(
@@ -169,12 +204,18 @@ def _default_transport(
     payload: Mapping[str, object],
     timeout_seconds: float,
 ) -> ProviderHTTPResponse:
+    """Make one POST attempt with redirects disabled."""
+
     encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = request.Request(endpoint, data=encoded, headers=dict(headers), method="POST")
+    opener = request.build_opener(_NoRedirectHandler())
     try:
-        with request.urlopen(req, timeout=timeout_seconds) as response:
+        with opener.open(req, timeout=timeout_seconds) as response:
             return ProviderHTTPResponse(response.status, response.read())
     except error.HTTPError as exc:
+        # A 30x arrives here because _NoRedirectHandler refuses to create a
+        # second request. The response body remains private and is never copied
+        # into the receipt by _invoke_openai_compatible.
         return ProviderHTTPResponse(exc.code, exc.read())
 
 
@@ -235,8 +276,6 @@ def _invoke_openai_compatible(
     }
     response = transport(endpoint, headers, payload, timeout_seconds)
     if response.status < 200 or response.status >= 300:
-        # Never include a provider error body in a public-safe receipt. Providers
-        # may echo request content, so status-only normalization is intentional.
         raise ProviderCallError(
             error_code="PROVIDER_HTTP_ERROR",
             safe_message=f"provider returned HTTP {response.status}",
@@ -280,12 +319,10 @@ def _invoke_openai_compatible(
             http_status=response.status,
         )
 
-    resolved_model = document.get("model")
-    response_id = document.get("id")
     return ProviderResult(
         raw_output=content,
-        resolved_model_id=resolved_model if isinstance(resolved_model, str) else None,
-        response_id=response_id if isinstance(response_id, str) else None,
+        resolved_model_id=_safe_provider_metadata(document.get("model"), kind="model"),
+        response_id=_safe_provider_metadata(document.get("id"), kind="response_id"),
         http_status=response.status,
         usage=_extract_usage(document.get("usage")),
     )
@@ -371,7 +408,6 @@ def run_blind_eval(
             None,
         )
 
-    # Critical gate: authorization precedes credential lookup and transport.
     if not authorize_live_call:
         return (
             _receipt(
@@ -448,7 +484,7 @@ def run_blind_eval(
             ),
             None,
         )
-    except Exception as exc:  # local transport failures are not quality evidence
+    except Exception as exc:
         return (
             _receipt(
                 req=req,
@@ -488,6 +524,106 @@ def _new_run_id() -> str:
     return f"B2-BLIND-{stamp}-{uuid.uuid4().hex[:8]}"
 
 
+def _output_paths(raw_output: str | Path, receipt_output: str | Path) -> tuple[Path, Path]:
+    raw_path = Path(raw_output).expanduser().resolve(strict=False)
+    receipt_path = Path(receipt_output).expanduser().resolve(strict=False)
+    if raw_path == receipt_path:
+        raise OutputCommitError("raw-output and receipt-output must resolve to distinct paths")
+    if raw_path.exists() and receipt_path.exists():
+        try:
+            if os.path.samefile(raw_path, receipt_path):
+                raise OutputCommitError("raw-output and receipt-output alias the same file")
+        except OSError:
+            pass
+    return raw_path, receipt_path
+
+
+def _remove_if_exists(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def _stage_bytes(path: Path, data: bytes) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        return temp_path
+    except Exception:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def commit_cli_outputs(
+    receipt: BlindEvalReceipt,
+    raw_output: str | None,
+    *,
+    raw_output_path: str | Path,
+    receipt_output_path: str | Path,
+    replace_fn: ReplaceFn = os.replace,
+) -> None:
+    """Commit one unambiguous output pair or leave neither target stale.
+
+    Both target paths are cleared before a new pair is committed. PASS stages
+    both files before publishing either target, publishes raw first and receipt
+    last, and rolls back the raw target if receipt publication fails. Non-PASS
+    publishes only the receipt and guarantees the raw target is absent.
+    """
+
+    raw_path, receipt_path = _output_paths(raw_output_path, receipt_output_path)
+    if receipt.terminal_status == "PASS" and raw_output is None:
+        raise OutputCommitError("PASS receipt requires a raw output body")
+    if receipt.terminal_status != "PASS" and raw_output is not None:
+        raise OutputCommitError("non-PASS receipt must not carry a raw output body")
+
+    raw_temp: Path | None = None
+    receipt_temp: Path | None = None
+    try:
+        if receipt.terminal_status == "PASS":
+            raw_temp = _stage_bytes(raw_path, raw_output.encode("utf-8"))
+        receipt_temp = _stage_bytes(receipt_path, receipt.render_json().encode("utf-8"))
+
+        # Clear any prior run pair only after staging succeeded.
+        _remove_if_exists(raw_path)
+        _remove_if_exists(receipt_path)
+
+        if receipt.terminal_status == "PASS":
+            replace_fn(str(raw_temp), str(raw_path))
+            raw_temp = None
+            try:
+                replace_fn(str(receipt_temp), str(receipt_path))
+                receipt_temp = None
+            except Exception:
+                # Never leave a current PASS raw artifact without its matching
+                # sanitized receipt. A failed pair publication is no evidence.
+                _remove_if_exists(raw_path)
+                _remove_if_exists(receipt_path)
+                raise
+        else:
+            replace_fn(str(receipt_temp), str(receipt_path))
+            receipt_temp = None
+    except Exception as exc:
+        _remove_if_exists(raw_path)
+        _remove_if_exists(receipt_path)
+        raise OutputCommitError(_safe_error_message(exc, ())) from exc
+    finally:
+        for temp_path in (raw_temp, receipt_temp):
+            if temp_path is not None:
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m b2.blind_eval")
     parser.add_argument("--context-file", required=True)
@@ -510,6 +646,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    try:
+        _output_paths(args.raw_output, args.receipt_output)
+    except OutputCommitError as exc:
+        raise SystemExit(f"blind-eval output path error: {exc}") from exc
+
     context_bytes = Path(args.context_file).read_bytes()
     prompt_bytes = Path(args.prompt_file).read_bytes()
     req = BlindEvalRequest(
@@ -527,9 +668,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         git_commit=args.git_commit,
     )
     receipt, raw_output = run_blind_eval(req, authorize_live_call=args.authorize_live_call)
-    Path(args.receipt_output).write_text(receipt.render_json(), encoding="utf-8")
-    if receipt.terminal_status == "PASS" and raw_output is not None:
-        Path(args.raw_output).write_text(raw_output, encoding="utf-8")
+    try:
+        commit_cli_outputs(
+            receipt,
+            raw_output,
+            raw_output_path=args.raw_output,
+            receipt_output_path=args.receipt_output,
+        )
+    except OutputCommitError as exc:
+        raise SystemExit(f"blind-eval output commit failed: {exc}") from exc
+
     print(receipt.render_json(), end="")
     if receipt.terminal_status == "PASS":
         return 0

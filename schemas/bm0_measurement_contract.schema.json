@@ -25,13 +25,27 @@
     "contract_fingerprint"
   ],
   "properties": {
-    "schema_version": {"const": "b2-bm0-measurement-contract/v1"},
-    "work_order_id": {"const": "WO-B2-BM0"},
-    "work_order_revision": {"const": "v0.2"},
-    "stage": {"const": "BOUNDED_OFFLINE_MEASUREMENT_CONTRACT"},
-    "implementation_base_sha": {"const": "901ba05b99c413d45415c474c71b5969c155dea1"},
-    "authority": {"const": "MEASUREMENT_CONTRACT_NOT_BENCHMARK_RESULT"},
-    "provider_roster_status": {"const": "NOT_SELECTED"},
+    "schema_version": {
+      "const": "b2-bm0-measurement-contract/v1"
+    },
+    "work_order_id": {
+      "const": "WO-B2-BM0"
+    },
+    "work_order_revision": {
+      "const": "v0.2"
+    },
+    "stage": {
+      "const": "BOUNDED_OFFLINE_MEASUREMENT_CONTRACT"
+    },
+    "implementation_base_sha": {
+      "const": "901ba05b99c413d45415c474c71b5969c155dea1"
+    },
+    "authority": {
+      "const": "MEASUREMENT_CONTRACT_NOT_BENCHMARK_RESULT"
+    },
+    "provider_roster_status": {
+      "const": "NOT_SELECTED"
+    },
     "artifact_bindings": {
       "type": "object",
       "additionalProperties": false,
@@ -46,28 +60,97 @@
         "schemas/bm0_observation.schema.json",
         "schemas/bm0_adjudication_record.schema.json",
         "schemas/bm0_benchmark_manifest.schema.json",
-        "schemas/bm0_measurement_contract.schema.json"
+        "schemas/bm0_measurement_contract.schema.json",
+        "cases/b2/public-safe/qa0-fixtures.json",
+        "results/b2/qa0-contract-validation.json",
+        "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
+        "results/b2/qa1-grounding-validation.json",
+        "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json",
+        "results/b2/qa1-tool-workflow-validation.json",
+        "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json",
+        "results/b2/qa2-robustness-validation.json",
+        "cases/b2/public-safe/projection/qa3-projection-fixtures.json",
+        "results/b2/qa3-quality-delta-validation.json"
       ],
       "properties": {
-        "b2/bm0.py": {"$ref": "#/$defs/sha256"},
-        "tests/test_b2_bm0.py": {"$ref": "#/$defs/sha256"},
-        "cases/b2/public-safe/benchmark/bm0-target-applicability.json": {"$ref": "#/$defs/sha256"},
-        "cases/b2/public-safe/benchmark/bm0-metric-registry.json": {"$ref": "#/$defs/sha256"},
-        "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": {"$ref": "#/$defs/sha256"},
-        "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": {"$ref": "#/$defs/sha256"},
-        "schemas/bm0_trial_identity.schema.json": {"$ref": "#/$defs/sha256"},
-        "schemas/bm0_observation.schema.json": {"$ref": "#/$defs/sha256"},
-        "schemas/bm0_adjudication_record.schema.json": {"$ref": "#/$defs/sha256"},
-        "schemas/bm0_benchmark_manifest.schema.json": {"$ref": "#/$defs/sha256"},
-        "schemas/bm0_measurement_contract.schema.json": {"$ref": "#/$defs/sha256"}
+        "b2/bm0.py": {
+          "$ref": "#/$defs/sha256"
+        },
+        "tests/test_b2_bm0.py": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/benchmark/bm0-target-applicability.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/benchmark/bm0-metric-registry.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "schemas/bm0_trial_identity.schema.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "schemas/bm0_observation.schema.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "schemas/bm0_adjudication_record.schema.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "schemas/bm0_benchmark_manifest.schema.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "schemas/bm0_measurement_contract.schema.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/qa0-fixtures.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "results/b2/qa0-contract-validation.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "results/b2/qa1-grounding-validation.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "results/b2/qa1-tool-workflow-validation.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "results/b2/qa2-robustness-validation.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "cases/b2/public-safe/projection/qa3-projection-fixtures.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "results/b2/qa3-quality-delta-validation.json": {
+          "$ref": "#/$defs/sha256"
+        }
       }
     },
     "target_contract": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["target_count", "class_counts", "default_comparable_classes", "sandbox_equivalence_status"],
+      "required": [
+        "target_count",
+        "class_counts",
+        "default_comparable_classes",
+        "sandbox_equivalence_status"
+      ],
       "properties": {
-        "target_count": {"const": 16},
+        "target_count": {
+          "const": 16
+        },
         "class_counts": {
           "const": {
             "MODEL_DIRECT": 3,
@@ -76,8 +159,15 @@
             "SYSTEM_EVAL_ONLY": 4
           }
         },
-        "default_comparable_classes": {"const": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"]},
-        "sandbox_equivalence_status": {"const": "NOT_ESTABLISHED"}
+        "default_comparable_classes": {
+          "const": [
+            "MODEL_DIRECT",
+            "MODEL_CONTEXT_GROUNDED"
+          ]
+        },
+        "sandbox_equivalence_status": {
+          "const": "NOT_ESTABLISHED"
+        }
       }
     },
     "terminal_semantics": {
@@ -87,50 +177,98 @@
       "prefixItems": [
         {
           "properties": {
-            "terminal_status": {"const": "PASS"},
-            "category": {"const": "MODEL_SCORABLE"},
-            "model_failure_denominator": {"const": true},
-            "model_failure_numerator": {"const": false}
+            "terminal_status": {
+              "const": "PASS"
+            },
+            "category": {
+              "const": "MODEL_SCORABLE"
+            },
+            "model_failure_denominator": {
+              "const": true
+            },
+            "model_failure_numerator": {
+              "const": false
+            }
           }
         },
         {
           "properties": {
-            "terminal_status": {"const": "FAIL"},
-            "category": {"const": "MODEL_SCORABLE"},
-            "model_failure_denominator": {"const": true},
-            "model_failure_numerator": {"const": true}
+            "terminal_status": {
+              "const": "FAIL"
+            },
+            "category": {
+              "const": "MODEL_SCORABLE"
+            },
+            "model_failure_denominator": {
+              "const": true
+            },
+            "model_failure_numerator": {
+              "const": true
+            }
           }
         },
         {
           "properties": {
-            "terminal_status": {"const": "NOT_EVALUABLE"},
-            "category": {"const": "NON_EVALUABLE"},
-            "model_failure_denominator": {"const": false},
-            "model_failure_numerator": {"const": false}
+            "terminal_status": {
+              "const": "NOT_EVALUABLE"
+            },
+            "category": {
+              "const": "NON_EVALUABLE"
+            },
+            "model_failure_denominator": {
+              "const": false
+            },
+            "model_failure_numerator": {
+              "const": false
+            }
           }
         },
         {
           "properties": {
-            "terminal_status": {"const": "BLOCKED"},
-            "category": {"const": "GOVERNANCE_BLOCK"},
-            "model_failure_denominator": {"const": false},
-            "model_failure_numerator": {"const": false}
+            "terminal_status": {
+              "const": "BLOCKED"
+            },
+            "category": {
+              "const": "GOVERNANCE_BLOCK"
+            },
+            "model_failure_denominator": {
+              "const": false
+            },
+            "model_failure_numerator": {
+              "const": false
+            }
           }
         },
         {
           "properties": {
-            "terminal_status": {"const": "ERROR"},
-            "category": {"const": "INFRASTRUCTURE_ERROR"},
-            "model_failure_denominator": {"const": false},
-            "model_failure_numerator": {"const": false}
+            "terminal_status": {
+              "const": "ERROR"
+            },
+            "category": {
+              "const": "INFRASTRUCTURE_ERROR"
+            },
+            "model_failure_denominator": {
+              "const": false
+            },
+            "model_failure_numerator": {
+              "const": false
+            }
           }
         },
         {
           "properties": {
-            "terminal_status": {"const": "UNKNOWN"},
-            "category": {"const": "INSUFFICIENT_EVIDENCE"},
-            "model_failure_denominator": {"const": false},
-            "model_failure_numerator": {"const": false}
+            "terminal_status": {
+              "const": "UNKNOWN"
+            },
+            "category": {
+              "const": "INSUFFICIENT_EVIDENCE"
+            },
+            "model_failure_denominator": {
+              "const": false
+            },
+            "model_failure_numerator": {
+              "const": false
+            }
           }
         }
       ],
@@ -139,12 +277,38 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["terminal_status", "category", "model_failure_denominator", "model_failure_numerator"],
+            "required": [
+              "terminal_status",
+              "category",
+              "model_failure_denominator",
+              "model_failure_numerator"
+            ],
             "properties": {
-              "terminal_status": {"enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]},
-              "category": {"enum": ["MODEL_SCORABLE", "NON_EVALUABLE", "GOVERNANCE_BLOCK", "INFRASTRUCTURE_ERROR", "INSUFFICIENT_EVIDENCE"]},
-              "model_failure_denominator": {"type": "boolean"},
-              "model_failure_numerator": {"type": "boolean"}
+              "terminal_status": {
+                "enum": [
+                  "PASS",
+                  "FAIL",
+                  "NOT_EVALUABLE",
+                  "BLOCKED",
+                  "ERROR",
+                  "UNKNOWN"
+                ]
+              },
+              "category": {
+                "enum": [
+                  "MODEL_SCORABLE",
+                  "NON_EVALUABLE",
+                  "GOVERNANCE_BLOCK",
+                  "INFRASTRUCTURE_ERROR",
+                  "INSUFFICIENT_EVIDENCE"
+                ]
+              },
+              "model_failure_denominator": {
+                "type": "boolean"
+              },
+              "model_failure_numerator": {
+                "type": "boolean"
+              }
             }
           }
         }
@@ -154,77 +318,218 @@
     "model_failure_denominator": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["unit", "corpus_pool", "eligible_classes", "included_statuses", "failure_status", "excluded_statuses", "zero_denominator", "partial_grid", "retry_semantics"],
+      "required": [
+        "unit",
+        "corpus_pool",
+        "eligible_classes",
+        "included_statuses",
+        "failure_status",
+        "excluded_statuses",
+        "zero_denominator",
+        "partial_grid",
+        "retry_semantics"
+      ],
       "properties": {
-        "unit": {"const": "UNIQUE_PREDECLARED_ATTEMPT"},
-        "corpus_pool": {"const": "PRIVATE_HIDDEN_HOLDOUT"},
-        "eligible_classes": {"const": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"]},
-        "included_statuses": {"const": ["PASS", "FAIL"]},
-        "failure_status": {"const": "FAIL"},
-        "excluded_statuses": {"const": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]},
-        "zero_denominator": {"const": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR"},
-        "partial_grid": {"const": "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS"},
-        "retry_semantics": {"const": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"}
+        "unit": {
+          "const": "UNIQUE_PREDECLARED_ATTEMPT"
+        },
+        "corpus_pool": {
+          "const": "PRIVATE_HIDDEN_HOLDOUT"
+        },
+        "eligible_classes": {
+          "const": [
+            "MODEL_DIRECT",
+            "MODEL_CONTEXT_GROUNDED"
+          ]
+        },
+        "included_statuses": {
+          "const": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "failure_status": {
+          "const": "FAIL"
+        },
+        "excluded_statuses": {
+          "const": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ]
+        },
+        "zero_denominator": {
+          "const": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR"
+        },
+        "partial_grid": {
+          "const": "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS"
+        },
+        "retry_semantics": {
+          "const": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"
+        }
       }
     },
     "sap": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sap_id", "frozen_before_hidden_access", "methods"],
+      "required": [
+        "sap_id",
+        "frozen_before_hidden_access",
+        "methods",
+        "design_rule"
+      ],
       "properties": {
-        "sap_id": {"type": "string", "minLength": 1},
-        "frozen_before_hidden_access": {"const": true},
+        "sap_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "frozen_before_hidden_access": {
+          "const": true
+        },
         "methods": {
           "type": "array",
-          "minItems": 8,
-          "maxItems": 8,
+          "minItems": 14,
+          "maxItems": 14,
           "prefixItems": [
             {
               "properties": {
-                "method_id": {"const": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1"},
-                "implementation": {"const": "fixed_attempt_stop_v1"}
+                "method_id": {
+                  "const": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1"
+                },
+                "implementation": {
+                  "const": "fixed_attempt_stop_v1"
+                }
               }
             },
             {
               "properties": {
-                "method_id": {"const": "BM0-SAP-02-IDENTITY-GRID-V1"},
-                "implementation": {"const": "validate_observation_grid_v1"}
+                "method_id": {
+                  "const": "BM0-SAP-02-IDENTITY-GRID-V1"
+                },
+                "implementation": {
+                  "const": "validate_observation_grid_v1"
+                }
               }
             },
             {
               "properties": {
-                "method_id": {"const": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1"},
-                "implementation": {"const": "typed_terminal_partition_v1"}
+                "method_id": {
+                  "const": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1"
+                },
+                "implementation": {
+                  "const": "typed_terminal_partition_v1"
+                }
               }
             },
             {
               "properties": {
-                "method_id": {"const": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1"},
-                "implementation": {"const": "model_failure_denominator_v1"}
+                "method_id": {
+                  "const": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1"
+                },
+                "implementation": {
+                  "const": "model_failure_denominator_v1"
+                }
               }
             },
             {
               "properties": {
-                "method_id": {"const": "BM0-SAP-05-WILSON-INTERVAL-V1"},
-                "implementation": {"const": "wilson_interval_v1"}
+                "method_id": {
+                  "const": "BM0-SAP-05-WILSON-INTERVAL-V1"
+                },
+                "implementation": {
+                  "const": "wilson_interval_v1"
+                }
               }
             },
             {
               "properties": {
-                "method_id": {"const": "BM0-SAP-06-PAIRED-COMPLETE-CASE-V1"},
-                "implementation": {"const": "paired_complete_case_v1"}
+                "method_id": {
+                  "const": "BM0-SAP-06-PAIRED-COMPLETE-CASE-V1"
+                },
+                "implementation": {
+                  "const": "paired_complete_case_v1"
+                }
               }
             },
             {
               "properties": {
-                "method_id": {"const": "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1"},
-                "implementation": {"const": "resolve_adjudication_v1"}
+                "method_id": {
+                  "const": "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1"
+                },
+                "implementation": {
+                  "const": "resolve_adjudication_v1"
+                }
               }
             },
             {
               "properties": {
-                "method_id": {"const": "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1"},
-                "implementation": {"const": "system_invariant_failure_rate_v1"}
+                "method_id": {
+                  "const": "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1"
+                },
+                "implementation": {
+                  "const": "system_invariant_failure_rate_v1"
+                }
+              }
+            },
+            {
+              "properties": {
+                "method_id": {
+                  "const": "BM0-SAP-09-CASE-FAILURE-PROBABILITY-V1"
+                },
+                "implementation": {
+                  "const": "case_failure_probability_v1"
+                }
+              }
+            },
+            {
+              "properties": {
+                "method_id": {
+                  "const": "BM0-SAP-10-FAMILY-CONDITIONAL-FAILURE-RATE-V1"
+                },
+                "implementation": {
+                  "const": "family_conditional_failure_rate_v1"
+                }
+              }
+            },
+            {
+              "properties": {
+                "method_id": {
+                  "const": "BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1"
+                },
+                "implementation": {
+                  "const": "fcfr_case_cluster_bootstrap_v1"
+                }
+              }
+            },
+            {
+              "properties": {
+                "method_id": {
+                  "const": "BM0-SAP-12-CONTROL-FALSE-POSITIVE-RATE-V1"
+                },
+                "implementation": {
+                  "const": "control_false_positive_rate_v1"
+                }
+              }
+            },
+            {
+              "properties": {
+                "method_id": {
+                  "const": "BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1"
+                },
+                "implementation": {
+                  "const": "within_case_instability_v1"
+                }
+              }
+            },
+            {
+              "properties": {
+                "method_id": {
+                  "const": "BM0-SAP-14-INFRASTRUCTURE-ERROR-RATE-V1"
+                },
+                "implementation": {
+                  "const": "infrastructure_error_rate_v1"
+                }
               }
             }
           ],
@@ -233,17 +538,89 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["method_id", "implementation", "purpose", "frozen_parameters"],
+                "required": [
+                  "method_id",
+                  "implementation",
+                  "purpose",
+                  "frozen_parameters"
+                ],
                 "properties": {
-                  "method_id": {"type": "string", "pattern": "^BM0-SAP-0[1-8]-[A-Z0-9-]+-V1$"},
-                  "implementation": {"type": "string", "minLength": 1},
-                  "purpose": {"type": "string", "minLength": 1},
-                  "frozen_parameters": {"type": "object"}
+                  "method_id": {
+                    "type": "string",
+                    "pattern": "^BM0-SAP-(?:0[1-9]|1[0-4])-[A-Z0-9-]+-V1$"
+                  },
+                  "implementation": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "frozen_parameters": {
+                    "type": "object"
+                  }
                 }
               }
             }
           ],
           "items": false
+        },
+        "design_rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sample_size_rule_id",
+            "purpose",
+            "statistical_unit",
+            "cluster_unit",
+            "minimum_distinct_cases_per_family_entry",
+            "maximum_distinct_cases_per_family_entry",
+            "minimum_replicates_per_case",
+            "maximum_replicates_per_case",
+            "target_precision",
+            "significance_or_superiority_claim",
+            "outcome_dependent_extension",
+            "change_control"
+          ],
+          "properties": {
+            "sample_size_rule_id": {
+              "const": "BOUNDED-PILOT-FIXED-SUITE-V1"
+            },
+            "purpose": {
+              "const": "BOUNDED_PILOT_MECHANISM_CONDITIONED_FREQUENCY_EVIDENCE"
+            },
+            "statistical_unit": {
+              "const": "DISTINCT_CASE_VARIANT"
+            },
+            "cluster_unit": {
+              "const": "CASE_ID_WITH_REPEATED_TRIALS_NESTED"
+            },
+            "minimum_distinct_cases_per_family_entry": {
+              "const": 2
+            },
+            "maximum_distinct_cases_per_family_entry": {
+              "const": 8
+            },
+            "minimum_replicates_per_case": {
+              "const": 2
+            },
+            "maximum_replicates_per_case": {
+              "const": 5
+            },
+            "target_precision": {
+              "const": "NOT_CLAIMED_BOUNDED_PILOT"
+            },
+            "significance_or_superiority_claim": {
+              "const": "FORBIDDEN"
+            },
+            "outcome_dependent_extension": {
+              "const": "FORBIDDEN"
+            },
+            "change_control": {
+              "const": "NEW_FROZEN_MANIFEST_AND_SEPARATE_APPROVAL_REQUIRED"
+            }
+          }
         }
       }
     },
@@ -309,11 +686,19 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": {"type": "string", "minLength": 1}
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
-    "contract_fingerprint": {"$ref": "#/$defs/sha256"}
+    "contract_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    }
   },
   "$defs": {
-    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
   }
 }

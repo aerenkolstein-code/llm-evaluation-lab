@@ -3,31 +3,13 @@
   "policy_id": "B2-BM0-CORPUS-POLICY-001",
   "pools": [
     {
-      "pool_id": "PUBLIC_DEVELOPMENT",
+      "pool_id": "PUBLIC_REGRESSION",
       "visibility": "PUBLIC_SAFE",
-      "purpose": "Design, scorer debugging, and documented examples visible before study freeze",
+      "purpose": "Current public-safe regression assets for engineering regression and openly disclosed benchmark slices",
       "allowed_in_primary_estimate": false,
       "content_location": "PUBLIC_REPOSITORY_ALLOWED",
       "selection_timing": "BEFORE_FROZEN_MANIFEST",
-      "lineage_role": "DEVELOPMENT_ONLY"
-    },
-    {
-      "pool_id": "PUBLIC_CONTROL",
-      "visibility": "PUBLIC_SAFE",
-      "purpose": "Matched controls for false-reject and contract-regression checks",
-      "allowed_in_primary_estimate": false,
-      "content_location": "PUBLIC_REPOSITORY_ALLOWED",
-      "selection_timing": "BEFORE_FROZEN_MANIFEST",
-      "lineage_role": "CONTROL_ONLY"
-    },
-    {
-      "pool_id": "MUTATION",
-      "visibility": "PUBLIC_SAFE_GENERATED",
-      "purpose": "Mechanism-preserving generated variants with parent lineage and mutation operator recorded",
-      "allowed_in_primary_estimate": false,
-      "content_location": "PUBLIC_REPOSITORY_ALLOWED_AFTER_PUBLIC_SAFETY_CHECK",
-      "selection_timing": "BEFORE_FROZEN_MANIFEST",
-      "lineage_role": "STRESS_TEST_ONLY"
+      "lineage_role": "ENGINEERING_REGRESSION_ONLY"
     },
     {
       "pool_id": "PRIVATE_HIDDEN_HOLDOUT",
@@ -37,6 +19,24 @@
       "content_location": "OUTSIDE_PUBLIC_REPOSITORY",
       "selection_timing": "BEFORE_EXECUTION_MANIFEST_FREEZE_BY_INDEPENDENT_CURATOR",
       "lineage_role": "PRIMARY_HOLDOUT_ONLY"
+    },
+    {
+      "pool_id": "MECHANISM_PRESERVING_MUTATION",
+      "visibility": "PUBLIC_SAFE_GENERATED",
+      "purpose": "Entity, wording, ordering, distractor, or surface variants that preserve the same failure mechanism",
+      "allowed_in_primary_estimate": false,
+      "content_location": "PUBLIC_REPOSITORY_ALLOWED_AFTER_PUBLIC_SAFETY_CHECK",
+      "selection_timing": "BEFORE_FROZEN_MANIFEST",
+      "lineage_role": "STRESS_TEST_ONLY"
+    },
+    {
+      "pool_id": "CONTROL",
+      "visibility": "PUBLIC_SAFE",
+      "purpose": "Matched controls for false-reject and contract-regression checks",
+      "allowed_in_primary_estimate": false,
+      "content_location": "PUBLIC_REPOSITORY_ALLOWED",
+      "selection_timing": "BEFORE_FROZEN_MANIFEST",
+      "lineage_role": "CONTROL_ONLY"
     }
   ],
   "split_rules": {
@@ -69,5 +69,5 @@
     "control cases as hidden model-quality evidence",
     "mutation children across train and holdout lineage"
   ],
-  "policy_fingerprint": "sha256:b52c9b747bcc3619f2b0e96af9594c715638d061693466fc21d305c74726e6a8"
+  "policy_fingerprint": "sha256:370f7ac67c404bd263461a876b7b1048dd9ce8fba2813cb4fd1396bf98f42e99"
 }

@@ -7,17 +7,27 @@
   "authority": "MEASUREMENT_CONTRACT_NOT_BENCHMARK_RESULT",
   "provider_roster_status": "NOT_SELECTED",
   "artifact_bindings": {
-    "b2/bm0.py": "sha256:fb5e5fb4fe2a086abb0ea7053bf997df8f46c856674fee548c2e2caab82d03a0",
-    "tests/test_b2_bm0.py": "sha256:a28d62b70b35bfbee02e7da2eac92a4a17676f83518db28b04ca96da7e7a2fb2",
-    "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:f7977d941237210d6cec8261c0b9e60ce1e0d62f63bce6dd948b189a82280a30",
-    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:a211c5197a0e0f059ff2a59aa06bd4c4769d8303e77e26883a1e464d2eeb20fb",
-    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:44b6b3fe730440a1d2c9b2ccc729dbc30b7f67448ee8a607d8e0314660aba030",
-    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:2ce43338e2b3eeecdb593ee7ddb4d31152900d35a39115ef52dc0a871535c9c6",
-    "schemas/bm0_trial_identity.schema.json": "sha256:6f7d5c7818d273a72fdf73d8a0acfe084dc4e01f464ea96b236facb7b4abe5c8",
-    "schemas/bm0_observation.schema.json": "sha256:b617b324cd579395ad6f65100fc9128b1b5081f282235bc78134948e626355c7",
+    "b2/bm0.py": "sha256:81f085e5fca542daa2ecd0c0972d3fc40e8bd5eb9fdc5a2fc2deca28f8c5f7e9",
+    "tests/test_b2_bm0.py": "sha256:ff62b1da4c34c75c1ac5bb4ce2a9a3423200f8c8a728222f21ae06fc76807f25",
+    "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:5a5b5192e1667b9c67d4a3d8f8c7c9dd2ef1c80ca5b3b4fa7169f8130c782df8",
+    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:77ee9c75e258f689968089167b916610d3ed2f732faaf9482b4d390b4aaa1bb6",
+    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:1658ebd5f39aadb72fc5d8321782e03be82218e8b99cfa174f90a702bd9a64be",
+    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:1134bcb8b562252c855d0c9524819e6b413e8503cd013fd743a02705b53012d6",
+    "schemas/bm0_trial_identity.schema.json": "sha256:7916394ce5a9b39ee2b92a5ff5cef86728e640c59db8642d63d336bc22c25ab2",
+    "schemas/bm0_observation.schema.json": "sha256:048131c513fbd8afd0895e6d637ec9087be7bcf433504520ecd4fd16abac5717",
     "schemas/bm0_adjudication_record.schema.json": "sha256:1871b02631970651502ea6de611e6bdc02875bcbebbf2a8b8fcba83a481a1906",
-    "schemas/bm0_benchmark_manifest.schema.json": "sha256:eb77c6d82096afa7e264f13664bf7c2bbdca7a764d0d62ffdf0990c1fea90b06",
-    "schemas/bm0_measurement_contract.schema.json": "sha256:fe476234b0d90ece7be323e79f7e19c82043e0ddfc99a5594c1b47a3d44afbaa"
+    "schemas/bm0_benchmark_manifest.schema.json": "sha256:790ab6b3194b0be4a038f32d043fb4591d91507ecd368f295afb4ad41b1433cb",
+    "schemas/bm0_measurement_contract.schema.json": "sha256:a766faad100f04b0f2ab73825679c597ea3f48ee5b8cdc0d64276f44b586cdde",
+    "cases/b2/public-safe/qa0-fixtures.json": "sha256:78bd3f2e9232f140c7027ab5488bc41cca4e3531b84bda7c5626292447677854",
+    "results/b2/qa0-contract-validation.json": "sha256:b76c73a2e4ea28a84f00eb49a066ccf31b9333638dac9f54f7722c37c16fe2d3",
+    "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json": "sha256:3a14b361bf828cafa8fba8176a576e529cfaac7b7f23247cadbc215a41973e8d",
+    "results/b2/qa1-grounding-validation.json": "sha256:ea50afde6503439e454f3c94d64725bd3c6f6fd7787b0df06989bc19868393ea",
+    "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json": "sha256:8c3a105905f266f29aa68ee4a57f3d6b07f645267caffac2c0a1d364b6a4c5c9",
+    "results/b2/qa1-tool-workflow-validation.json": "sha256:1aead58eb8fa19befa48d26c9b0c31ef3f58e5c2d7e2f08d3e6654c50b01c494",
+    "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json": "sha256:8081e2adcde4dbf3f239815a39c22a943b0dbd6e2d5cdf31c81e598090493ace",
+    "results/b2/qa2-robustness-validation.json": "sha256:073f986f9952738c9111b4e16d64577e42a9b4e6cad1e86311ea1bdcf250370f",
+    "cases/b2/public-safe/projection/qa3-projection-fixtures.json": "sha256:2db519b6f6b6c27798160629dab4965505bfe3c7b81ece47d4700f405c4c43d5",
+    "results/b2/qa3-quality-delta-validation.json": "sha256:90d35b2c492a45f8398df56073192bab505d417ba29a2a1f7ffb701c3f6f93d0"
   },
   "target_contract": {
     "target_count": 16,
@@ -27,7 +37,10 @@
       "AGENT_STANDARDIZED": 4,
       "SYSTEM_EVAL_ONLY": 4
     },
-    "default_comparable_classes": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
+    "default_comparable_classes": [
+      "MODEL_DIRECT",
+      "MODEL_CONTEXT_GROUNDED"
+    ],
     "sandbox_equivalence_status": "NOT_ESTABLISHED"
   },
   "terminal_semantics": [
@@ -71,10 +84,21 @@
   "model_failure_denominator": {
     "unit": "UNIQUE_PREDECLARED_ATTEMPT",
     "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
-    "eligible_classes": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
-    "included_statuses": ["PASS", "FAIL"],
+    "eligible_classes": [
+      "MODEL_DIRECT",
+      "MODEL_CONTEXT_GROUNDED"
+    ],
+    "included_statuses": [
+      "PASS",
+      "FAIL"
+    ],
     "failure_status": "FAIL",
-    "excluded_statuses": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+    "excluded_statuses": [
+      "NOT_EVALUABLE",
+      "BLOCKED",
+      "ERROR",
+      "UNKNOWN"
+    ],
     "zero_denominator": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR",
     "partial_grid": "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS",
     "retry_semantics": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"
@@ -82,21 +106,44 @@
   "sap": {
     "sap_id": "B2-BM0-EXECUTABLE-SAP-001",
     "frozen_before_hidden_access": true,
+    "design_rule": {
+      "sample_size_rule_id": "BOUNDED-PILOT-FIXED-SUITE-V1",
+      "purpose": "BOUNDED_PILOT_MECHANISM_CONDITIONED_FREQUENCY_EVIDENCE",
+      "statistical_unit": "DISTINCT_CASE_VARIANT",
+      "cluster_unit": "CASE_ID_WITH_REPEATED_TRIALS_NESTED",
+      "minimum_distinct_cases_per_family_entry": 2,
+      "maximum_distinct_cases_per_family_entry": 8,
+      "minimum_replicates_per_case": 2,
+      "maximum_replicates_per_case": 5,
+      "target_precision": "NOT_CLAIMED_BOUNDED_PILOT",
+      "significance_or_superiority_claim": "FORBIDDEN",
+      "outcome_dependent_extension": "FORBIDDEN",
+      "change_control": "NEW_FROZEN_MANIFEST_AND_SEPARATE_APPROVAL_REQUIRED"
+    },
     "methods": [
       {
         "method_id": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1",
         "implementation": "fixed_attempt_stop_v1",
-        "purpose": "Stop only when every predeclared attempt identity has a recorded collection receipt, without receiving outcomes or scores.",
+        "purpose": "Stop only after every predeclared attempt has a receipt, without reading outcomes, scores, or adjudication decisions.",
         "frozen_parameters": {
-          "required_event_fields": ["attempt_id", "recorded"],
-          "forbidden_event_fields": ["terminal_status", "model_failure_value", "score", "output", "adjudication_decision"],
+          "required_event_fields": [
+            "attempt_id",
+            "recorded"
+          ],
+          "forbidden_event_fields": [
+            "terminal_status",
+            "model_failure_value",
+            "score",
+            "output",
+            "adjudication_decision"
+          ],
           "decision_rule": "STOP_IFF_ALL_PREDECLARED_ATTEMPTS_RECORDED"
         }
       },
       {
         "method_id": "BM0-SAP-02-IDENTITY-GRID-V1",
         "implementation": "validate_observation_grid_v1",
-        "purpose": "Require one identity-consistent observation for every planned attempt and reject duplicates, substitutions, and unplanned rows.",
+        "purpose": "Reject duplicate, unplanned, substituted, silently-fallback, or configuration-drifted observations against the frozen identity grid.",
         "frozen_parameters": {
           "duplicate_policy": "ERROR",
           "unplanned_policy": "ERROR",
@@ -106,12 +153,31 @@
       {
         "method_id": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1",
         "implementation": "typed_terminal_partition_v1",
-        "purpose": "Partition the frozen manifest-bound observation grid into all six terminal states; reject duplicates and unplanned rows, and suppress the diagnostic rate when scheduled rows are missing.",
+        "purpose": "Expose the complete typed terminal distribution and suppress rates when any planned observation is missing.",
         "frozen_parameters": {
-          "terminal_statuses": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "terminal_statuses": [
+            "PASS",
+            "FAIL",
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
           "coercion": "FORBIDDEN",
-          "diagnostic_numerator": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
-          "diagnostic_denominator": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "diagnostic_numerator": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "diagnostic_denominator": [
+            "PASS",
+            "FAIL",
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
           "identity_source": "FROZEN_MANIFEST_GRID",
           "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
           "zero_scheduled_attempts": "NOT_EVALUABLE",
@@ -121,16 +187,31 @@
       {
         "method_id": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1",
         "implementation": "model_failure_denominator_v1",
-        "purpose": "Compute each model subject's descriptive failure rate on the complete predeclared metric-specific grid, keeping direct/context and sandboxed-agent estimates separate and suppressing outcome aggregates when rows are missing.",
+        "purpose": "Compute descriptive model or conditionally comparable agent failure rates using only PASS and FAIL.",
         "frozen_parameters": {
-          "numerator": ["FAIL"],
-          "denominator": ["PASS", "FAIL"],
-          "excluded": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "numerator": [
+            "FAIL"
+          ],
+          "denominator": [
+            "PASS",
+            "FAIL"
+          ],
+          "excluded": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
           "zero_denominator": "NOT_EVALUABLE",
           "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
           "metric_target_classes": {
-            "model_failure_rate": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
-            "sandboxed_agent_failure_rate": ["AGENT_STANDARDIZED"]
+            "model_failure_rate": [
+              "MODEL_DIRECT",
+              "MODEL_CONTEXT_GROUNDED"
+            ],
+            "sandboxed_agent_failure_rate": [
+              "AGENT_STANDARDIZED"
+            ]
           },
           "ranking": "FORBIDDEN_AT_BM0",
           "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
@@ -139,7 +220,7 @@
       {
         "method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
         "implementation": "wilson_interval_v1",
-        "purpose": "Compute a deterministic two-sided 95 percent Wilson score interval for a non-zero binary model-failure denominator.",
+        "purpose": "Compute the named deterministic two-sided 95 percent Wilson interval for a non-zero binary denominator.",
         "frozen_parameters": {
           "confidence_level": 0.95,
           "z": 1.959963984540054,
@@ -149,19 +230,53 @@
       {
         "method_id": "BM0-SAP-06-PAIRED-COMPLETE-CASE-V1",
         "implementation": "paired_complete_case_v1",
-        "purpose": "Compare two predeclared model subjects only on the same target, corpus alias, replicate, and derived retry ordinal identities that are model-scorable for both.",
+        "purpose": "Compare two models only on the same complete case, repeat, retry ordinal, configuration, scorer, and oracle identity.",
         "frozen_parameters": {
-          "pair_key": ["target_id", "corpus_item_alias", "replicate_index", "retry_ordinal"],
+          "pair_key": [
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
+            "replicate_index",
+            "retry_ordinal"
+          ],
           "compatibility_fields": [
+            "benchmark_id",
+            "contract_version",
             "target_id",
             "target_class",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
+            "mechanism_lineage_id",
+            "case_fingerprint",
+            "generator_or_mutation_version",
+            "contamination_status",
+            "exposure_status",
             "corpus_item_alias",
             "corpus_item_commitment",
             "corpus_pool_id",
             "mutation_parent_commitment",
             "prompt_template_version",
+            "prompt_fingerprint",
+            "context_fingerprint",
+            "tool_schema_fingerprint",
+            "sandbox_fingerprint",
+            "state_machine_fingerprint",
+            "capability_mode",
+            "system_wrapper_version",
+            "developer_wrapper_version",
+            "sampling_controls",
+            "reasoning_controls",
             "harness_version",
             "adapter_version",
+            "scorer_id",
+            "scorer_version",
+            "scorer_fingerprint",
+            "oracle_id",
+            "oracle_version",
+            "oracle_fingerprint",
             "replicate_index",
             "random_seed",
             "environment_fingerprint"
@@ -170,8 +285,13 @@
           "unpaired_design": "NOT_EVALUABLE",
           "identity_mismatch": "NOT_EVALUABLE",
           "metric_target_classes": {
-            "model_failure_rate": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
-            "sandboxed_agent_failure_rate": ["AGENT_STANDARDIZED"]
+            "model_failure_rate": [
+              "MODEL_DIRECT",
+              "MODEL_CONTEXT_GROUNDED"
+            ],
+            "sandboxed_agent_failure_rate": [
+              "AGENT_STANDARDIZED"
+            ]
           },
           "ranking": "NOT_EMITTED",
           "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
@@ -180,12 +300,15 @@
       {
         "method_id": "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1",
         "implementation": "resolve_adjudication_v1",
-        "purpose": "Resolve two independent blind primary records; use one predeclared distinct blind tiebreaker only for PASS versus FAIL disagreement, while UNKNOWN remains terminal and not tiebreakable.",
+        "purpose": "Resolve two independent blinded primary judgments and one predeclared tiebreaker under the frozen UNKNOWN rules.",
         "frozen_parameters": {
           "primary_records": 2,
           "distinct_adjudicators": true,
           "tiebreakers_on_disagreement": 1,
-          "tiebreak_eligible_decisions": ["PASS", "FAIL"],
+          "tiebreak_eligible_decisions": [
+            "PASS",
+            "FAIL"
+          ],
           "unknown_semantics": "TERMINAL_NOT_TIEBREAKABLE",
           "identity_blinding": true,
           "peer_decision_blinding": true
@@ -194,17 +317,153 @@
       {
         "method_id": "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1",
         "implementation": "system_invariant_failure_rate_v1",
-        "purpose": "Compute FAIL divided by PASS plus FAIL only for the complete predeclared SYSTEM_EVAL_ONLY grid; suppress partial outcome aggregates and forbid model attribution and rankings.",
+        "purpose": "Compute system-only invariant failures without model attribution or ranking.",
         "frozen_parameters": {
           "target_class": "SYSTEM_EVAL_ONLY",
           "subject_identity": "SYSTEM_SCOPE",
-          "numerator": ["FAIL"],
-          "denominator": ["PASS", "FAIL"],
-          "excluded": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "numerator": [
+            "FAIL"
+          ],
+          "denominator": [
+            "PASS",
+            "FAIL"
+          ],
+          "excluded": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
           "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
           "model_attribution": "FORBIDDEN",
           "ranking": "FORBIDDEN",
           "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-09-CASE-FAILURE-PROBABILITY-V1",
+        "implementation": "case_failure_probability_v1",
+        "purpose": "Compute CFP for one exact model/version and one distinct case, nesting repeated trials within that case.",
+        "frozen_parameters": {
+          "statistical_unit": "VALID_MODEL_TRIAL",
+          "case_cluster_key": [
+            "model_subject_id",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id"
+          ],
+          "repeat_unit": "replicate_index",
+          "numerator": [
+            "FAIL"
+          ],
+          "denominator": [
+            "PASS",
+            "FAIL"
+          ],
+          "excluded": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "interval_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+          "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-10-FAMILY-CONDITIONAL-FAILURE-RATE-V1",
+        "implementation": "family_conditional_failure_rate_v1",
+        "purpose": "Compute FCFR as the unweighted macro mean across distinct case CFPs in one formal family entry.",
+        "frozen_parameters": {
+          "statistical_unit": "DISTINCT_CASE_VARIANT",
+          "cluster_unit": "CASE_ID",
+          "family_key": [
+            "model_subject_id",
+            "entry_id",
+            "family_id"
+          ],
+          "estimator": "UNWEIGHTED_MEAN_OF_DISTINCT_CASE_CFP",
+          "repeat_weighting": "EQUAL_WITHIN_CASE",
+          "case_weighting": "EQUAL_ACROSS_DISTINCT_CASES",
+          "uncertainty_method_id": "BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1",
+          "minimum_distinct_cases_for_uncertainty": 2,
+          "incomplete_case": "NOT_EVALUABLE/SUPPRESS_FAMILY_ESTIMATE"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1",
+        "implementation": "fcfr_case_cluster_bootstrap_v1",
+        "purpose": "Compute deterministic percentile uncertainty by resampling distinct case clusters with a frozen seed.",
+        "frozen_parameters": {
+          "method_family": "DETERMINISTIC_PERCENTILE_CASE_CLUSTER_BOOTSTRAP",
+          "cluster_unit": "DISTINCT_CASE_ID",
+          "resamples": 10000,
+          "seed": 20260904,
+          "confidence_level": 0.95,
+          "lower_percentile": 0.025,
+          "upper_percentile": 0.975,
+          "resample_repeated_trials_as_independent_cases": false,
+          "minimum_distinct_clusters": 2
+        }
+      },
+      {
+        "method_id": "BM0-SAP-12-CONTROL-FALSE-POSITIVE-RATE-V1",
+        "implementation": "control_false_positive_rate_v1",
+        "purpose": "Compute matched CONTROL false-positive frequency separately from target-case failure.",
+        "frozen_parameters": {
+          "statistical_unit": "VALID_CONTROL_TRIAL",
+          "control_selector": "variant_id=CONTROL",
+          "numerator": [
+            "FAIL"
+          ],
+          "denominator": [
+            "PASS",
+            "FAIL"
+          ],
+          "excluded": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "interval_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+          "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1",
+        "implementation": "within_case_instability_v1",
+        "purpose": "Report outcome switching across repeated model-scorable trials inside the same case.",
+        "frozen_parameters": {
+          "statistical_unit": "DISTINCT_CASE_VARIANT",
+          "cluster_unit": "CASE_ID",
+          "eligible_case": "AT_LEAST_TWO_MODEL_SCORABLE_REPLICATES",
+          "switch_definition": "BOTH_PASS_AND_FAIL_OBSERVED_WITHIN_CASE",
+          "numerator": "SWITCHING_CASE_COUNT",
+          "denominator": "ELIGIBLE_DISTINCT_CASE_COUNT",
+          "repeated_trials_are_not_distinct_cases": true
+        }
+      },
+      {
+        "method_id": "BM0-SAP-14-INFRASTRUCTURE-ERROR-RATE-V1",
+        "implementation": "infrastructure_error_rate_v1",
+        "purpose": "Report provider/network/schema/runtime ERROR attempts over all planned attempts without model attribution.",
+        "frozen_parameters": {
+          "statistical_unit": "PREDECLARED_ATTEMPT",
+          "numerator": [
+            "ERROR"
+          ],
+          "denominator": [
+            "PASS",
+            "FAIL",
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
+          "model_failure_attribution": "FORBIDDEN"
         }
       }
     ]
@@ -260,9 +519,10 @@
     "current_state": "NOT_EVALUATED"
   },
   "limitations": [
-    "BM0 freezes a measurement contract and does not execute a model, provider, agent, hidden corpus, or benchmark.",
-    "The provider/model roster, adjudication mode, and private holdout aggregate commitment remain NOT_SELECTED or NOT_COMMITTED.",
-    "Developer contract PASS is neither exact-head CI nor distinct Independent QA PASS and cannot make BM0 GREEN."
+    "This is an offline bounded-pilot measurement contract, not a benchmark result, leaderboard, ranking, or population estimate.",
+    "The exact provider/model roster, hidden cases, execution count, maximum spend, and credential path remain unselected and unauthorized.",
+    "All E01-E16 formal family entries bind their existing public-safe source fixtures and PASS receipts; future private cases require a separately frozen manifest.",
+    "No result-dependent sample extension, stopping, significance claim, or superiority claim is permitted by BM0."
   ],
-  "contract_fingerprint": "sha256:d0b27ae3371b4c444ee818f7325068abba71e1b305fc22cb3503959c34f4155a"
+  "contract_fingerprint": "sha256:019c82cc35fe60fc87eced6f3d5977b2f1daea6ad0ae34ab7e1fd1664dc716c2"
 }

@@ -7,18 +7,30 @@ from pathlib import Path
 
 from b2.bm0 import (
     BOUND_ARTIFACT_PATHS,
+    CANONICAL_FAMILY_LINEAGE,
+    CANONICAL_SOURCE_ARTIFACT_PATHS,
     DEFAULT_COMPARABLE_CLASSES,
     EXPECTED_TARGET_CLASS_COUNTS,
+    EXPECTED_METRIC_IDS,
+    HIDDEN_HOLDOUT_DECLARATION,
+    HIDDEN_HOLDOUT_DECLARATION_ID,
     IMPLEMENTATION_BASE_SHA,
     NON_MODEL_SCORABLE_TERMINALS,
     SAP_METHOD_IDS,
+    SAP_DESIGN_RULE,
     SYSTEM_SCOPE_ID,
     TARGET_CLASSES,
     TARGET_IDS_BY_CLASS,
+    TARGET_LINEAGE_BY_ID,
     assert_claim_allowed,
     build_bm0_receipt,
+    case_failure_probability_v1,
+    control_false_positive_rate_v1,
     corpus_aggregate_commitment_v1,
     fixed_attempt_stop_v1,
+    family_conditional_failure_rate_v1,
+    fcfr_case_cluster_bootstrap_v1,
+    infrastructure_error_rate_v1,
     measurement_contract_core_fingerprint_v1,
     model_failure_denominator_v1,
     paired_complete_case_v1,
@@ -30,11 +42,13 @@ from b2.bm0 import (
     validate_bm0_metric_registry,
     validate_bm0_receipt,
     validate_corpus_policy,
+    validate_canonical_family_lineage_v1,
     validate_measurement_contract,
     validate_observation,
     validate_observation_grid_v1,
     validate_target_matrix,
     validate_trial_identity,
+    within_case_instability_v1,
     wilson_interval_v1,
 )
 from b2.qa0 import TERMINAL_STATUSES, sha256_json
@@ -64,18 +78,37 @@ def identity(
     item: str = "item-001",
     replicate: int = 0,
     serial: str = "001",
+    case_id: str | None = None,
+    variant_id: str = "KNOWN_BAD",
 ) -> dict:
     resolved_target = target_id or TARGET_IDS_BY_CLASS[target_class][0]
+    lineage = TARGET_LINEAGE_BY_ID[resolved_target]
     if target_class == "SYSTEM_EVAL_ONLY":
         provider_subject = SYSTEM_SCOPE_ID
         model_subject = SYSTEM_SCOPE_ID
         model_snapshot = SYSTEM_SCOPE_ID
+        requested_model = SYSTEM_SCOPE_ID
+        expected_resolved = SYSTEM_SCOPE_ID
+        identity_certainty = "SYSTEM_SCOPE"
+        alias_limitation = "NOT_APPLICABLE_SYSTEM_SCOPE"
+        endpoint_id = SYSTEM_SCOPE_ID
+        capability_mode = "SYSTEM_EVAL"
     else:
         provider_subject = f"provider-{model}"
         model_subject = model
         model_snapshot = f"snapshot-{model}-20260904"
+        requested_model = model
+        expected_resolved = model_snapshot
+        identity_certainty = "EXACT"
+        alias_limitation = "NONE"
+        endpoint_id = "responses-v1"
+        capability_mode = "TEXT_ONLY"
+    seed = 41 + replicate
+    resolved_case_id = case_id or item
     return {
         "schema_version": "b2-bm0-trial-identity/v1",
+        "benchmark_id": "benchmark-001",
+        "contract_version": "v0.2",
         "study_id": "study-001",
         "trial_id": f"trial-{model}-{serial}",
         "attempt_id": f"attempt-{model}-{serial}",
@@ -83,8 +116,48 @@ def identity(
         "provider_subject_id": provider_subject,
         "model_subject_id": model_subject,
         "model_snapshot_id": model_snapshot,
+        "requested_model_id": requested_model,
+        "expected_resolved_model_or_version_id": expected_resolved,
+        "required_identity_certainty": identity_certainty,
+        "alias_limitation": alias_limitation,
+        "endpoint_id": endpoint_id,
+        "capability_mode": capability_mode,
+        "system_wrapper_version": "system-wrapper-v1",
+        "developer_wrapper_version": "developer-wrapper-v1",
+        "sampling_controls": {
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "max_output_tokens": 512,
+            "seed": seed,
+            "automatic_retries": 0,
+            "additional_parameters_fingerprint": "sha256:" + "1" * 64,
+        },
+        "reasoning_controls": {
+            "mode": "FIXED",
+            "effort": "medium",
+            "max_reasoning_tokens": 256,
+            "configuration_fingerprint": "sha256:" + "2" * 64,
+        },
         "target_id": resolved_target,
         "target_class": target_class,
+        "entry_id": lineage["entry_id"],
+        "family_id": lineage["family_id"],
+        "case_id": resolved_case_id,
+        "variant_id": variant_id,
+        "mechanism_lineage_id": (
+            f"{lineage['entry_id']}-{lineage['family_id']}-mechanism-v1"
+        ),
+        "case_fingerprint": sha256_json(
+            {
+                "case_id": resolved_case_id,
+                "entry_id": lineage["entry_id"],
+                "family_id": lineage["family_id"],
+                "variant_id": variant_id,
+            }
+        ),
+        "generator_or_mutation_version": "authored-case-v1",
+        "contamination_status": "ASSESSED_CLEAR",
+        "exposure_status": "PRIVATE_UNEXPOSED_BEFORE_MANIFEST_FREEZE",
         "corpus_pool_id": "PRIVATE_HIDDEN_HOLDOUT",
         "corpus_item_alias": item,
         "corpus_item_commitment": sha256_json(
@@ -92,11 +165,22 @@ def identity(
         ),
         "mutation_parent_commitment": None,
         "prompt_template_version": "prompt-v1",
+        "prompt_fingerprint": "sha256:" + "3" * 64,
+        "context_fingerprint": "sha256:" + "4" * 64,
+        "tool_schema_fingerprint": "sha256:" + "5" * 64,
+        "sandbox_fingerprint": "sha256:" + "6" * 64,
+        "state_machine_fingerprint": "sha256:" + "7" * 64,
         "harness_version": "harness-v1",
         "adapter_id": "adapter-offline",
         "adapter_version": "adapter-v1",
+        "scorer_id": "scorer-001",
+        "scorer_version": "scorer-v1",
+        "scorer_fingerprint": "sha256:" + "8" * 64,
+        "oracle_id": "oracle-001",
+        "oracle_version": "oracle-v1",
+        "oracle_fingerprint": "sha256:" + "9" * 64,
         "replicate_index": replicate,
-        "random_seed": 41 + replicate,
+        "random_seed": seed,
         "environment_fingerprint": "sha256:" + "2" * 64,
     }
 
@@ -115,15 +199,99 @@ def observation(planned: dict, status: str) -> dict:
         failure_value, evidence, hard, adjudication = None, True, None, "UNRESOLVED"
     model_failure_value = None if system_only else failure_value
     system_failure_value = failure_value if system_only else None
+    scorable = status in {"PASS", "FAIL"}
+    if system_only:
+        resolved_model = SYSTEM_SCOPE_ID
+        identity_certainty = "SYSTEM_SCOPE"
+        provider_request_id = None
+        provider_terminal = "NOT_APPLICABLE"
+        provider_http_status = None
+        attribution_status = "NOT_APPLICABLE"
+    elif scorable:
+        resolved_model = planned["expected_resolved_model_or_version_id"]
+        identity_certainty = planned["required_identity_certainty"]
+        provider_request_id = f"request-{planned['attempt_id']}"
+        provider_terminal = "SUCCESS"
+        provider_http_status = 200
+        attribution_status = "ATTRIBUTABLE"
+    else:
+        resolved_model = None
+        identity_certainty = "UNKNOWN"
+        provider_request_id = None
+        provider_terminal = "RUNTIME_ERROR" if status == "ERROR" else "PROVIDER_ERROR"
+        provider_http_status = None
+        attribution_status = "UNAVAILABLE"
     row = {
         "schema_version": "b2-bm0-observation/v1",
+        "benchmark_id": planned["benchmark_id"],
+        "contract_version": planned["contract_version"],
         "attempt_id": planned["attempt_id"],
         "trial_id": planned["trial_id"],
+        "provider_subject_id": planned["provider_subject_id"],
         "model_subject_id": planned["model_subject_id"],
+        "requested_model_id": planned["requested_model_id"],
+        "resolved_model_or_version_id": resolved_model,
+        "identity_certainty": identity_certainty,
+        "alias_limitation": planned["alias_limitation"],
+        "provider_request_id": provider_request_id,
+        "endpoint_id": planned["endpoint_id"],
+        "capability_mode": planned["capability_mode"],
+        "system_wrapper_version": planned["system_wrapper_version"],
+        "developer_wrapper_version": planned["developer_wrapper_version"],
+        "sampling_controls_fingerprint": sha256_json(planned["sampling_controls"]),
+        "reasoning_controls_fingerprint": sha256_json(planned["reasoning_controls"]),
         "target_id": planned["target_id"],
         "target_class": planned["target_class"],
+        "entry_id": planned["entry_id"],
+        "family_id": planned["family_id"],
+        "case_id": planned["case_id"],
+        "variant_id": planned["variant_id"],
+        "mechanism_lineage_id": planned["mechanism_lineage_id"],
+        "case_fingerprint": planned["case_fingerprint"],
+        "generator_or_mutation_version": planned[
+            "generator_or_mutation_version"
+        ],
+        "contamination_status": planned["contamination_status"],
+        "exposure_status": planned["exposure_status"],
         "corpus_item_alias": planned["corpus_item_alias"],
         "replicate_index": planned["replicate_index"],
+        "prompt_fingerprint": planned["prompt_fingerprint"],
+        "context_fingerprint": planned["context_fingerprint"],
+        "tool_schema_fingerprint": planned["tool_schema_fingerprint"],
+        "sandbox_fingerprint": planned["sandbox_fingerprint"],
+        "state_machine_fingerprint": planned["state_machine_fingerprint"],
+        "timestamps": {
+            "request_started_at": "2026-09-04T12:00:00Z",
+            "response_completed_at": "2026-09-04T12:00:01Z",
+        },
+        "raw_response_fingerprint": "sha256:" + "a" * 64 if scorable else None,
+        "scorer_id": planned["scorer_id"],
+        "scorer_version": planned["scorer_version"],
+        "scorer_fingerprint": planned["scorer_fingerprint"],
+        "oracle_id": planned["oracle_id"],
+        "oracle_version": planned["oracle_version"],
+        "oracle_fingerprint": planned["oracle_fingerprint"],
+        "evidence_receipt_fingerprint": "sha256:" + "b" * 64 if scorable else None,
+        "usage": {
+            "attribution_status": attribution_status,
+            "input_tokens": 10 if attribution_status == "ATTRIBUTABLE" else None,
+            "output_tokens": 5 if attribution_status == "ATTRIBUTABLE" else None,
+            "total_tokens": 15 if attribution_status == "ATTRIBUTABLE" else None,
+        },
+        "latency": {
+            "attribution_status": attribution_status,
+            "milliseconds": 1000.0 if attribution_status == "ATTRIBUTABLE" else None,
+        },
+        "cost": {
+            "attribution_status": attribution_status,
+            "currency": "USD" if attribution_status == "ATTRIBUTABLE" else None,
+            "amount": 0.001 if attribution_status == "ATTRIBUTABLE" else None,
+            "pricing_source_fingerprint": "sha256:" + "c" * 64
+            if attribution_status == "ATTRIBUTABLE"
+            else None,
+        },
+        "provider_terminal_status": provider_terminal,
+        "provider_http_status": provider_http_status,
         "terminal_status": status,
         "model_failure_value": model_failure_value,
         "system_invariant_failure_value": system_failure_value,
@@ -313,8 +481,45 @@ class B2BM0Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_target_matrix(tampered)
 
+    def test_canonical_lineage_binds_all_16_entries_and_32_source_cases(self):
+        receipt = validate_canonical_family_lineage_v1(
+            self.matrix,
+            bound_artifacts=self.bound_artifacts,
+        )
+        self.assertEqual(receipt["entry_count"], 16)
+        self.assertEqual(receipt["unique_family_lineage_count"], 16)
+        self.assertEqual(receipt["canonical_case_count"], 32)
+        self.assertEqual(
+            receipt["source_artifact_count"],
+            len(CANONICAL_SOURCE_ARTIFACT_PATHS),
+        )
+        self.assertEqual(
+            [target["entry_id"] for target in self.matrix["targets"]],
+            [lineage["entry_id"] for lineage in CANONICAL_FAMILY_LINEAGE],
+        )
+
+    def test_canonical_lineage_rejects_substitution_and_source_receipt_drift(self):
+        substituted = copy.deepcopy(self.matrix)
+        substituted["targets"][0]["family_id"] = "generic-reasoning"
+        substituted = refingerprint(substituted, "matrix_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_target_matrix(substituted)
+
+        source_path = "cases/b2/public-safe/qa0-fixtures.json"
+        drifted_bound = copy.deepcopy(self.bound_artifacts)
+        drifted_bound[source_path]["cases"][0]["variant"] = "KNOWN_BAD"
+        with self.assertRaises(ValueError):
+            validate_canonical_family_lineage_v1(
+                self.matrix,
+                bound_artifacts=drifted_bound,
+            )
+
     def test_metric_registry_freezes_failure_denominator(self):
         checked = validate_bm0_metric_registry(self.registry)
+        self.assertEqual(
+            {metric["metric_id"] for metric in checked["metrics"]},
+            EXPECTED_METRIC_IDS,
+        )
         metric = next(
             metric
             for metric in checked["metrics"]
@@ -369,6 +574,33 @@ class B2BM0Tests(unittest.TestCase):
         self.assertIsNone(checked["corpus_aggregate_commitment"])
         self.assertEqual(checked["adjudication_mode"], "NOT_SELECTED")
         self.assertEqual(checked["planned_attempt_count"], 0)
+        authority = checked["hidden_holdout_authority"]
+        self.assertEqual(authority["binding_status"], "BOUND")
+        self.assertEqual(
+            authority["authority_type"], "NOT_IN_PUBLIC_REPO_DECLARATION"
+        )
+        self.assertEqual(authority["authority_id"], HIDDEN_HOLDOUT_DECLARATION_ID)
+        self.assertEqual(
+            authority["authority_fingerprint"],
+            sha256_json(HIDDEN_HOLDOUT_DECLARATION),
+        )
+
+    def test_hidden_holdout_authority_binding_fails_closed(self):
+        unbound = copy.deepcopy(self.manifest_template)
+        unbound["hidden_holdout_authority"]["binding_status"] = "UNBOUND"
+        unbound = refingerprint(unbound, "manifest_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(unbound)
+
+        invented_declaration = copy.deepcopy(self.manifest_template)
+        invented_declaration["hidden_holdout_authority"]["authority_id"] = (
+            "invented-public-locator"
+        )
+        invented_declaration = refingerprint(
+            invented_declaration, "manifest_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(invented_declaration)
 
     def test_design_template_cannot_smuggle_roster_or_attempts(self):
         selected = copy.deepcopy(self.manifest_template)
@@ -420,7 +652,8 @@ class B2BM0Tests(unittest.TestCase):
             )
 
         public_attempt = identity(item="public-control-item")
-        public_attempt["corpus_pool_id"] = "PUBLIC_CONTROL"
+        public_attempt["corpus_pool_id"] = "CONTROL"
+        public_attempt["exposure_status"] = "PUBLICLY_DISCLOSED_CONTROL"
         public_only = self.frozen_manifest([public_attempt])
         with self.assertRaises(ValueError):
             validate_benchmark_manifest(
@@ -552,6 +785,30 @@ class B2BM0Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_trial_identity(self_parent)
 
+    def test_trial_identity_binds_case_lineage_contamination_and_exposure(self):
+        checked = validate_trial_identity(identity())
+        self.assertEqual(checked["contract_version"], "v0.2")
+        self.assertEqual(checked["contamination_status"], "ASSESSED_CLEAR")
+        self.assertEqual(
+            checked["exposure_status"],
+            "PRIVATE_UNEXPOSED_BEFORE_MANIFEST_FREEZE",
+        )
+
+        wrong_lane = identity()
+        wrong_lane["exposure_status"] = "PUBLICLY_DISCLOSED_CONTROL"
+        with self.assertRaises(ValueError):
+            validate_trial_identity(wrong_lane)
+
+        contaminated_hidden = identity()
+        contaminated_hidden["contamination_status"] = "KNOWN_EXPOSED"
+        with self.assertRaises(ValueError):
+            validate_trial_identity(contaminated_hidden)
+
+        missing_lineage = identity()
+        missing_lineage.pop("mechanism_lineage_id")
+        with self.assertRaises(ValueError):
+            validate_trial_identity(missing_lineage)
+
     def test_manifest_retry_chain_is_predeclared_identity_stable_and_nonbranching(self):
         root = identity(serial="retry-root")
         child = copy.deepcopy(root)
@@ -675,6 +932,62 @@ class B2BM0Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_observation(unknown)
 
+        unknown_with_resolved_identity = observation(attempt, "ERROR")
+        unknown_with_resolved_identity["resolved_model_or_version_id"] = (
+            "unverified-fallback-snapshot"
+        )
+        unknown_with_resolved_identity = refingerprint(
+            unknown_with_resolved_identity, "observation_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_observation(unknown_with_resolved_identity)
+
+    def test_scorable_observation_allows_unavailable_accounting_but_not_unknown_identity(self):
+        attempt = identity()
+        manifest = self.frozen_manifest([attempt])
+        row = observation(attempt, "PASS")
+        row["usage"] = {
+            "attribution_status": "UNAVAILABLE",
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+        }
+        row["latency"] = {
+            "attribution_status": "UNAVAILABLE",
+            "milliseconds": None,
+        }
+        row["cost"] = {
+            "attribution_status": "UNAVAILABLE",
+            "currency": None,
+            "amount": None,
+            "pricing_source_fingerprint": None,
+        }
+        row = refingerprint(row, "observation_fingerprint")
+        self.assertEqual(validate_observation(row), row)
+        result = model_failure_denominator_v1(
+            manifest,
+            [row],
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(result["by_model"]["model-a"]["failure_rate"], 0.0)
+
+        unknown_identity = copy.deepcopy(row)
+        unknown_identity["identity_certainty"] = "UNKNOWN"
+        unknown_identity["resolved_model_or_version_id"] = None
+        unknown_identity = refingerprint(
+            unknown_identity, "observation_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_observation(unknown_identity)
+
+        inapplicable_accounting = copy.deepcopy(row)
+        inapplicable_accounting["cost"]["attribution_status"] = "NOT_APPLICABLE"
+        inapplicable_accounting = refingerprint(
+            inapplicable_accounting, "observation_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_observation(inapplicable_accounting)
+
     def test_observation_grid_rejects_substitution_duplicate_and_unplanned_rows(self):
         attempts = [identity(serial="001"), identity(serial="002", item="item-002")]
         manifest = self.frozen_manifest(attempts)
@@ -687,6 +1000,65 @@ class B2BM0Tests(unittest.TestCase):
             validate_observation_grid_v1(
                 manifest,
                 [substituted],
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        silent_fallback = copy.deepcopy(first)
+        silent_fallback["resolved_model_or_version_id"] = "fallback-snapshot"
+        silent_fallback = refingerprint(
+            silent_fallback, "observation_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_observation_grid_v1(
+                manifest,
+                [silent_fallback],
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        failed_fallback = observation(attempts[0], "ERROR")
+        failed_fallback["identity_certainty"] = "EXACT"
+        failed_fallback["resolved_model_or_version_id"] = "fallback-snapshot"
+        failed_fallback = refingerprint(
+            failed_fallback, "observation_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_observation_grid_v1(
+                manifest,
+                [failed_fallback],
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        unknown_limitation_drift = observation(attempts[0], "ERROR")
+        unknown_limitation_drift["alias_limitation"] = (
+            "UNVERIFIABLE_ALIAS_DISCLOSED"
+        )
+        unknown_limitation_drift = refingerprint(
+            unknown_limitation_drift, "observation_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_observation_grid_v1(
+                manifest,
+                [unknown_limitation_drift],
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        scorer_drift = copy.deepcopy(first)
+        scorer_drift["scorer_fingerprint"] = "sha256:" + "d" * 64
+        scorer_drift = refingerprint(scorer_drift, "observation_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_observation_grid_v1(
+                manifest,
+                [scorer_drift],
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        case_drift = copy.deepcopy(first)
+        case_drift["case_fingerprint"] = "sha256:" + "e" * 64
+        case_drift = refingerprint(case_drift, "observation_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_observation_grid_v1(
+                manifest,
+                [case_drift],
                 expected_artifact_fingerprints=self.execution_bindings,
             )
 
@@ -844,7 +1216,8 @@ class B2BM0Tests(unittest.TestCase):
     def test_primary_model_denominator_excludes_public_control_pool(self):
         hidden = identity(serial="hidden", item="hidden-item")
         control = identity(serial="control", item="control-item")
-        control["corpus_pool_id"] = "PUBLIC_CONTROL"
+        control["corpus_pool_id"] = "CONTROL"
+        control["exposure_status"] = "PUBLICLY_DISCLOSED_CONTROL"
         control["corpus_item_commitment"] = "sha256:" + "c" * 64
         manifest = self.frozen_manifest([hidden, control])
         result = model_failure_denominator_v1(
@@ -878,6 +1251,134 @@ class B2BM0Tests(unittest.TestCase):
         self.assertEqual(result["scorable_terminal_count"], 2)
         self.assertEqual(result["non_scorable_terminal_count"], 4)
         self.assertAlmostEqual(result["non_scorable_attempt_rate"], 4 / 6)
+        infrastructure = infrastructure_error_rate_v1(
+            manifest,
+            rows,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(infrastructure["infrastructure_error_count"], 1)
+        self.assertAlmostEqual(
+            infrastructure["infrastructure_error_rate"], 1 / 6
+        )
+        self.assertEqual(
+            infrastructure["model_failure_attribution"], "FORBIDDEN"
+        )
+
+    def test_cfp_nests_repeated_trials_inside_one_case(self):
+        attempts = [
+            identity(
+                serial=f"repeat-{index:03d}",
+                item="repeated-item",
+                case_id="case-repeat-001",
+                replicate=index,
+            )
+            for index in range(10)
+        ]
+        manifest = self.frozen_manifest(attempts)
+        rows = [
+            observation(attempt, "FAIL" if index == 9 else "PASS")
+            for index, attempt in enumerate(attempts)
+        ]
+        result = case_failure_probability_v1(
+            manifest,
+            rows,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        model = result["by_model"]["model-a"]
+        self.assertEqual(model["distinct_case_count"], 1)
+        self.assertEqual(model["cases"][0]["planned_trial_count"], 10)
+        self.assertEqual(model["cases"][0]["model_scorable_denominator"], 10)
+        self.assertEqual(model["cases"][0]["cfp"], 0.1)
+        self.assertFalse(result["repeated_trials_count_as_distinct_cases"])
+        uncertainty = fcfr_case_cluster_bootstrap_v1(
+            {"case-repeat-001": 0.1}
+        )
+        self.assertEqual(uncertainty["terminal_status"], "NOT_EVALUABLE")
+        self.assertEqual(uncertainty["distinct_case_cluster_count"], 1)
+
+    def test_fcfr_is_case_macro_not_trial_micro_rate(self):
+        case_a = [
+            identity(
+                serial=f"macro-a-{index:03d}",
+                item="macro-item-a",
+                case_id="macro-case-a",
+                replicate=index,
+            )
+            for index in range(9)
+        ]
+        case_b = [
+            identity(
+                serial="macro-b-000",
+                item="macro-item-b",
+                case_id="macro-case-b",
+                replicate=0,
+            )
+        ]
+        attempts = case_a + case_b
+        manifest = self.frozen_manifest(attempts)
+        rows = [observation(attempt, "PASS") for attempt in case_a] + [
+            observation(case_b[0], "FAIL")
+        ]
+        result = family_conditional_failure_rate_v1(
+            manifest,
+            rows,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        family = result["by_model"]["model-a"]["families"][0]
+        self.assertEqual(family["distinct_case_count"], 2)
+        self.assertEqual(family["total_recorded_trial_count"], 10)
+        self.assertEqual(family["fcfr"], 0.5)
+        self.assertNotEqual(family["fcfr"], 0.1)
+        self.assertEqual(
+            family["case_cluster_bootstrap_95"]["terminal_status"], "PASS"
+        )
+        self.assertEqual(
+            family["case_cluster_bootstrap_95"][
+                "distinct_case_cluster_count"
+            ],
+            2,
+        )
+
+    def test_cfpr_and_within_case_instability_are_distinct_diagnostics(self):
+        control_attempts = [
+            identity(
+                serial=f"control-{index}",
+                item=f"control-item-{index}",
+                case_id=f"control-case-{index}",
+                variant_id="CONTROL",
+            )
+            for index in range(2)
+        ]
+        control_manifest = self.frozen_manifest(control_attempts)
+        cfpr = control_false_positive_rate_v1(
+            control_manifest,
+            [
+                observation(control_attempts[0], "PASS"),
+                observation(control_attempts[1], "FAIL"),
+            ],
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(cfpr["by_model"]["model-a"]["cfpr"], 0.5)
+
+        repeats = [
+            identity(
+                serial=f"unstable-{index}",
+                item="unstable-item",
+                case_id="unstable-case",
+                replicate=index,
+            )
+            for index in range(2)
+        ]
+        repeat_manifest = self.frozen_manifest(repeats)
+        instability = within_case_instability_v1(
+            repeat_manifest,
+            [observation(repeats[0], "PASS"), observation(repeats[1], "FAIL")],
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        model = instability["by_model"]["model-a"]
+        self.assertEqual(model["eligible_distinct_case_count"], 1)
+        self.assertEqual(model["switching_distinct_case_count"], 1)
+        self.assertEqual(model["within_case_instability"], 1.0)
 
     def test_typed_partition_is_manifest_bound_and_suppresses_partial_rate(self):
         attempts = [identity(serial="001"), identity(serial="002", item="item-002")]
@@ -1262,7 +1763,8 @@ class B2BM0Tests(unittest.TestCase):
 
         hidden_attempt = identity(serial="hidden", item="shared-item")
         control_attempt = identity(serial="control", item="shared-item")
-        control_attempt["corpus_pool_id"] = "PUBLIC_CONTROL"
+        control_attempt["corpus_pool_id"] = "CONTROL"
+        control_attempt["exposure_status"] = "PUBLICLY_DISCLOSED_CONTROL"
         control_attempt["corpus_item_commitment"] = "sha256:" + "c" * 64
         with self.assertRaises(ValueError):
             corpus_aggregate_commitment_v1([hidden_attempt, control_attempt])
@@ -1284,7 +1786,8 @@ class B2BM0Tests(unittest.TestCase):
             )
 
         mutation = identity(serial="mutation", item="mutation-item")
-        mutation["corpus_pool_id"] = "MUTATION"
+        mutation["corpus_pool_id"] = "MECHANISM_PRESERVING_MUTATION"
+        mutation["exposure_status"] = "PUBLICLY_DISCLOSED_MUTATION"
         mutation["corpus_item_commitment"] = "sha256:" + "e" * 64
         mutation["mutation_parent_commitment"] = hidden_attempt[
             "corpus_item_commitment"
@@ -1295,7 +1798,12 @@ class B2BM0Tests(unittest.TestCase):
         self_parent_mutation = identity(
             serial="self-parent-mutation", item="self-parent-mutation-item"
         )
-        self_parent_mutation["corpus_pool_id"] = "MUTATION"
+        self_parent_mutation["corpus_pool_id"] = (
+            "MECHANISM_PRESERVING_MUTATION"
+        )
+        self_parent_mutation["exposure_status"] = (
+            "PUBLICLY_DISCLOSED_MUTATION"
+        )
         self_parent_mutation["mutation_parent_commitment"] = (
             self_parent_mutation["corpus_item_commitment"]
         )
@@ -1367,6 +1875,12 @@ class B2BM0Tests(unittest.TestCase):
         self.assertIsNone(checked["corpus_aggregate_commitment"])
         self.assertEqual(checked["adjudication_mode"], "NOT_SELECTED")
         self.assertEqual(checked["primary_estimate_pool"], "PRIVATE_HIDDEN_HOLDOUT")
+        self.assertEqual(
+            checked["sap_design_rule_id"], "BOUNDED-PILOT-FIXED-SUITE-V1"
+        )
+        self.assertEqual(checked["sap_no_peeking_rule"], "FORBIDDEN")
+        self.assertEqual(checked["canonical_entry_count"], 16)
+        self.assertEqual(checked["canonical_case_count"], 32)
         self.assertFalse(checked["bm0_green"])
         self.assertFalse(checked["benchmark_results_emitted"])
 
@@ -1391,11 +1905,22 @@ class B2BM0Tests(unittest.TestCase):
             with self.subTest(claim=forbidden), self.assertRaises(ValueError):
                 assert_claim_allowed(forbidden, receipt)
 
-    def test_sap_binds_eight_named_executable_methods_in_order(self):
+    def test_sap_binds_fourteen_methods_and_bounded_pilot_no_peeking_rule(self):
         methods = self.contract["sap"]["methods"]
         self.assertEqual(tuple(method["method_id"] for method in methods), SAP_METHOD_IDS)
-        self.assertEqual(len({method["implementation"] for method in methods}), 8)
+        self.assertEqual(len({method["implementation"] for method in methods}), 14)
         self.assertTrue(self.contract["sap"]["frozen_before_hidden_access"])
+        self.assertEqual(self.contract["sap"]["design_rule"], SAP_DESIGN_RULE)
+        self.assertEqual(
+            self.contract["sap"]["design_rule"]["target_precision"],
+            "NOT_CLAIMED_BOUNDED_PILOT",
+        )
+        self.assertEqual(
+            self.contract["sap"]["design_rule"][
+                "outcome_dependent_extension"
+            ],
+            "FORBIDDEN",
+        )
 
     def test_json_schemas_are_strict_and_cover_identity_manifest_and_adjudication(self):
         schemas = [
@@ -1414,12 +1939,44 @@ class B2BM0Tests(unittest.TestCase):
 
         trial_schema = load_json(ROOT / "schemas" / "bm0_trial_identity.schema.json")
         observation_schema = load_json(ROOT / "schemas" / "bm0_observation.schema.json")
+        for field in (
+            "contract_version",
+            "mechanism_lineage_id",
+            "case_fingerprint",
+            "generator_or_mutation_version",
+            "contamination_status",
+            "exposure_status",
+        ):
+            self.assertIn(field, trial_schema["required"])
+            self.assertIn(field, observation_schema["required"])
         for target_ids in TARGET_IDS_BY_CLASS.values():
             for target_id in target_ids:
                 self.assertIn(target_id, json.dumps(trial_schema, sort_keys=True))
                 self.assertIn(target_id, json.dumps(observation_schema, sort_keys=True))
         snapshot_rule = trial_schema["properties"]["model_snapshot_id"]["allOf"][1]
         self.assertIn("pattern", snapshot_rule["not"])
+        self.assertGreaterEqual(len(trial_schema["allOf"]), 11)
+        trial_conditions = json.dumps(trial_schema["allOf"], sort_keys=True)
+        self.assertIn("expected_resolved_model_or_version_id", trial_conditions)
+        self.assertIn("UNRESOLVED_ALIAS", trial_conditions)
+        self.assertIn('"else"', trial_conditions)
+
+        self.assertGreaterEqual(len(observation_schema["allOf"]), 21)
+        observation_conditions = json.dumps(
+            observation_schema["allOf"], sort_keys=True
+        )
+        for semantic_field in (
+            "model_failure_value",
+            "system_invariant_failure_value",
+            "provider_terminal_status",
+            "provider_http_status",
+            "raw_response_fingerprint",
+            "evidence_receipt_fingerprint",
+            "attribution_status",
+        ):
+            self.assertIn(semantic_field, observation_conditions)
+        self.assertIn("UNVERIFIABLE_ALIAS_DISCLOSED", observation_conditions)
+        self.assertIn("NOT_APPLICABLE_SYSTEM_SCOPE", observation_conditions)
 
         manifest_schema = load_json(
             ROOT / "schemas" / "bm0_benchmark_manifest.schema.json"
@@ -1430,6 +1987,11 @@ class B2BM0Tests(unittest.TestCase):
         )
         self.assertIn(
             "PRIVATE_HIDDEN_HOLDOUT", json.dumps(manifest_schema, sort_keys=True)
+        )
+        self.assertIn("hidden_holdout_authority", manifest_schema["required"])
+        self.assertIn(
+            "NOT_IN_PUBLIC_REPO_DECLARATION",
+            json.dumps(manifest_schema, sort_keys=True),
         )
 
         contract_schema = load_json(
@@ -1460,6 +2022,9 @@ class B2BM0Tests(unittest.TestCase):
             contract_schema["properties"]["sap"]["properties"]["methods"][
                 "items"
             ]
+        )
+        self.assertIn(
+            "design_rule", contract_schema["properties"]["sap"]["required"]
         )
 
     def test_checked_in_receipt_matches_regeneration(self):

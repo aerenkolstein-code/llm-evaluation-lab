@@ -23,51 +23,111 @@
     "planned_attempts",
     "planned_attempt_count",
     "stop_rule",
-    "manifest_fingerprint"
+    "manifest_fingerprint",
+    "hidden_holdout_authority"
   ],
   "properties": {
-    "schema_version": {"const": "b2-bm0-benchmark-manifest/v1"},
-    "manifest_id": {"$ref": "#/$defs/identifier"},
-    "contract_id": {"const": "WO-B2-BM0"},
-    "contract_revision": {"const": "v0.2"},
-    "implementation_base_sha": {"const": "901ba05b99c413d45415c474c71b5969c155dea1"},
-    "study_state": {"enum": ["DESIGN_ONLY", "FROZEN"]},
-    "provider_roster_status": {"enum": ["NOT_SELECTED", "SELECTED"]},
-    "corpus_commitment_status": {"enum": ["NOT_COMMITTED", "SEALED"]},
+    "schema_version": {
+      "const": "b2-bm0-benchmark-manifest/v1"
+    },
+    "manifest_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "contract_id": {
+      "const": "WO-B2-BM0"
+    },
+    "contract_revision": {
+      "const": "v0.2"
+    },
+    "implementation_base_sha": {
+      "const": "901ba05b99c413d45415c474c71b5969c155dea1"
+    },
+    "study_state": {
+      "enum": [
+        "DESIGN_ONLY",
+        "FROZEN"
+      ]
+    },
+    "provider_roster_status": {
+      "enum": [
+        "NOT_SELECTED",
+        "SELECTED"
+      ]
+    },
+    "corpus_commitment_status": {
+      "enum": [
+        "NOT_COMMITTED",
+        "SEALED"
+      ]
+    },
     "corpus_aggregate_commitment": {
-      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/sha256"
+        }
+      ]
     },
     "adjudication_mode": {
-      "enum": ["NOT_SELECTED", "HUMAN_HUMAN", "HUMAN_JUDGE", "JUDGE_JUDGE"]
+      "enum": [
+        "NOT_SELECTED",
+        "HUMAN_HUMAN",
+        "HUMAN_JUDGE",
+        "JUDGE_JUDGE"
+      ]
     },
     "adjudication_plan": {
       "oneOf": [
-        {"type": "null"},
-        {"$ref": "#/$defs/adjudication_plan"}
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/adjudication_plan"
+        }
       ]
     },
-    "frozen_before_hidden_access": {"const": true},
+    "frozen_before_hidden_access": {
+      "const": true
+    },
     "comparison_classes": {
       "type": "array",
       "uniqueItems": true,
       "minItems": 2,
       "items": {
-        "enum": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED", "AGENT_STANDARDIZED"]
+        "enum": [
+          "MODEL_DIRECT",
+          "MODEL_CONTEXT_GROUNDED",
+          "AGENT_STANDARDIZED"
+        ]
       }
     },
     "sandbox_equivalence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "evidence_refs"],
+      "required": [
+        "status",
+        "evidence_refs"
+      ],
       "properties": {
-        "status": {"enum": ["NOT_ESTABLISHED", "ESTABLISHED"]},
+        "status": {
+          "enum": [
+            "NOT_ESTABLISHED",
+            "ESTABLISHED"
+          ]
+        },
         "evidence_refs": {
           "type": "array",
           "uniqueItems": true,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["evidence_type", "evidence_id", "evidence_fingerprint"],
+            "required": [
+              "evidence_type",
+              "evidence_id",
+              "evidence_fingerprint"
+            ],
             "properties": {
               "evidence_type": {
                 "enum": [
@@ -78,8 +138,12 @@
                   "INDEPENDENT_EQUIVALENCE_RECEIPT"
                 ]
               },
-              "evidence_id": {"$ref": "#/$defs/identifier"},
-              "evidence_fingerprint": {"$ref": "#/$defs/sha256"}
+              "evidence_id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "evidence_fingerprint": {
+                "$ref": "#/$defs/sha256"
+              }
             }
           }
         }
@@ -88,22 +152,46 @@
     "artifact_fingerprints": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["measurement_contract_core", "target_matrix", "metric_registry", "corpus_policy", "analysis_plan", "analysis_implementation"],
+      "required": [
+        "measurement_contract_core",
+        "target_matrix",
+        "metric_registry",
+        "corpus_policy",
+        "analysis_plan",
+        "analysis_implementation"
+      ],
       "properties": {
-        "measurement_contract_core": {"$ref": "#/$defs/sha256"},
-        "target_matrix": {"$ref": "#/$defs/sha256"},
-        "metric_registry": {"$ref": "#/$defs/sha256"},
-        "corpus_policy": {"$ref": "#/$defs/sha256"},
-        "analysis_plan": {"$ref": "#/$defs/sha256"},
-        "analysis_implementation": {"$ref": "#/$defs/sha256"}
+        "measurement_contract_core": {
+          "$ref": "#/$defs/sha256"
+        },
+        "target_matrix": {
+          "$ref": "#/$defs/sha256"
+        },
+        "metric_registry": {
+          "$ref": "#/$defs/sha256"
+        },
+        "corpus_policy": {
+          "$ref": "#/$defs/sha256"
+        },
+        "analysis_plan": {
+          "$ref": "#/$defs/sha256"
+        },
+        "analysis_implementation": {
+          "$ref": "#/$defs/sha256"
+        }
       }
     },
     "planned_attempts": {
       "type": "array",
       "uniqueItems": true,
-      "items": {"$ref": "bm0_trial_identity.schema.json"}
+      "items": {
+        "$ref": "bm0_trial_identity.schema.json"
+      }
     },
-    "planned_attempt_count": {"type": "integer", "minimum": 0},
+    "planned_attempt_count": {
+      "type": "integer",
+      "minimum": 0
+    },
     "stop_rule": {
       "type": "object",
       "additionalProperties": false,
@@ -115,75 +203,177 @@
         "planned_attempt_count"
       ],
       "properties": {
-        "method_id": {"const": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1"},
-        "outcome_blind": {"const": true},
-        "required_event_fields": {"const": ["attempt_id", "recorded"]},
+        "method_id": {
+          "const": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1"
+        },
+        "outcome_blind": {
+          "const": true
+        },
+        "required_event_fields": {
+          "const": [
+            "attempt_id",
+            "recorded"
+          ]
+        },
         "forbidden_event_fields": {
           "type": "array",
           "uniqueItems": true,
-          "allOf": [{"contains": {"const": "terminal_status"}}, {"contains": {"const": "score"}}],
+          "allOf": [
+            {
+              "contains": {
+                "const": "terminal_status"
+              }
+            },
+            {
+              "contains": {
+                "const": "score"
+              }
+            }
+          ],
           "items": {
-            "enum": ["terminal_status", "model_failure_value", "score", "output", "adjudication_decision"]
+            "enum": [
+              "terminal_status",
+              "model_failure_value",
+              "score",
+              "output",
+              "adjudication_decision"
+            ]
           }
         },
-        "planned_attempt_count": {"type": "integer", "minimum": 0}
+        "planned_attempt_count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-    "manifest_fingerprint": {"$ref": "#/$defs/sha256"}
+    "manifest_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "hidden_holdout_authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding_status",
+        "authority_type",
+        "authority_id",
+        "authority_fingerprint",
+        "public_repository_content_status",
+        "secret_locator_in_public_repository"
+      ],
+      "properties": {
+        "binding_status": {
+          "const": "BOUND"
+        },
+        "authority_type": {
+          "enum": [
+            "PRIVATE_FILE_ID",
+            "PRIVATE_ARCHIVE_ID",
+            "NOT_IN_PUBLIC_REPO_DECLARATION"
+          ]
+        },
+        "authority_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+        },
+        "authority_fingerprint": {
+          "$ref": "#/$defs/sha256"
+        },
+        "public_repository_content_status": {
+          "const": "ABSENT"
+        },
+        "secret_locator_in_public_repository": {
+          "const": false
+        }
+      }
+    }
   },
   "allOf": [
     {
-      "if": {"properties": {"study_state": {"const": "DESIGN_ONLY"}}, "required": ["study_state"]},
+      "if": {
+        "properties": {
+          "study_state": {
+            "const": "DESIGN_ONLY"
+          }
+        },
+        "required": [
+          "study_state"
+        ]
+      },
       "then": {
         "properties": {
-          "provider_roster_status": {"const": "NOT_SELECTED"},
-          "corpus_commitment_status": {"const": "NOT_COMMITTED"},
-          "corpus_aggregate_commitment": {"type": "null"},
-          "adjudication_mode": {"const": "NOT_SELECTED"},
-          "adjudication_plan": {"type": "null"},
-          "planned_attempts": {"maxItems": 0},
-          "planned_attempt_count": {"const": 0}
+          "provider_roster_status": {
+            "const": "NOT_SELECTED"
+          },
+          "corpus_commitment_status": {
+            "const": "NOT_COMMITTED"
+          },
+          "corpus_aggregate_commitment": {
+            "type": "null"
+          },
+          "adjudication_mode": {
+            "const": "NOT_SELECTED"
+          },
+          "adjudication_plan": {
+            "type": "null"
+          },
+          "planned_attempts": {
+            "maxItems": 0
+          },
+          "planned_attempt_count": {
+            "const": 0
+          }
         }
       }
     },
     {
-      "if": {"properties": {"study_state": {"const": "FROZEN"}}, "required": ["study_state"]},
+      "if": {
+        "properties": {
+          "study_state": {
+            "const": "FROZEN"
+          }
+        },
+        "required": [
+          "study_state"
+        ]
+      },
       "then": {
         "properties": {
-          "provider_roster_status": {"const": "SELECTED"},
-          "corpus_commitment_status": {"const": "SEALED"},
-          "corpus_aggregate_commitment": {"$ref": "#/$defs/sha256"},
-          "adjudication_mode": {"enum": ["HUMAN_HUMAN", "HUMAN_JUDGE", "JUDGE_JUDGE"]},
-          "adjudication_plan": {"$ref": "#/$defs/adjudication_plan"},
+          "provider_roster_status": {
+            "const": "SELECTED"
+          },
+          "corpus_commitment_status": {
+            "const": "SEALED"
+          },
+          "corpus_aggregate_commitment": {
+            "$ref": "#/$defs/sha256"
+          },
+          "adjudication_mode": {
+            "enum": [
+              "HUMAN_HUMAN",
+              "HUMAN_JUDGE",
+              "JUDGE_JUDGE"
+            ]
+          },
+          "adjudication_plan": {
+            "$ref": "#/$defs/adjudication_plan"
+          },
           "planned_attempts": {
             "minItems": 1,
             "contains": {
               "type": "object",
               "properties": {
-                "corpus_pool_id": {"const": "PRIVATE_HIDDEN_HOLDOUT"}
+                "corpus_pool_id": {
+                  "const": "PRIVATE_HIDDEN_HOLDOUT"
+                }
               },
-              "required": ["corpus_pool_id"]
+              "required": [
+                "corpus_pool_id"
+              ]
             },
             "minContains": 1
           },
-          "planned_attempt_count": {"minimum": 1}
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "sandbox_equivalence": {
-            "properties": {"status": {"const": "NOT_ESTABLISHED"}},
-            "required": ["status"]
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "comparison_classes": {"const": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"]},
-          "sandbox_equivalence": {
-            "properties": {"evidence_refs": {"maxItems": 0}}
+          "planned_attempt_count": {
+            "minimum": 1
           }
         }
       }
@@ -192,15 +382,58 @@
       "if": {
         "properties": {
           "sandbox_equivalence": {
-            "properties": {"status": {"const": "ESTABLISHED"}},
-            "required": ["status"]
+            "properties": {
+              "status": {
+                "const": "NOT_ESTABLISHED"
+              }
+            },
+            "required": [
+              "status"
+            ]
           }
         }
       },
       "then": {
         "properties": {
           "comparison_classes": {
-            "const": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED", "AGENT_STANDARDIZED"]
+            "const": [
+              "MODEL_DIRECT",
+              "MODEL_CONTEXT_GROUNDED"
+            ]
+          },
+          "sandbox_equivalence": {
+            "properties": {
+              "evidence_refs": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "sandbox_equivalence": {
+            "properties": {
+              "status": {
+                "const": "ESTABLISHED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "comparison_classes": {
+            "const": [
+              "MODEL_DIRECT",
+              "MODEL_CONTEXT_GROUNDED",
+              "AGENT_STANDARDIZED"
+            ]
           },
           "sandbox_equivalence": {
             "properties": {
@@ -208,11 +441,66 @@
                 "minItems": 5,
                 "maxItems": 5,
                 "allOf": [
-                  {"contains": {"properties": {"evidence_type": {"const": "SANDBOX_IMAGE"}}, "required": ["evidence_type"]}},
-                  {"contains": {"properties": {"evidence_type": {"const": "TOOL_SURFACE"}}, "required": ["evidence_type"]}},
-                  {"contains": {"properties": {"evidence_type": {"const": "BUDGET_RETRY"}}, "required": ["evidence_type"]}},
-                  {"contains": {"properties": {"evidence_type": {"const": "NETWORK_CREDENTIAL_POLICY"}}, "required": ["evidence_type"]}},
-                  {"contains": {"properties": {"evidence_type": {"const": "INDEPENDENT_EQUIVALENCE_RECEIPT"}}, "required": ["evidence_type"]}}
+                  {
+                    "contains": {
+                      "properties": {
+                        "evidence_type": {
+                          "const": "SANDBOX_IMAGE"
+                        }
+                      },
+                      "required": [
+                        "evidence_type"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "properties": {
+                        "evidence_type": {
+                          "const": "TOOL_SURFACE"
+                        }
+                      },
+                      "required": [
+                        "evidence_type"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "properties": {
+                        "evidence_type": {
+                          "const": "BUDGET_RETRY"
+                        }
+                      },
+                      "required": [
+                        "evidence_type"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "properties": {
+                        "evidence_type": {
+                          "const": "NETWORK_CREDENTIAL_POLICY"
+                        }
+                      },
+                      "required": [
+                        "evidence_type"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "properties": {
+                        "evidence_type": {
+                          "const": "INDEPENDENT_EQUIVALENCE_RECEIPT"
+                        }
+                      },
+                      "required": [
+                        "evidence_type"
+                      ]
+                    }
+                  }
                 ]
               }
             }
@@ -231,9 +519,18 @@
         "configuration_fingerprint"
       ],
       "properties": {
-        "adjudicator_type": {"enum": ["HUMAN", "FIXED_JUDGE"]},
-        "adjudicator_id": {"$ref": "#/$defs/identifier"},
-        "configuration_fingerprint": {"$ref": "#/$defs/sha256"}
+        "adjudicator_type": {
+          "enum": [
+            "HUMAN",
+            "FIXED_JUDGE"
+          ]
+        },
+        "adjudicator_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "configuration_fingerprint": {
+          "$ref": "#/$defs/sha256"
+        }
       }
     },
     "adjudication_plan": {
@@ -250,8 +547,16 @@
         "plan_fingerprint"
       ],
       "properties": {
-        "plan_id": {"$ref": "#/$defs/identifier"},
-        "mode": {"enum": ["HUMAN_HUMAN", "HUMAN_JUDGE", "JUDGE_JUDGE"]},
+        "plan_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "mode": {
+          "enum": [
+            "HUMAN_HUMAN",
+            "HUMAN_JUDGE",
+            "JUDGE_JUDGE"
+          ]
+        },
         "metric_ids": {
           "type": "array",
           "minItems": 1,
@@ -269,12 +574,22 @@
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
-          "items": {"$ref": "#/$defs/adjudicator_assignment"}
+          "items": {
+            "$ref": "#/$defs/adjudicator_assignment"
+          }
         },
-        "tiebreak_adjudicator": {"$ref": "#/$defs/adjudicator_assignment"},
-        "rubric_version": {"$ref": "#/$defs/identifier"},
-        "rubric_fingerprint": {"$ref": "#/$defs/sha256"},
-        "plan_fingerprint": {"$ref": "#/$defs/sha256"}
+        "tiebreak_adjudicator": {
+          "$ref": "#/$defs/adjudicator_assignment"
+        },
+        "rubric_version": {
+          "$ref": "#/$defs/identifier"
+        },
+        "rubric_fingerprint": {
+          "$ref": "#/$defs/sha256"
+        },
+        "plan_fingerprint": {
+          "$ref": "#/$defs/sha256"
+        }
       }
     },
     "identifier": {
@@ -283,6 +598,9 @@
       "maxLength": 192,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]*$"
     },
-    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
   }
 }

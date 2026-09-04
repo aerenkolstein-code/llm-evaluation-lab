@@ -9,9 +9,11 @@ or execution adapter.
 from __future__ import annotations
 
 import math
+import random
 import re
 from collections import Counter, defaultdict
 from copy import deepcopy
+from datetime import datetime
 from typing import Any, Iterable, Mapping, Sequence
 
 from .qa0 import TERMINAL_STATUSES, assert_public_safe, sha256_json
@@ -31,6 +33,14 @@ WORK_ORDER_REVISION = "v0.2"
 IMPLEMENTATION_BASE_SHA = "901ba05b99c413d45415c474c71b5969c155dea1"
 SYSTEM_SCOPE_ID = "SYSTEM_SCOPE"
 PRIMARY_ESTIMATE_POOL_ID = "PRIVATE_HIDDEN_HOLDOUT"
+HIDDEN_HOLDOUT_DECLARATION_ID = "BM0-PRIVATE-HOLDOUT-NOT-IN-PUBLIC-REPO-001"
+HIDDEN_HOLDOUT_DECLARATION = {
+    "declaration_id": HIDDEN_HOLDOUT_DECLARATION_ID,
+    "authority_type": "NOT_IN_PUBLIC_REPO_DECLARATION",
+    "exact_prompt_input_label_oracle_content": "NOT_IN_PUBLIC_REPOSITORY",
+    "private_locator_or_secret": "NOT_RECORDED_IN_PUBLIC_REPOSITORY",
+    "binding_scope": "PRIVATE_HIDDEN_HOLDOUT_AUTHORITY_ONLY",
+}
 
 TARGET_CLASSES = (
     "MODEL_DIRECT",
@@ -46,30 +56,198 @@ MODEL_METRIC_TARGET_CLASSES = {
     "model_failure_rate": DEFAULT_COMPARABLE_CLASSES,
     "sandboxed_agent_failure_rate": ("AGENT_STANDARDIZED",),
 }
+CANONICAL_FAMILY_LINEAGE = (
+    {
+        "entry_id": "E01",
+        "target_id": "BM0-TUT-E01-QA0-ENTITY-ATTRIBUTE-BINDING",
+        "source_profile": "QA0",
+        "family_id": "entity-attribute-binding",
+        "target_class": "MODEL_CONTEXT_GROUNDED",
+        "fixture_path": "cases/b2/public-safe/qa0-fixtures.json",
+        "receipt_path": "results/b2/qa0-contract-validation.json",
+        "case_ids": ["B2-QA0-EAB-KB-001", "B2-QA0-EAB-CTRL-001"],
+    },
+    {
+        "entry_id": "E02",
+        "target_id": "BM0-TUT-E02-QA0-CONNECTOR-SCHEMA",
+        "source_profile": "QA0",
+        "family_id": "connector-schema",
+        "target_class": "AGENT_STANDARDIZED",
+        "fixture_path": "cases/b2/public-safe/qa0-fixtures.json",
+        "receipt_path": "results/b2/qa0-contract-validation.json",
+        "case_ids": ["B2-QA0-CS-KB-001", "B2-QA0-CS-CTRL-001"],
+    },
+    {
+        "entry_id": "E03",
+        "target_id": "BM0-TUT-E03-QA0-INTEGRITY-COMPLETENESS",
+        "source_profile": "QA0",
+        "family_id": "integrity-completeness",
+        "target_class": "SYSTEM_EVAL_ONLY",
+        "fixture_path": "cases/b2/public-safe/qa0-fixtures.json",
+        "receipt_path": "results/b2/qa0-contract-validation.json",
+        "case_ids": ["B2-QA0-IC-KB-001", "B2-QA0-IC-CTRL-001"],
+    },
+    {
+        "entry_id": "E04",
+        "target_id": "BM0-TUT-E04-QA0-EVIDENCE-SCOPE",
+        "source_profile": "QA0",
+        "family_id": "evidence-scope",
+        "target_class": "MODEL_CONTEXT_GROUNDED",
+        "fixture_path": "cases/b2/public-safe/qa0-fixtures.json",
+        "receipt_path": "results/b2/qa0-contract-validation.json",
+        "case_ids": ["B2-QA0-ES-KB-001", "B2-QA0-ES-CTRL-001"],
+    },
+    {
+        "entry_id": "E05",
+        "target_id": "BM0-TUT-E05-QA1G-ENTITY-ATTRIBUTE-BINDING",
+        "source_profile": "QA1-G",
+        "family_id": "entity-attribute-binding",
+        "target_class": "MODEL_CONTEXT_GROUNDED",
+        "fixture_path": "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
+        "receipt_path": "results/b2/qa1-grounding-validation.json",
+        "case_ids": ["B2-QA1-G-EAB-KB-001", "B2-QA1-G-EAB-CTRL-001"],
+    },
+    {
+        "entry_id": "E06",
+        "target_id": "BM0-TUT-E06-QA1G-INVENTORY-EVIDENCE-SCOPE",
+        "source_profile": "QA1-G",
+        "family_id": "inventory-evidence-scope",
+        "target_class": "MODEL_CONTEXT_GROUNDED",
+        "fixture_path": "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
+        "receipt_path": "results/b2/qa1-grounding-validation.json",
+        "case_ids": ["B2-QA1-G-INV-KB-001", "B2-QA1-G-INV-CTRL-001"],
+    },
+    {
+        "entry_id": "E07",
+        "target_id": "BM0-TUT-E07-QA1G-SOURCE-MODALITY",
+        "source_profile": "QA1-G",
+        "family_id": "source-modality",
+        "target_class": "MODEL_CONTEXT_GROUNDED",
+        "fixture_path": "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
+        "receipt_path": "results/b2/qa1-grounding-validation.json",
+        "case_ids": ["B2-QA1-G-MOD-KB-001", "B2-QA1-G-MOD-CTRL-001"],
+    },
+    {
+        "entry_id": "E08",
+        "target_id": "BM0-TUT-E08-QA1T-CONNECTOR-SCHEMA-RETRY",
+        "source_profile": "QA1-T",
+        "family_id": "connector-schema-retry",
+        "target_class": "AGENT_STANDARDIZED",
+        "fixture_path": "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json",
+        "receipt_path": "results/b2/qa1-tool-workflow-validation.json",
+        "case_ids": ["B2-QA1-T-SCHEMA-KB-001", "B2-QA1-T-SCHEMA-CTRL-001"],
+    },
+    {
+        "entry_id": "E09",
+        "target_id": "BM0-TUT-E09-QA1T-CAPABILITY-ROUTING",
+        "source_profile": "QA1-T",
+        "family_id": "capability-routing",
+        "target_class": "AGENT_STANDARDIZED",
+        "fixture_path": "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json",
+        "receipt_path": "results/b2/qa1-tool-workflow-validation.json",
+        "case_ids": ["B2-QA1-T-ROUTE-KB-001", "B2-QA1-T-ROUTE-CTRL-001"],
+    },
+    {
+        "entry_id": "E10",
+        "target_id": "BM0-TUT-E10-QA1T-DESTRUCTIVE-WRITE-RECOVERY",
+        "source_profile": "QA1-T",
+        "family_id": "destructive-write-recovery",
+        "target_class": "AGENT_STANDARDIZED",
+        "fixture_path": "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json",
+        "receipt_path": "results/b2/qa1-tool-workflow-validation.json",
+        "case_ids": ["B2-QA1-T-WRITE-KB-001", "B2-QA1-T-WRITE-CTRL-001"],
+    },
+    {
+        "entry_id": "E11",
+        "target_id": "BM0-TUT-E11-QA2-CONSTRAINT-ACTION-PERSISTENCE",
+        "source_profile": "QA2",
+        "family_id": "constraint-action-persistence",
+        "target_class": "MODEL_DIRECT",
+        "fixture_path": "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json",
+        "receipt_path": "results/b2/qa2-robustness-validation.json",
+        "case_ids": ["B2-QA2-R-CONSTRAINT-KB-001", "B2-QA2-R-CONSTRAINT-CTRL-001"],
+    },
+    {
+        "entry_id": "E12",
+        "target_id": "BM0-TUT-E12-QA2-LIVE-ASSESSMENT-RULE-PERSISTENCE",
+        "source_profile": "QA2",
+        "family_id": "live-assessment-rule-persistence",
+        "target_class": "MODEL_DIRECT",
+        "fixture_path": "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json",
+        "receipt_path": "results/b2/qa2-robustness-validation.json",
+        "case_ids": ["B2-QA2-R-ASSESS-KB-001", "B2-QA2-R-ASSESS-CTRL-001"],
+    },
+    {
+        "entry_id": "E13",
+        "target_id": "BM0-TUT-E13-QA2-LIVE-PRODUCTION-NO-AI-PERSISTENCE",
+        "source_profile": "QA2",
+        "family_id": "live-production-no-ai-persistence",
+        "target_class": "MODEL_DIRECT",
+        "fixture_path": "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json",
+        "receipt_path": "results/b2/qa2-robustness-validation.json",
+        "case_ids": ["B2-QA2-R-PROD-KB-001", "B2-QA2-R-PROD-CTRL-001"],
+    },
+    {
+        "entry_id": "E14",
+        "target_id": "BM0-TUT-E14-QA3-FULL-SET-PROJECTION-COMPLETENESS",
+        "source_profile": "QA3",
+        "family_id": "full-set-projection-completeness",
+        "target_class": "SYSTEM_EVAL_ONLY",
+        "fixture_path": "cases/b2/public-safe/projection/qa3-projection-fixtures.json",
+        "receipt_path": "results/b2/qa3-quality-delta-validation.json",
+        "case_ids": ["B2-QA3-P-COMPLETE-KB-001", "B2-QA3-P-COMPLETE-CTRL-001"],
+    },
+    {
+        "entry_id": "E15",
+        "target_id": "BM0-TUT-E15-QA3-METRIC-ATTRIBUTION-PROVENANCE-SEPARATION",
+        "source_profile": "QA3",
+        "family_id": "metric-attribution-provenance-separation",
+        "target_class": "SYSTEM_EVAL_ONLY",
+        "fixture_path": "cases/b2/public-safe/projection/qa3-projection-fixtures.json",
+        "receipt_path": "results/b2/qa3-quality-delta-validation.json",
+        "case_ids": ["B2-QA3-P-ATTR-KB-001", "B2-QA3-P-ATTR-CTRL-001"],
+    },
+    {
+        "entry_id": "E16",
+        "target_id": "BM0-TUT-E16-QA3-DASHBOARD-FIELD-SEMANTICS-SCOPE-LOCK",
+        "source_profile": "QA3",
+        "family_id": "dashboard-field-semantics-scope-lock",
+        "target_class": "SYSTEM_EVAL_ONLY",
+        "fixture_path": "cases/b2/public-safe/projection/qa3-projection-fixtures.json",
+        "receipt_path": "results/b2/qa3-quality-delta-validation.json",
+        "case_ids": ["B2-QA3-P-SCOPE-KB-001", "B2-QA3-P-SCOPE-CTRL-001"],
+    },
+)
+TARGET_LINEAGE_BY_ID = {
+    row["target_id"]: row for row in CANONICAL_FAMILY_LINEAGE
+}
+TARGET_LINEAGE_BY_ENTRY = {
+    row["entry_id"]: row for row in CANONICAL_FAMILY_LINEAGE
+}
 TARGET_IDS_BY_CLASS = {
     "MODEL_DIRECT": (
-        "BM0-TUT-D01-CONSTRAINT-ADHERENCE",
-        "BM0-TUT-D02-REASONING-INTEGRITY",
-        "BM0-TUT-D03-CALIBRATED-ABSTENTION",
+        "BM0-TUT-E11-QA2-CONSTRAINT-ACTION-PERSISTENCE",
+        "BM0-TUT-E12-QA2-LIVE-ASSESSMENT-RULE-PERSISTENCE",
+        "BM0-TUT-E13-QA2-LIVE-PRODUCTION-NO-AI-PERSISTENCE",
     ),
     "MODEL_CONTEXT_GROUNDED": (
-        "BM0-TUT-G01-ENTITY-ATTRIBUTE-BINDING",
-        "BM0-TUT-G02-INVENTORY-EVIDENCE-SCOPE",
-        "BM0-TUT-G03-SOURCE-MODALITY-PROVENANCE",
-        "BM0-TUT-G04-LONG-CONTEXT-CONSTRAINT-PERSISTENCE",
-        "BM0-TUT-G05-CITATION-EVIDENCE-COMPLETENESS",
+        "BM0-TUT-E01-QA0-ENTITY-ATTRIBUTE-BINDING",
+        "BM0-TUT-E04-QA0-EVIDENCE-SCOPE",
+        "BM0-TUT-E05-QA1G-ENTITY-ATTRIBUTE-BINDING",
+        "BM0-TUT-E06-QA1G-INVENTORY-EVIDENCE-SCOPE",
+        "BM0-TUT-E07-QA1G-SOURCE-MODALITY",
     ),
     "AGENT_STANDARDIZED": (
-        "BM0-TUT-A01-CONNECTOR-SCHEMA-READBACK-RETRY",
-        "BM0-TUT-A02-CAPABILITY-PERMISSION-ROUTING",
-        "BM0-TUT-A03-DESTRUCTIVE-WRITE-RECOVERY",
-        "BM0-TUT-A04-TOOL-SEQUENCE-GLOBAL-INTEGRITY",
+        "BM0-TUT-E02-QA0-CONNECTOR-SCHEMA",
+        "BM0-TUT-E08-QA1T-CONNECTOR-SCHEMA-RETRY",
+        "BM0-TUT-E09-QA1T-CAPABILITY-ROUTING",
+        "BM0-TUT-E10-QA1T-DESTRUCTIVE-WRITE-RECOVERY",
     ),
     "SYSTEM_EVAL_ONLY": (
-        "BM0-TUT-S01-FULL-SET-PROJECTION-COMPLETENESS",
-        "BM0-TUT-S02-TERMINAL-STATE-PERSISTENCE",
-        "BM0-TUT-S03-ADAPTER-RECONCILIATION",
-        "BM0-TUT-S04-CLAIM-EVIDENCE-INTEGRITY",
+        "BM0-TUT-E03-QA0-INTEGRITY-COMPLETENESS",
+        "BM0-TUT-E14-QA3-FULL-SET-PROJECTION-COMPLETENESS",
+        "BM0-TUT-E15-QA3-METRIC-ATTRIBUTION-PROVENANCE-SEPARATION",
+        "BM0-TUT-E16-QA3-DASHBOARD-FIELD-SEMANTICS-SCOPE-LOCK",
     ),
 }
 EXPECTED_TARGET_CLASS_COUNTS = {
@@ -126,6 +304,12 @@ SAP_METHOD_IDS = (
     "BM0-SAP-06-PAIRED-COMPLETE-CASE-V1",
     "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1",
     "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1",
+    "BM0-SAP-09-CASE-FAILURE-PROBABILITY-V1",
+    "BM0-SAP-10-FAMILY-CONDITIONAL-FAILURE-RATE-V1",
+    "BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1",
+    "BM0-SAP-12-CONTROL-FALSE-POSITIVE-RATE-V1",
+    "BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1",
+    "BM0-SAP-14-INFRASTRUCTURE-ERROR-RATE-V1",
 )
 SAP_IMPLEMENTATIONS = {
     SAP_METHOD_IDS[0]: "fixed_attempt_stop_v1",
@@ -136,17 +320,50 @@ SAP_IMPLEMENTATIONS = {
     SAP_METHOD_IDS[5]: "paired_complete_case_v1",
     SAP_METHOD_IDS[6]: "resolve_adjudication_v1",
     SAP_METHOD_IDS[7]: "system_invariant_failure_rate_v1",
+    SAP_METHOD_IDS[8]: "case_failure_probability_v1",
+    SAP_METHOD_IDS[9]: "family_conditional_failure_rate_v1",
+    SAP_METHOD_IDS[10]: "fcfr_case_cluster_bootstrap_v1",
+    SAP_METHOD_IDS[11]: "control_false_positive_rate_v1",
+    SAP_METHOD_IDS[12]: "within_case_instability_v1",
+    SAP_METHOD_IDS[13]: "infrastructure_error_rate_v1",
 }
 PAIR_COMPATIBILITY_FIELDS = (
+    "benchmark_id",
+    "contract_version",
     "target_id",
     "target_class",
+    "entry_id",
+    "family_id",
+    "case_id",
+    "variant_id",
+    "mechanism_lineage_id",
+    "case_fingerprint",
+    "generator_or_mutation_version",
+    "contamination_status",
+    "exposure_status",
     "corpus_item_alias",
     "corpus_item_commitment",
     "corpus_pool_id",
     "mutation_parent_commitment",
     "prompt_template_version",
+    "prompt_fingerprint",
+    "context_fingerprint",
+    "tool_schema_fingerprint",
+    "sandbox_fingerprint",
+    "state_machine_fingerprint",
+    "capability_mode",
+    "system_wrapper_version",
+    "developer_wrapper_version",
+    "sampling_controls",
+    "reasoning_controls",
     "harness_version",
     "adapter_version",
+    "scorer_id",
+    "scorer_version",
+    "scorer_fingerprint",
+    "oracle_id",
+    "oracle_version",
+    "oracle_fingerprint",
     "replicate_index",
     "random_seed",
     "environment_fingerprint",
@@ -198,8 +415,10 @@ SAP_FROZEN_PARAMETERS = {
     },
     SAP_METHOD_IDS[5]: {
         "pair_key": [
-            "target_id",
-            "corpus_item_alias",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
             "replicate_index",
             "retry_ordinal",
         ],
@@ -234,50 +453,119 @@ SAP_FROZEN_PARAMETERS = {
         "ranking": "FORBIDDEN",
         "corpus_pool": PRIMARY_ESTIMATE_POOL_ID,
     },
+    SAP_METHOD_IDS[8]: {
+        "statistical_unit": "VALID_MODEL_TRIAL",
+        "case_cluster_key": [
+            "model_subject_id",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
+        ],
+        "repeat_unit": "replicate_index",
+        "numerator": ["FAIL"],
+        "denominator": ["PASS", "FAIL"],
+        "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
+        "interval_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+        "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
+    },
+    SAP_METHOD_IDS[9]: {
+        "statistical_unit": "DISTINCT_CASE_VARIANT",
+        "cluster_unit": "CASE_ID",
+        "family_key": ["model_subject_id", "entry_id", "family_id"],
+        "estimator": "UNWEIGHTED_MEAN_OF_DISTINCT_CASE_CFP",
+        "repeat_weighting": "EQUAL_WITHIN_CASE",
+        "case_weighting": "EQUAL_ACROSS_DISTINCT_CASES",
+        "uncertainty_method_id": "BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1",
+        "minimum_distinct_cases_for_uncertainty": 2,
+        "incomplete_case": "NOT_EVALUABLE/SUPPRESS_FAMILY_ESTIMATE",
+    },
+    SAP_METHOD_IDS[10]: {
+        "method_family": "DETERMINISTIC_PERCENTILE_CASE_CLUSTER_BOOTSTRAP",
+        "cluster_unit": "DISTINCT_CASE_ID",
+        "resamples": 10000,
+        "seed": 20260904,
+        "confidence_level": 0.95,
+        "lower_percentile": 0.025,
+        "upper_percentile": 0.975,
+        "resample_repeated_trials_as_independent_cases": False,
+        "minimum_distinct_clusters": 2,
+    },
+    SAP_METHOD_IDS[11]: {
+        "statistical_unit": "VALID_CONTROL_TRIAL",
+        "control_selector": "variant_id=CONTROL",
+        "numerator": ["FAIL"],
+        "denominator": ["PASS", "FAIL"],
+        "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
+        "interval_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+        "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
+    },
+    SAP_METHOD_IDS[12]: {
+        "statistical_unit": "DISTINCT_CASE_VARIANT",
+        "cluster_unit": "CASE_ID",
+        "eligible_case": "AT_LEAST_TWO_MODEL_SCORABLE_REPLICATES",
+        "switch_definition": "BOTH_PASS_AND_FAIL_OBSERVED_WITHIN_CASE",
+        "numerator": "SWITCHING_CASE_COUNT",
+        "denominator": "ELIGIBLE_DISTINCT_CASE_COUNT",
+        "repeated_trials_are_not_distinct_cases": True,
+    },
+    SAP_METHOD_IDS[13]: {
+        "statistical_unit": "PREDECLARED_ATTEMPT",
+        "numerator": ["ERROR"],
+        "denominator": list(TERMINAL_STATUSES),
+        "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
+        "model_failure_attribution": "FORBIDDEN",
+    },
 }
 
 EXPECTED_METRIC_IDS = {
+    "case_failure_probability",
+    "family_conditional_failure_rate",
+    "control_false_positive_rate",
+    "within_case_instability",
+    "infrastructure_error_rate",
+    "terminal_distribution",
     "model_failure_rate",
     "sandboxed_agent_failure_rate",
     "system_invariant_failure_rate",
     "non_scorable_attempt_rate",
 }
 EXPECTED_POOL_IDS = {
-    "PUBLIC_DEVELOPMENT",
-    "PUBLIC_CONTROL",
-    "MUTATION",
+    "PUBLIC_REGRESSION",
+    "MECHANISM_PRESERVING_MUTATION",
+    "CONTROL",
     "PRIVATE_HIDDEN_HOLDOUT",
 }
 EXPECTED_POOL_CONTRACTS = {
-    "PUBLIC_DEVELOPMENT": {
+    "PUBLIC_REGRESSION": {
         "visibility": "PUBLIC_SAFE",
         "purpose": (
-            "Design, scorer debugging, and documented examples visible before "
-            "study freeze"
+            "Current public-safe regression assets for engineering regression "
+            "and openly disclosed benchmark slices"
         ),
         "allowed_in_primary_estimate": False,
         "content_location": "PUBLIC_REPOSITORY_ALLOWED",
         "selection_timing": "BEFORE_FROZEN_MANIFEST",
-        "lineage_role": "DEVELOPMENT_ONLY",
+        "lineage_role": "ENGINEERING_REGRESSION_ONLY",
     },
-    "PUBLIC_CONTROL": {
+    "MECHANISM_PRESERVING_MUTATION": {
+        "visibility": "PUBLIC_SAFE_GENERATED",
+        "purpose": (
+            "Entity, wording, ordering, distractor, or surface variants that "
+            "preserve the same failure mechanism"
+        ),
+        "allowed_in_primary_estimate": False,
+        "content_location": "PUBLIC_REPOSITORY_ALLOWED_AFTER_PUBLIC_SAFETY_CHECK",
+        "selection_timing": "BEFORE_FROZEN_MANIFEST",
+        "lineage_role": "STRESS_TEST_ONLY",
+    },
+    "CONTROL": {
         "visibility": "PUBLIC_SAFE",
         "purpose": "Matched controls for false-reject and contract-regression checks",
         "allowed_in_primary_estimate": False,
         "content_location": "PUBLIC_REPOSITORY_ALLOWED",
         "selection_timing": "BEFORE_FROZEN_MANIFEST",
         "lineage_role": "CONTROL_ONLY",
-    },
-    "MUTATION": {
-        "visibility": "PUBLIC_SAFE_GENERATED",
-        "purpose": (
-            "Mechanism-preserving generated variants with parent lineage and "
-            "mutation operator recorded"
-        ),
-        "allowed_in_primary_estimate": False,
-        "content_location": "PUBLIC_REPOSITORY_ALLOWED_AFTER_PUBLIC_SAFETY_CHECK",
-        "selection_timing": "BEFORE_FROZEN_MANIFEST",
-        "lineage_role": "STRESS_TEST_ONLY",
     },
     "PRIVATE_HIDDEN_HOLDOUT": {
         "visibility": "PRIVATE_EXTERNAL",
@@ -293,6 +581,17 @@ EXPECTED_POOL_CONTRACTS = {
         "lineage_role": "PRIMARY_HOLDOUT_ONLY",
     },
 }
+POOL_EXPOSURE_STATUS = {
+    "PUBLIC_REGRESSION": "PUBLICLY_DISCLOSED_REGRESSION",
+    "MECHANISM_PRESERVING_MUTATION": "PUBLICLY_DISCLOSED_MUTATION",
+    "CONTROL": "PUBLICLY_DISCLOSED_CONTROL",
+    "PRIVATE_HIDDEN_HOLDOUT": "PRIVATE_UNEXPOSED_BEFORE_MANIFEST_FREEZE",
+}
+CONTAMINATION_STATUSES = (
+    "ASSESSED_CLEAR",
+    "KNOWN_EXPOSED",
+    "UNKNOWN",
+)
 HIDDEN_ACCESS_SEQUENCE = (
     "CURATOR_SELECT_AND_COMMIT_PRIVATE_HOLDOUT",
     "FREEZE_EXECUTION_MANIFEST",
@@ -315,6 +614,32 @@ MANIFEST_ARTIFACT_FINGERPRINT_KEYS = (
     "analysis_plan",
     "analysis_implementation",
 )
+SAP_DESIGN_RULE = {
+    "sample_size_rule_id": "BOUNDED-PILOT-FIXED-SUITE-V1",
+    "purpose": "BOUNDED_PILOT_MECHANISM_CONDITIONED_FREQUENCY_EVIDENCE",
+    "statistical_unit": "DISTINCT_CASE_VARIANT",
+    "cluster_unit": "CASE_ID_WITH_REPEATED_TRIALS_NESTED",
+    "minimum_distinct_cases_per_family_entry": 2,
+    "maximum_distinct_cases_per_family_entry": 8,
+    "minimum_replicates_per_case": 2,
+    "maximum_replicates_per_case": 5,
+    "target_precision": "NOT_CLAIMED_BOUNDED_PILOT",
+    "significance_or_superiority_claim": "FORBIDDEN",
+    "outcome_dependent_extension": "FORBIDDEN",
+    "change_control": "NEW_FROZEN_MANIFEST_AND_SEPARATE_APPROVAL_REQUIRED",
+}
+CANONICAL_SOURCE_ARTIFACT_PATHS = (
+    "cases/b2/public-safe/qa0-fixtures.json",
+    "results/b2/qa0-contract-validation.json",
+    "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
+    "results/b2/qa1-grounding-validation.json",
+    "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json",
+    "results/b2/qa1-tool-workflow-validation.json",
+    "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json",
+    "results/b2/qa2-robustness-validation.json",
+    "cases/b2/public-safe/projection/qa3-projection-fixtures.json",
+    "results/b2/qa3-quality-delta-validation.json",
+)
 BOUND_ARTIFACT_PATHS = (
     "b2/bm0.py",
     "tests/test_b2_bm0.py",
@@ -327,6 +652,7 @@ BOUND_ARTIFACT_PATHS = (
     "schemas/bm0_adjudication_record.schema.json",
     "schemas/bm0_benchmark_manifest.schema.json",
     "schemas/bm0_measurement_contract.schema.json",
+    *CANONICAL_SOURCE_ARTIFACT_PATHS,
 )
 CONTRACT_ARTIFACT_PATH = (
     "cases/b2/public-safe/benchmark/bm0-measurement-contract.json"
@@ -397,6 +723,35 @@ def _integer(
     if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
         raise ValueError(f"{label}.{key} must be an integer >= {minimum}")
     return value
+
+
+def _number(
+    document: Mapping[str, Any],
+    key: str,
+    label: str,
+    *,
+    minimum: float = 0.0,
+) -> float:
+    value = document.get(key)
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(float(value))
+        or float(value) < minimum
+    ):
+        raise ValueError(f"{label}.{key} must be a finite number >= {minimum}")
+    return float(value)
+
+
+def _timestamp(document: Mapping[str, Any], key: str, label: str) -> datetime:
+    value = _text(document, key, label)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label}.{key} must be an RFC3339 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{label}.{key} must include a timezone")
+    return parsed
 
 
 def _strings(
@@ -545,8 +900,15 @@ def validate_target_matrix(document: object) -> dict[str, Any]:
         _exact_keys(
             target,
             {
+                "entry_id",
                 "target_id",
                 "target_class",
+                "source_profile",
+                "family_id",
+                "family_lineage_key",
+                "source_fixture_path",
+                "source_receipt_path",
+                "source_case_ids",
                 "capability",
                 "unit_under_test",
                 "observable",
@@ -564,6 +926,30 @@ def validate_target_matrix(document: object) -> dict[str, Any]:
             raise ValueError("target IDs must be unique and classes supported")
         seen_ids.add(target_id)
         observed_by_class[target_class].append(target_id)
+        entry_id = _identifier(target, "entry_id", entry_label)
+        source_profile = _identifier(target, "source_profile", entry_label)
+        family_id = _identifier(target, "family_id", entry_label)
+        expected_lineage = TARGET_LINEAGE_BY_ID.get(target_id)
+        if expected_lineage is None:
+            raise ValueError(f"{target_id} substitutes an unapproved BM0 target")
+        lineage_fields = {
+            "entry_id": entry_id,
+            "target_id": target_id,
+            "source_profile": source_profile,
+            "family_id": family_id,
+            "target_class": target_class,
+            "fixture_path": _text(target, "source_fixture_path", entry_label),
+            "receipt_path": _text(target, "source_receipt_path", entry_label),
+            "case_ids": _strings(target, "source_case_ids", entry_label),
+        }
+        if lineage_fields != expected_lineage:
+            raise ValueError(
+                f"{target_id} does not bind its exact canonical family entry"
+            )
+        if target.get("family_lineage_key") != (
+            f"{entry_id}/{source_profile}/{family_id}"
+        ):
+            raise ValueError(f"{target_id} canonical family lineage key drifted")
         for key in ("capability", "unit_under_test", "observable", "scope_limit"):
             _text(target, key, entry_label)
         metric_id = _text(target, "primary_metric_id", entry_label)
@@ -599,6 +985,10 @@ def validate_target_matrix(document: object) -> dict[str, Any]:
     for target_class, expected_ids in TARGET_IDS_BY_CLASS.items():
         if tuple(observed_by_class[target_class]) != expected_ids:
             raise ValueError(f"{target_class} target inventory/order drifted")
+    if tuple(target["entry_id"] for target in targets_raw) != tuple(
+        row["entry_id"] for row in CANONICAL_FAMILY_LINEAGE
+    ):
+        raise ValueError("target matrix must preserve canonical E01-E16 order")
 
     gate = _obj(doc.get("sandbox_equivalence_gate"), f"{label}.sandbox_equivalence_gate")
     _exact_keys(
@@ -627,6 +1017,103 @@ def validate_target_matrix(document: object) -> dict[str, Any]:
     _strings(doc, "limitations", label)
     assert_public_safe(doc)
     return _verify_fingerprint(doc, "matrix_fingerprint", label)
+
+
+def validate_canonical_family_lineage_v1(
+    target_matrix: object,
+    *,
+    bound_artifacts: Mapping[str, object],
+) -> dict[str, Any]:
+    """Prove that BM0 contains the 16 existing formal B2 entries, not substitutes."""
+
+    checked = validate_target_matrix(target_matrix)
+    entry_ids: set[str] = set()
+    lineage_keys: set[str] = set()
+    canonical_case_ids: set[str] = set()
+    profile_receipt_names = {
+        "QA1-G": "GROUNDING",
+        "QA1-T": "TOOL_AGENT",
+        "QA2": "SAFETY_ROBUSTNESS",
+        "QA3": "PROJECTION_INTEGRITY",
+    }
+    for target in checked["targets"]:
+        entry_id = target["entry_id"]
+        lineage_key = target["family_lineage_key"]
+        if entry_id in entry_ids or lineage_key in lineage_keys:
+            raise ValueError("canonical entry and family-lineage keys must be unique")
+        entry_ids.add(entry_id)
+        lineage_keys.add(lineage_key)
+
+        fixture_path = target["source_fixture_path"]
+        receipt_path = target["source_receipt_path"]
+        if fixture_path not in CANONICAL_SOURCE_ARTIFACT_PATHS:
+            raise ValueError("canonical fixture path is outside the frozen source set")
+        if receipt_path not in CANONICAL_SOURCE_ARTIFACT_PATHS:
+            raise ValueError("canonical receipt path is outside the frozen source set")
+        fixture = _obj(
+            bound_artifacts.get(fixture_path),
+            f"canonical-source[{fixture_path}]",
+        )
+        receipt = _obj(
+            bound_artifacts.get(receipt_path),
+            f"canonical-source[{receipt_path}]",
+        )
+        cases_raw = fixture.get("cases")
+        if not isinstance(cases_raw, list):
+            raise ValueError(f"{fixture_path} must expose its canonical cases")
+        family_cases = [
+            _obj(case, f"{fixture_path}.cases")
+            for case in cases_raw
+            if isinstance(case, Mapping)
+            and case.get("family_id") == target["family_id"]
+        ]
+        observed_case_ids = {case.get("case_id") for case in family_cases}
+        expected_case_ids = set(target["source_case_ids"])
+        if len(family_cases) != 2 or observed_case_ids != expected_case_ids:
+            raise ValueError(
+                f"{entry_id} must bind exactly its canonical KNOWN_BAD/CONTROL pair"
+            )
+        if {case.get("variant") for case in family_cases} != {
+            "KNOWN_BAD",
+            "CONTROL",
+        }:
+            raise ValueError(f"{entry_id} canonical case variants drifted")
+        if canonical_case_ids & expected_case_ids:
+            raise ValueError("one canonical case cannot satisfy multiple BM0 entries")
+        canonical_case_ids.update(expected_case_ids)
+
+        if receipt.get("gate") != "PASS":
+            raise ValueError(f"{entry_id} source receipt is not PASS")
+        fixture_fingerprints = _obj(
+            receipt.get("fixture_fingerprints"),
+            f"{receipt_path}.fixture_fingerprints",
+        )
+        if not expected_case_ids.issubset(fixture_fingerprints):
+            raise ValueError(f"{entry_id} source receipt omits canonical cases")
+        for case in family_cases:
+            case_id = case["case_id"]
+            if fixture_fingerprints[case_id] != sha256_json(case):
+                raise ValueError(
+                    f"{entry_id} source receipt fingerprint does not bind {case_id}"
+                )
+        expected_receipt_profile = profile_receipt_names.get(
+            target["source_profile"]
+        )
+        if expected_receipt_profile is not None:
+            if receipt.get("profile") != expected_receipt_profile:
+                raise ValueError(f"{entry_id} source receipt profile drifted")
+            if target["family_id"] not in receipt.get("expected_families", []):
+                raise ValueError(f"{entry_id} source receipt omits its family")
+
+    if entry_ids != set(TARGET_LINEAGE_BY_ENTRY) or len(canonical_case_ids) != 32:
+        raise ValueError("canonical BM0 family-lineage coverage is not 16 entries/32 cases")
+    return {
+        "method_id": "BM0-CANONICAL-FAMILY-LINEAGE-V1",
+        "entry_count": len(entry_ids),
+        "unique_family_lineage_count": len(lineage_keys),
+        "canonical_case_count": len(canonical_case_ids),
+        "source_artifact_count": len(CANONICAL_SOURCE_ARTIFACT_PATHS),
+    }
 
 
 def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
@@ -789,6 +1276,111 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
         or diagnostic["claim_scope"] != "DIAGNOSTIC_ONLY_NOT_MODEL_FAILURE"
     ):
         raise ValueError("non-scorable diagnostic contract drifted")
+
+    required_metric_rules = {
+        "case_failure_probability": {
+            "classes": set(TARGET_CLASSES) - {"SYSTEM_EVAL_ONLY"},
+            "numerator": {"FAIL"},
+            "denominator": set(MODEL_SCORABLE_TERMINALS),
+            "excluded": set(NON_MODEL_SCORABLE_TERMINALS),
+            "pool": "ALL_DECLARED_POOLS",
+            "gate": "AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
+            "estimate": SAP_METHOD_IDS[8],
+            "uncertainty": SAP_METHOD_IDS[4],
+            "zero": "NOT_EVALUABLE/ZERO_CASE_SCORABLE_DENOMINATOR",
+            "kind": "MODEL_QUALITY_CASE_LEVEL",
+            "direction": "LOWER_IS_BETTER",
+            "claim": "CASE_CONDITIONAL_ONLY",
+        },
+        "family_conditional_failure_rate": {
+            "classes": set(TARGET_CLASSES) - {"SYSTEM_EVAL_ONLY"},
+            "numerator": {"FAIL"},
+            "denominator": set(MODEL_SCORABLE_TERMINALS),
+            "excluded": set(NON_MODEL_SCORABLE_TERMINALS),
+            "pool": "ALL_DECLARED_POOLS",
+            "gate": "AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
+            "estimate": SAP_METHOD_IDS[9],
+            "uncertainty": SAP_METHOD_IDS[10],
+            "zero": "NOT_EVALUABLE/NO_DISTINCT_SCORABLE_CASES",
+            "kind": "MODEL_QUALITY_FAMILY_MACRO",
+            "direction": "LOWER_IS_BETTER",
+            "claim": "MECHANISM_CONDITIONED_FAMILY_PROFILE_ONLY",
+        },
+        "control_false_positive_rate": {
+            "classes": set(TARGET_CLASSES) - {"SYSTEM_EVAL_ONLY"},
+            "numerator": {"FAIL"},
+            "denominator": set(MODEL_SCORABLE_TERMINALS),
+            "excluded": set(NON_MODEL_SCORABLE_TERMINALS),
+            "pool": "ALL_DECLARED_POOLS",
+            "gate": "CONTROL_VARIANT_ONLY_AND_AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
+            "estimate": SAP_METHOD_IDS[11],
+            "uncertainty": SAP_METHOD_IDS[4],
+            "zero": "NOT_EVALUABLE/ZERO_CONTROL_SCORABLE_DENOMINATOR",
+            "kind": "CONTROL_DIAGNOSTIC",
+            "direction": "LOWER_IS_BETTER",
+            "claim": "CONTROL_FALSE_POSITIVE_ONLY",
+        },
+        "within_case_instability": {
+            "classes": set(TARGET_CLASSES) - {"SYSTEM_EVAL_ONLY"},
+            "numerator": set(MODEL_SCORABLE_TERMINALS),
+            "denominator": set(MODEL_SCORABLE_TERMINALS),
+            "excluded": set(NON_MODEL_SCORABLE_TERMINALS),
+            "pool": "ALL_DECLARED_POOLS",
+            "gate": "AT_LEAST_TWO_SCORABLE_REPLICATES_PER_CASE",
+            "estimate": SAP_METHOD_IDS[12],
+            "uncertainty": "NONE_DESCRIPTIVE_SWITCHING_ONLY",
+            "zero": "NOT_EVALUABLE/NO_REPEAT_ELIGIBLE_CASES",
+            "kind": "STOCHASTIC_STABILITY",
+            "direction": "LOWER_IS_BETTER",
+            "claim": "WITHIN_CASE_REPEAT_STABILITY_ONLY",
+        },
+        "infrastructure_error_rate": {
+            "classes": set(TARGET_CLASSES),
+            "numerator": {"ERROR"},
+            "denominator": set(TERMINAL_STATUSES),
+            "excluded": set(),
+            "pool": "ALL_DECLARED_POOLS",
+            "gate": "COMPLETE_PREDECLARED_GRID",
+            "estimate": SAP_METHOD_IDS[13],
+            "uncertainty": "NONE_DIAGNOSTIC_COUNTING_ONLY",
+            "zero": "NOT_EVALUABLE/ZERO_SCHEDULED_ATTEMPTS",
+            "kind": "INFRASTRUCTURE_DIAGNOSTIC",
+            "direction": "LOWER_IS_BETTER",
+            "claim": "INFRASTRUCTURE_ONLY_NOT_MODEL_FAILURE",
+        },
+        "terminal_distribution": {
+            "classes": set(TARGET_CLASSES),
+            "numerator": set(TERMINAL_STATUSES),
+            "denominator": set(TERMINAL_STATUSES),
+            "excluded": set(),
+            "pool": "ALL_DECLARED_POOLS",
+            "gate": "COMPLETE_PREDECLARED_GRID",
+            "estimate": SAP_METHOD_IDS[2],
+            "uncertainty": "NONE_DIAGNOSTIC_COUNTING_ONLY",
+            "zero": "NOT_EVALUABLE/ZERO_SCHEDULED_ATTEMPTS",
+            "kind": "TYPED_TERMINAL_DIAGNOSTIC",
+            "direction": "DISTRIBUTION_ONLY",
+            "claim": "TERMINAL_VISIBILITY_ONLY",
+        },
+    }
+    for metric_id, rule in required_metric_rules.items():
+        metric = metrics[metric_id]
+        observed = {
+            "classes": set(metric["applicability_classes"]),
+            "numerator": set(metric["numerator_statuses"]),
+            "denominator": set(metric["denominator_statuses"]),
+            "excluded": set(metric["excluded_terminal_statuses"]),
+            "pool": metric["corpus_pool"],
+            "gate": metric["activation_gate"],
+            "estimate": metric["estimate_method_id"],
+            "uncertainty": metric["uncertainty_method_id"],
+            "zero": metric["zero_denominator_semantics"],
+            "kind": metric["kind"],
+            "direction": metric["directionality"],
+            "claim": metric["claim_scope"],
+        }
+        if metric["version"] != "v1" or observed != rule:
+            raise ValueError(f"{metric_id} executable metric contract drifted")
     assert_public_safe(doc)
     return _verify_fingerprint(doc, "registry_fingerprint", label)
 
@@ -852,10 +1444,10 @@ def validate_corpus_policy(document: object) -> dict[str, Any]:
         if observed_contract != EXPECTED_POOL_CONTRACTS[pool_id]:
             raise ValueError(f"{pool_id} corpus-pool semantics drifted")
     if tuple(pool["pool_id"] for pool in pools_raw) != (
-        "PUBLIC_DEVELOPMENT",
-        "PUBLIC_CONTROL",
-        "MUTATION",
+        "PUBLIC_REGRESSION",
         "PRIVATE_HIDDEN_HOLDOUT",
+        "MECHANISM_PRESERVING_MUTATION",
+        "CONTROL",
     ):
         raise ValueError("corpus pool order drifted")
     split = _obj(doc.get("split_rules"), f"{label}.split_rules")
@@ -925,6 +1517,8 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
         doc,
         {
             "schema_version",
+            "benchmark_id",
+            "contract_version",
             "study_id",
             "trial_id",
             "attempt_id",
@@ -932,16 +1526,46 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
             "provider_subject_id",
             "model_subject_id",
             "model_snapshot_id",
+            "requested_model_id",
+            "expected_resolved_model_or_version_id",
+            "required_identity_certainty",
+            "alias_limitation",
+            "endpoint_id",
+            "capability_mode",
+            "system_wrapper_version",
+            "developer_wrapper_version",
+            "sampling_controls",
+            "reasoning_controls",
             "target_id",
             "target_class",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
+            "mechanism_lineage_id",
+            "case_fingerprint",
+            "generator_or_mutation_version",
+            "contamination_status",
+            "exposure_status",
             "corpus_pool_id",
             "corpus_item_alias",
             "corpus_item_commitment",
             "mutation_parent_commitment",
             "prompt_template_version",
+            "prompt_fingerprint",
+            "context_fingerprint",
+            "tool_schema_fingerprint",
+            "sandbox_fingerprint",
+            "state_machine_fingerprint",
             "harness_version",
             "adapter_id",
             "adapter_version",
+            "scorer_id",
+            "scorer_version",
+            "scorer_fingerprint",
+            "oracle_id",
+            "oracle_version",
+            "oracle_fingerprint",
             "replicate_index",
             "random_seed",
             "environment_fingerprint",
@@ -950,21 +1574,48 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
     )
     if _text(doc, "schema_version", label) != TRIAL_IDENTITY_SCHEMA_VERSION:
         raise ValueError("unsupported BM0 trial identity schema")
+    if _text(doc, "contract_version", label) != WORK_ORDER_REVISION:
+        raise ValueError("trial identity contract version drifted")
     for key in (
+        "benchmark_id",
         "study_id",
         "trial_id",
         "attempt_id",
         "provider_subject_id",
         "model_subject_id",
         "model_snapshot_id",
+        "requested_model_id",
+        "endpoint_id",
+        "capability_mode",
+        "system_wrapper_version",
+        "developer_wrapper_version",
         "target_id",
+        "entry_id",
+        "family_id",
+        "case_id",
+        "variant_id",
+        "mechanism_lineage_id",
+        "generator_or_mutation_version",
         "corpus_item_alias",
         "prompt_template_version",
         "harness_version",
         "adapter_id",
         "adapter_version",
+        "scorer_id",
+        "scorer_version",
+        "oracle_id",
+        "oracle_version",
     ):
         _identifier(doc, key, label)
+    expected_resolved = doc.get("expected_resolved_model_or_version_id")
+    if expected_resolved is not None:
+        if (
+            not isinstance(expected_resolved, str)
+            or _IDENTIFIER_RE.fullmatch(expected_resolved) is None
+        ):
+            raise ValueError(
+                "expected_resolved_model_or_version_id must be null or an identifier"
+            )
     parent_attempt_id = doc.get("parent_attempt_id")
     if parent_attempt_id is not None:
         if not isinstance(parent_attempt_id, str) or _IDENTIFIER_RE.fullmatch(parent_attempt_id) is None:
@@ -976,28 +1627,74 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
         raise ValueError("trial identity target class is unsupported")
     if doc["target_id"] not in TARGET_IDS_BY_CLASS[target_class]:
         raise ValueError("trial target ID does not belong to its declared class")
+    lineage = TARGET_LINEAGE_BY_ID[doc["target_id"]]
+    if (
+        doc["entry_id"] != lineage["entry_id"]
+        or doc["family_id"] != lineage["family_id"]
+        or target_class != lineage["target_class"]
+    ):
+        raise ValueError("trial entry/family/target lineage is inconsistent")
     corpus_pool_id = _text(doc, "corpus_pool_id", label)
     if corpus_pool_id not in EXPECTED_POOL_IDS:
         raise ValueError("trial corpus pool is unsupported")
     mutation_parent_commitment = doc.get("mutation_parent_commitment")
-    if corpus_pool_id == "MUTATION":
+    if corpus_pool_id == "MECHANISM_PRESERVING_MUTATION":
         _require_sha256(
             mutation_parent_commitment, "mutation_parent_commitment"
         )
     elif mutation_parent_commitment is not None:
         raise ValueError(
-            "only mutation-pool attempts may bind a mutation parent"
+            "only mechanism-preserving mutation attempts may bind a mutation parent"
         )
+    _require_sha256(doc.get("case_fingerprint"), "case_fingerprint")
+    contamination_status = _text(doc, "contamination_status", label)
+    if contamination_status not in CONTAMINATION_STATUSES:
+        raise ValueError("trial contamination status is unsupported")
+    if doc.get("exposure_status") != POOL_EXPOSURE_STATUS[corpus_pool_id]:
+        raise ValueError("trial exposure status does not match its corpus lane")
+    if (
+        corpus_pool_id == PRIMARY_ESTIMATE_POOL_ID
+        and contamination_status == "KNOWN_EXPOSED"
+    ):
+        raise ValueError("known-exposed cases cannot enter the private holdout")
     subject_identity = (
         doc["provider_subject_id"],
         doc["model_subject_id"],
         doc["model_snapshot_id"],
     )
+    identity_certainty = _text(doc, "required_identity_certainty", label)
+    alias_limitation = _text(doc, "alias_limitation", label)
     if target_class == "SYSTEM_EVAL_ONLY":
         if subject_identity != (SYSTEM_SCOPE_ID, SYSTEM_SCOPE_ID, SYSTEM_SCOPE_ID):
             raise ValueError("system-only trials must use the non-model SYSTEM_SCOPE identity")
+        if (
+            doc["requested_model_id"] != SYSTEM_SCOPE_ID
+            or expected_resolved != SYSTEM_SCOPE_ID
+            or identity_certainty != "SYSTEM_SCOPE"
+            or alias_limitation != "NOT_APPLICABLE_SYSTEM_SCOPE"
+            or doc["endpoint_id"] != SYSTEM_SCOPE_ID
+            or doc["capability_mode"] != "SYSTEM_EVAL"
+        ):
+            raise ValueError("system-only identity fields must be explicit SYSTEM_SCOPE")
     elif SYSTEM_SCOPE_ID in subject_identity:
         raise ValueError("model and agent trials cannot use the SYSTEM_SCOPE identity")
+    elif identity_certainty == "EXACT":
+        if (
+            expected_resolved is None
+            or doc["model_snapshot_id"] != expected_resolved
+            or alias_limitation
+            not in {"NONE", "MOVING_ALIAS_RESOLUTION_REQUIRED"}
+        ):
+            raise ValueError("EXACT identity requires one frozen expected resolved version")
+    elif identity_certainty == "ALIAS_ONLY":
+        if (
+            expected_resolved is not None
+            or doc["model_snapshot_id"] != "UNRESOLVED_ALIAS"
+            or alias_limitation != "UNVERIFIABLE_ALIAS_DISCLOSED"
+        ):
+            raise ValueError("ALIAS_ONLY identity must disclose unresolved alias limits")
+    else:
+        raise ValueError("unsupported required identity certainty")
     if str(doc["model_snapshot_id"]).lower() in {
         "latest",
         "default",
@@ -1007,6 +1704,83 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
         raise ValueError("model snapshot identity must be immutable, not a moving alias")
     _require_sha256(doc.get("corpus_item_commitment"), "corpus_item_commitment")
     _require_sha256(doc.get("environment_fingerprint"), "environment_fingerprint")
+    for key in (
+        "prompt_fingerprint",
+        "context_fingerprint",
+        "tool_schema_fingerprint",
+        "sandbox_fingerprint",
+        "state_machine_fingerprint",
+        "scorer_fingerprint",
+        "oracle_fingerprint",
+    ):
+        _require_sha256(doc.get(key), f"trial-identity.{key}")
+
+    sampling = _obj(doc.get("sampling_controls"), "trial-identity.sampling_controls")
+    _exact_keys(
+        sampling,
+        {
+            "temperature",
+            "top_p",
+            "max_output_tokens",
+            "seed",
+            "automatic_retries",
+            "additional_parameters_fingerprint",
+        },
+        "trial-identity.sampling_controls",
+    )
+    for key, maximum in (("temperature", 2.0), ("top_p", 1.0)):
+        if sampling.get(key) is not None:
+            value = _number(sampling, key, "trial-identity.sampling_controls")
+            if value > maximum:
+                raise ValueError(f"sampling_controls.{key} exceeds its frozen range")
+    _integer(
+        sampling,
+        "max_output_tokens",
+        "trial-identity.sampling_controls",
+        minimum=1,
+    )
+    seed = sampling.get("seed")
+    if seed is not None and (
+        not isinstance(seed, int) or isinstance(seed, bool) or seed < 0
+    ):
+        raise ValueError("sampling_controls.seed must be null or a non-negative integer")
+    if _integer(
+        sampling,
+        "automatic_retries",
+        "trial-identity.sampling_controls",
+    ) != 0:
+        raise ValueError("BM0 initial automatic_retries must remain zero")
+    _require_sha256(
+        sampling.get("additional_parameters_fingerprint"),
+        "sampling_controls.additional_parameters_fingerprint",
+    )
+
+    reasoning = _obj(doc.get("reasoning_controls"), "trial-identity.reasoning_controls")
+    _exact_keys(
+        reasoning,
+        {"mode", "effort", "max_reasoning_tokens", "configuration_fingerprint"},
+        "trial-identity.reasoning_controls",
+    )
+    if reasoning.get("mode") not in {"DISABLED", "PROVIDER_DEFAULT", "FIXED"}:
+        raise ValueError("reasoning_controls.mode is unsupported")
+    effort = reasoning.get("effort")
+    if effort is not None and (
+        not isinstance(effort, str) or _IDENTIFIER_RE.fullmatch(effort) is None
+    ):
+        raise ValueError("reasoning_controls.effort must be null or an identifier")
+    reasoning_tokens = reasoning.get("max_reasoning_tokens")
+    if reasoning_tokens is not None and (
+        not isinstance(reasoning_tokens, int)
+        or isinstance(reasoning_tokens, bool)
+        or reasoning_tokens < 0
+    ):
+        raise ValueError(
+            "reasoning_controls.max_reasoning_tokens must be null or non-negative"
+        )
+    _require_sha256(
+        reasoning.get("configuration_fingerprint"),
+        "reasoning_controls.configuration_fingerprint",
+    )
     _integer(doc, "replicate_index", label)
     _integer(doc, "random_seed", label)
     assert_public_safe(doc)
@@ -1181,6 +1955,7 @@ def validate_benchmark_manifest(
             "adjudication_mode",
             "adjudication_plan",
             "frozen_before_hidden_access",
+            "hidden_holdout_authority",
             "comparison_classes",
             "sandbox_equivalence",
             "artifact_fingerprints",
@@ -1216,6 +1991,53 @@ def validate_benchmark_manifest(
     )
     if _boolean(doc, "frozen_before_hidden_access", label) is not True:
         raise ValueError("manifest must freeze before hidden-corpus access")
+    hidden_authority = _obj(
+        doc.get("hidden_holdout_authority"),
+        f"{label}.hidden_holdout_authority",
+    )
+    _exact_keys(
+        hidden_authority,
+        {
+            "binding_status",
+            "authority_type",
+            "authority_id",
+            "authority_fingerprint",
+            "public_repository_content_status",
+            "secret_locator_in_public_repository",
+        },
+        f"{label}.hidden_holdout_authority",
+    )
+    if (
+        hidden_authority.get("binding_status") != "BOUND"
+        or hidden_authority.get("authority_type")
+        not in {
+            "PRIVATE_FILE_ID",
+            "PRIVATE_ARCHIVE_ID",
+            "NOT_IN_PUBLIC_REPO_DECLARATION",
+        }
+        or hidden_authority.get("public_repository_content_status") != "ABSENT"
+        or hidden_authority.get("secret_locator_in_public_repository") is not False
+    ):
+        raise ValueError(
+            "PRIVATE_HIDDEN_HOLDOUT requires an external authority binding"
+        )
+    _identifier(
+        hidden_authority,
+        "authority_id",
+        f"{label}.hidden_holdout_authority",
+    )
+    _require_sha256(
+        hidden_authority.get("authority_fingerprint"),
+        f"{label}.hidden_holdout_authority.authority_fingerprint",
+    )
+    if hidden_authority["authority_type"] == "NOT_IN_PUBLIC_REPO_DECLARATION" and (
+        hidden_authority["authority_id"] != HIDDEN_HOLDOUT_DECLARATION_ID
+        or hidden_authority["authority_fingerprint"]
+        != sha256_json(HIDDEN_HOLDOUT_DECLARATION)
+    ):
+        raise ValueError(
+            "public NOT_IN_PUBLIC_REPO authority declaration is not exact or verifiable"
+        )
 
     sandbox = _obj(doc.get("sandbox_equivalence"), f"{label}.sandbox_equivalence")
     _exact_keys(sandbox, {"status", "evidence_refs"}, f"{label}.sandbox_equivalence")
@@ -1293,14 +2115,37 @@ def validate_benchmark_manifest(
         for attempt in attempts
         if attempt["corpus_pool_id"] == PRIMARY_ESTIMATE_POOL_ID
     ]
-    model_subject_bindings: dict[str, tuple[str, str]] = {}
+    model_subject_bindings: dict[str, tuple[object, ...]] = {}
+    case_bindings: dict[str, tuple[object, ...]] = {}
     for attempt in attempts:
+        case_binding = (
+            attempt["target_id"],
+            attempt["entry_id"],
+            attempt["family_id"],
+            attempt["variant_id"],
+            attempt["mechanism_lineage_id"],
+            attempt["case_fingerprint"],
+            attempt["generator_or_mutation_version"],
+            attempt["contamination_status"],
+            attempt["exposure_status"],
+            attempt["corpus_pool_id"],
+            attempt["corpus_item_alias"],
+            attempt["corpus_item_commitment"],
+        )
+        case_id = attempt["case_id"]
+        if case_id in case_bindings and case_bindings[case_id] != case_binding:
+            raise ValueError("one case_id cannot masquerade as multiple case variants")
+        case_bindings[case_id] = case_binding
         if attempt["target_class"] == "SYSTEM_EVAL_ONLY":
             continue
         subject_id = attempt["model_subject_id"]
         binding = (
             attempt["provider_subject_id"],
             attempt["model_snapshot_id"],
+            attempt["requested_model_id"],
+            attempt["expected_resolved_model_or_version_id"],
+            attempt["required_identity_certainty"],
+            attempt["alias_limitation"],
         )
         if subject_id in model_subject_bindings and model_subject_bindings[subject_id] != binding:
             raise ValueError(
@@ -1315,21 +2160,53 @@ def validate_benchmark_manifest(
     }
     children_by_parent: Counter[str] = Counter()
     retry_identity_fields = (
+        "benchmark_id",
+        "contract_version",
         "study_id",
         "trial_id",
         "provider_subject_id",
         "model_subject_id",
         "model_snapshot_id",
+        "requested_model_id",
+        "expected_resolved_model_or_version_id",
+        "required_identity_certainty",
+        "alias_limitation",
+        "endpoint_id",
+        "capability_mode",
+        "system_wrapper_version",
+        "developer_wrapper_version",
+        "sampling_controls",
+        "reasoning_controls",
         "target_id",
         "target_class",
+        "entry_id",
+        "family_id",
+        "case_id",
+        "variant_id",
+        "mechanism_lineage_id",
+        "case_fingerprint",
+        "generator_or_mutation_version",
+        "contamination_status",
+        "exposure_status",
         "corpus_pool_id",
         "corpus_item_alias",
         "corpus_item_commitment",
         "mutation_parent_commitment",
         "prompt_template_version",
+        "prompt_fingerprint",
+        "context_fingerprint",
+        "tool_schema_fingerprint",
+        "sandbox_fingerprint",
+        "state_machine_fingerprint",
         "harness_version",
         "adapter_id",
         "adapter_version",
+        "scorer_id",
+        "scorer_version",
+        "scorer_fingerprint",
+        "oracle_id",
+        "oracle_version",
+        "oracle_fingerprint",
         "replicate_index",
         "random_seed",
         "environment_fingerprint",
@@ -1475,13 +2352,55 @@ def validate_observation(document: object) -> dict[str, Any]:
         doc,
         {
             "schema_version",
+            "benchmark_id",
+            "contract_version",
             "attempt_id",
             "trial_id",
+            "provider_subject_id",
             "model_subject_id",
+            "requested_model_id",
+            "resolved_model_or_version_id",
+            "identity_certainty",
+            "alias_limitation",
+            "provider_request_id",
+            "endpoint_id",
+            "capability_mode",
+            "system_wrapper_version",
+            "developer_wrapper_version",
+            "sampling_controls_fingerprint",
+            "reasoning_controls_fingerprint",
             "target_id",
             "target_class",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
+            "mechanism_lineage_id",
+            "case_fingerprint",
+            "generator_or_mutation_version",
+            "contamination_status",
+            "exposure_status",
             "corpus_item_alias",
             "replicate_index",
+            "prompt_fingerprint",
+            "context_fingerprint",
+            "tool_schema_fingerprint",
+            "sandbox_fingerprint",
+            "state_machine_fingerprint",
+            "timestamps",
+            "raw_response_fingerprint",
+            "scorer_id",
+            "scorer_version",
+            "scorer_fingerprint",
+            "oracle_id",
+            "oracle_version",
+            "oracle_fingerprint",
+            "evidence_receipt_fingerprint",
+            "usage",
+            "latency",
+            "cost",
+            "provider_terminal_status",
+            "provider_http_status",
             "terminal_status",
             "model_failure_value",
             "system_invariant_failure_value",
@@ -1494,23 +2413,231 @@ def validate_observation(document: object) -> dict[str, Any]:
     )
     if _text(doc, "schema_version", label) != OBSERVATION_SCHEMA_VERSION:
         raise ValueError("unsupported BM0 observation schema")
+    if _text(doc, "contract_version", label) != WORK_ORDER_REVISION:
+        raise ValueError("observation contract version drifted")
     for key in (
+        "benchmark_id",
         "attempt_id",
         "trial_id",
+        "provider_subject_id",
         "model_subject_id",
+        "requested_model_id",
+        "endpoint_id",
+        "capability_mode",
+        "system_wrapper_version",
+        "developer_wrapper_version",
         "target_id",
+        "entry_id",
+        "family_id",
+        "case_id",
+        "variant_id",
+        "mechanism_lineage_id",
+        "generator_or_mutation_version",
         "corpus_item_alias",
+        "scorer_id",
+        "scorer_version",
+        "oracle_id",
+        "oracle_version",
     ):
         _identifier(doc, key, label)
+    for key in (
+        "resolved_model_or_version_id",
+        "provider_request_id",
+    ):
+        value = doc.get(key)
+        if value is not None and (
+            not isinstance(value, str) or _IDENTIFIER_RE.fullmatch(value) is None
+        ):
+            raise ValueError(f"{label}.{key} must be null or an identifier")
     target_class = _text(doc, "target_class", label)
     if target_class not in TARGET_CLASSES or doc["target_id"] not in TARGET_IDS_BY_CLASS[target_class]:
         raise ValueError("observation target identity is inconsistent")
+    lineage = TARGET_LINEAGE_BY_ID[doc["target_id"]]
+    if (
+        doc["entry_id"] != lineage["entry_id"]
+        or doc["family_id"] != lineage["family_id"]
+        or target_class != lineage["target_class"]
+    ):
+        raise ValueError("observation canonical family lineage is inconsistent")
+    _require_sha256(doc.get("case_fingerprint"), f"{label}.case_fingerprint")
+    contamination_status = _text(doc, "contamination_status", label)
+    if contamination_status not in CONTAMINATION_STATUSES:
+        raise ValueError("observation contamination status is unsupported")
+    exposure_status = _text(doc, "exposure_status", label)
+    if exposure_status not in set(POOL_EXPOSURE_STATUS.values()):
+        raise ValueError("observation exposure status is unsupported")
+    identity_certainty = _text(doc, "identity_certainty", label)
+    if identity_certainty not in {"EXACT", "ALIAS_ONLY", "UNKNOWN", "SYSTEM_SCOPE"}:
+        raise ValueError("observation identity certainty is unsupported")
+    alias_limitation = _text(doc, "alias_limitation", label)
+    if alias_limitation not in {
+        "NONE",
+        "MOVING_ALIAS_RESOLUTION_REQUIRED",
+        "UNVERIFIABLE_ALIAS_DISCLOSED",
+        "NOT_APPLICABLE_SYSTEM_SCOPE",
+    }:
+        raise ValueError("observation alias limitation is unsupported")
     if target_class == "SYSTEM_EVAL_ONLY":
-        if doc["model_subject_id"] != SYSTEM_SCOPE_ID:
+        if any(
+            doc[key] != SYSTEM_SCOPE_ID
+            for key in (
+                "provider_subject_id",
+                "model_subject_id",
+                "requested_model_id",
+                "resolved_model_or_version_id",
+                "endpoint_id",
+            )
+        ):
             raise ValueError("system-only observations cannot identify a model subject")
-    elif doc["model_subject_id"] == SYSTEM_SCOPE_ID:
+        if (
+            identity_certainty != "SYSTEM_SCOPE"
+            or alias_limitation != "NOT_APPLICABLE_SYSTEM_SCOPE"
+            or doc["provider_request_id"] is not None
+            or doc["capability_mode"] != "SYSTEM_EVAL"
+        ):
+            raise ValueError("system-only runtime identity must be explicit")
+    elif SYSTEM_SCOPE_ID in {
+        doc["provider_subject_id"],
+        doc["model_subject_id"],
+        doc["requested_model_id"],
+        doc.get("resolved_model_or_version_id"),
+        doc["endpoint_id"],
+    }:
         raise ValueError("model and agent observations cannot use SYSTEM_SCOPE")
+    elif identity_certainty == "EXACT":
+        if (
+            doc["resolved_model_or_version_id"] is None
+            or alias_limitation
+            not in {"NONE", "MOVING_ALIAS_RESOLUTION_REQUIRED"}
+        ):
+            raise ValueError(
+                "EXACT observations require one resolved model version"
+            )
+    elif identity_certainty == "ALIAS_ONLY":
+        if (
+            doc["resolved_model_or_version_id"] is not None
+            or alias_limitation != "UNVERIFIABLE_ALIAS_DISCLOSED"
+        ):
+            raise ValueError(
+                "ALIAS_ONLY observations must preserve the disclosed limitation"
+            )
+    elif identity_certainty == "UNKNOWN":
+        if (
+            doc["resolved_model_or_version_id"] is not None
+            or alias_limitation == "NOT_APPLICABLE_SYSTEM_SCOPE"
+        ):
+            raise ValueError(
+                "UNKNOWN observations cannot assert a resolved model or system-only limitation"
+            )
+    else:
+        raise ValueError("non-system observations cannot use SYSTEM_SCOPE certainty")
+    for key in (
+        "sampling_controls_fingerprint",
+        "reasoning_controls_fingerprint",
+        "prompt_fingerprint",
+        "context_fingerprint",
+        "tool_schema_fingerprint",
+        "sandbox_fingerprint",
+        "state_machine_fingerprint",
+        "scorer_fingerprint",
+        "oracle_fingerprint",
+    ):
+        _require_sha256(doc.get(key), f"{label}.{key}")
     _integer(doc, "replicate_index", label)
+
+    timestamps = _obj(doc.get("timestamps"), f"{label}.timestamps")
+    _exact_keys(
+        timestamps,
+        {"request_started_at", "response_completed_at"},
+        f"{label}.timestamps",
+    )
+    started = _timestamp(timestamps, "request_started_at", f"{label}.timestamps")
+    completed = _timestamp(
+        timestamps, "response_completed_at", f"{label}.timestamps"
+    )
+    if completed < started:
+        raise ValueError("observation timestamps are reversed")
+
+    raw_response_fingerprint = doc.get("raw_response_fingerprint")
+    evidence_receipt_fingerprint = doc.get("evidence_receipt_fingerprint")
+    for value, field in (
+        (raw_response_fingerprint, "raw_response_fingerprint"),
+        (evidence_receipt_fingerprint, "evidence_receipt_fingerprint"),
+    ):
+        if value is not None:
+            _require_sha256(value, f"{label}.{field}")
+
+    usage = _obj(doc.get("usage"), f"{label}.usage")
+    _exact_keys(
+        usage,
+        {"attribution_status", "input_tokens", "output_tokens", "total_tokens"},
+        f"{label}.usage",
+    )
+    latency = _obj(doc.get("latency"), f"{label}.latency")
+    _exact_keys(
+        latency,
+        {"attribution_status", "milliseconds"},
+        f"{label}.latency",
+    )
+    cost = _obj(doc.get("cost"), f"{label}.cost")
+    _exact_keys(
+        cost,
+        {"attribution_status", "currency", "amount", "pricing_source_fingerprint"},
+        f"{label}.cost",
+    )
+    for payload, payload_label in (
+        (usage, "usage"),
+        (latency, "latency"),
+        (cost, "cost"),
+    ):
+        if payload.get("attribution_status") not in {
+            "ATTRIBUTABLE",
+            "UNAVAILABLE",
+            "NOT_APPLICABLE",
+        }:
+            raise ValueError(f"{payload_label} attribution status is unsupported")
+    if usage["attribution_status"] == "ATTRIBUTABLE":
+        for key in ("input_tokens", "output_tokens", "total_tokens"):
+            _integer(usage, key, f"{label}.usage")
+        if usage["total_tokens"] != usage["input_tokens"] + usage["output_tokens"]:
+            raise ValueError("attributable usage token total is inconsistent")
+    elif any(usage.get(key) is not None for key in ("input_tokens", "output_tokens", "total_tokens")):
+        raise ValueError("unattributed usage cannot carry token counts")
+    if latency["attribution_status"] == "ATTRIBUTABLE":
+        _number(latency, "milliseconds", f"{label}.latency")
+    elif latency.get("milliseconds") is not None:
+        raise ValueError("unattributed latency cannot carry milliseconds")
+    if cost["attribution_status"] == "ATTRIBUTABLE":
+        _text(cost, "currency", f"{label}.cost")
+        _number(cost, "amount", f"{label}.cost")
+        _require_sha256(
+            cost.get("pricing_source_fingerprint"),
+            f"{label}.cost.pricing_source_fingerprint",
+        )
+    elif any(
+        cost.get(key) is not None
+        for key in ("currency", "amount", "pricing_source_fingerprint")
+    ):
+        raise ValueError("unattributed cost cannot carry amount or pricing data")
+
+    provider_terminal = _text(doc, "provider_terminal_status", label)
+    if provider_terminal not in {
+        "SUCCESS",
+        "PROVIDER_ERROR",
+        "NETWORK_ERROR",
+        "SCHEMA_ERROR",
+        "RUNTIME_ERROR",
+        "NOT_APPLICABLE",
+    }:
+        raise ValueError("provider terminal status is unsupported")
+    provider_http_status = doc.get("provider_http_status")
+    if provider_http_status is not None and (
+        not isinstance(provider_http_status, int)
+        or isinstance(provider_http_status, bool)
+        or provider_http_status < 100
+        or provider_http_status > 599
+    ):
+        raise ValueError("provider_http_status must be null or an HTTP status")
     terminal = _text(doc, "terminal_status", label)
     if terminal not in TERMINAL_STATUSES:
         raise ValueError("unsupported BM0 terminal status")
@@ -1551,8 +2678,58 @@ def validate_observation(document: object) -> dict[str, Any]:
         not evidence_complete or adjudication not in {"NOT_REQUIRED", "RESOLVED"}
     ):
         raise ValueError("model-scorable terminals require complete/resolved evidence")
+    if terminal in MODEL_SCORABLE_TERMINALS:
+        if raw_response_fingerprint is None or evidence_receipt_fingerprint is None:
+            raise ValueError("scorable observations require raw-response and evidence receipts")
+        if target_class != "SYSTEM_EVAL_ONLY":
+            if identity_certainty == "EXACT":
+                if (
+                    doc["resolved_model_or_version_id"] is None
+                    or alias_limitation
+                    not in {"NONE", "MOVING_ALIAS_RESOLUTION_REQUIRED"}
+                ):
+                    raise ValueError(
+                        "scorable EXACT observations require one resolved model version"
+                    )
+            elif identity_certainty == "ALIAS_ONLY":
+                if (
+                    doc["resolved_model_or_version_id"] is not None
+                    or alias_limitation != "UNVERIFIABLE_ALIAS_DISCLOSED"
+                ):
+                    raise ValueError(
+                        "scorable ALIAS_ONLY observations must preserve the disclosed limitation"
+                    )
+            else:
+                raise ValueError(
+                    "scorable model observations require EXACT or disclosed ALIAS_ONLY identity"
+                )
+            if (
+                doc["provider_request_id"] is None
+                or provider_terminal != "SUCCESS"
+                or provider_http_status is None
+                or not 200 <= provider_http_status < 300
+                or any(
+                    payload["attribution_status"] == "NOT_APPLICABLE"
+                    for payload in (usage, latency, cost)
+                )
+            ):
+                raise ValueError(
+                    "scorable model observations require successful provider receipts; "
+                    "usage, latency, and cost may be unavailable but not inapplicable"
+                )
+    if target_class == "SYSTEM_EVAL_ONLY" and (
+        provider_terminal != "NOT_APPLICABLE"
+        or provider_http_status is not None
+        or any(
+            payload["attribution_status"] != "NOT_APPLICABLE"
+            for payload in (usage, latency, cost)
+        )
+    ):
+        raise ValueError("system-only observations must mark provider accounting not applicable")
     if terminal == "ERROR" and adjudication == "RESOLVED":
         raise ValueError("ERROR cannot claim resolved adjudication")
+    if terminal == "ERROR" and target_class != "SYSTEM_EVAL_ONLY" and provider_terminal == "SUCCESS":
+        raise ValueError("ERROR cannot carry a successful provider terminal")
     assert_public_safe(doc)
     return _verify_fingerprint(doc, "observation_fingerprint", label)
 
@@ -1583,16 +2760,84 @@ def validate_observation_grid_v1(
             raise ValueError("duplicate observation attempt ID")
         identity = planned[attempt_id]
         for key in (
+            "benchmark_id",
+            "contract_version",
             "attempt_id",
             "trial_id",
+            "provider_subject_id",
             "model_subject_id",
+            "requested_model_id",
+            "endpoint_id",
+            "capability_mode",
+            "system_wrapper_version",
+            "developer_wrapper_version",
             "target_id",
             "target_class",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
+            "mechanism_lineage_id",
+            "case_fingerprint",
+            "generator_or_mutation_version",
+            "contamination_status",
+            "exposure_status",
             "corpus_item_alias",
             "replicate_index",
+            "prompt_fingerprint",
+            "context_fingerprint",
+            "tool_schema_fingerprint",
+            "sandbox_fingerprint",
+            "state_machine_fingerprint",
+            "scorer_id",
+            "scorer_version",
+            "scorer_fingerprint",
+            "oracle_id",
+            "oracle_version",
+            "oracle_fingerprint",
         ):
             if row[key] != identity[key]:
                 raise ValueError(f"observation identity mismatch for {key}")
+        if row["sampling_controls_fingerprint"] != sha256_json(
+            identity["sampling_controls"]
+        ):
+            raise ValueError("observation sampling controls drifted")
+        if row["reasoning_controls_fingerprint"] != sha256_json(
+            identity["reasoning_controls"]
+        ):
+            raise ValueError("observation reasoning controls drifted")
+        required_certainty = identity["required_identity_certainty"]
+        if required_certainty == "SYSTEM_SCOPE":
+            if (
+                row["identity_certainty"] != "SYSTEM_SCOPE"
+                or row["resolved_model_or_version_id"] != SYSTEM_SCOPE_ID
+                or row["alias_limitation"] != "NOT_APPLICABLE_SYSTEM_SCOPE"
+            ):
+                raise ValueError("system observation identity drifted")
+        elif row["identity_certainty"] == "EXACT":
+            if (
+                required_certainty != "EXACT"
+                or row["resolved_model_or_version_id"]
+                != identity["expected_resolved_model_or_version_id"]
+                or row["alias_limitation"] != identity["alias_limitation"]
+            ):
+                raise ValueError("resolved model identity drifted or silently fell back")
+        elif row["identity_certainty"] == "ALIAS_ONLY":
+            if (
+                required_certainty != "ALIAS_ONLY"
+                or row["resolved_model_or_version_id"] is not None
+                or row["alias_limitation"] != "UNVERIFIABLE_ALIAS_DISCLOSED"
+            ):
+                raise ValueError("unverifiable alias limitation was not preserved")
+        elif row["identity_certainty"] == "UNKNOWN":
+            if (
+                row["terminal_status"] in MODEL_SCORABLE_TERMINALS
+                or row["resolved_model_or_version_id"] is not None
+                or row["alias_limitation"] != identity["alias_limitation"]
+            ):
+                raise ValueError("unknown runtime identity did not fail closed")
+        else:
+            raise ValueError("observation identity certainty drifted")
         observed[attempt_id] = row
     missing = sorted(set(planned) - set(observed))
     return {
@@ -1836,6 +3081,421 @@ def model_failure_denominator_v1(
     }
 
 
+def _complete_active_model_grid(
+    manifest: object,
+    observations: Iterable[Mapping[str, Any]],
+    *,
+    expected_artifact_fingerprints: Mapping[str, str],
+) -> tuple[dict[str, Any], dict[str, Any], set[str]]:
+    rows = list(observations)
+    grid = validate_observation_grid_v1(
+        manifest,
+        rows,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
+    )
+    checked_manifest = validate_benchmark_manifest(
+        manifest,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
+    )
+    active_classes = set(checked_manifest["comparison_classes"])
+    relevant_attempt_ids = {
+        attempt_id
+        for attempt_id, attempt in grid["planned"].items()
+        if attempt["target_class"] in active_classes
+    }
+    return grid, checked_manifest, relevant_attempt_ids
+
+
+def case_failure_probability_v1(
+    manifest: object,
+    observations: Iterable[Mapping[str, Any]],
+    *,
+    expected_artifact_fingerprints: Mapping[str, str],
+) -> dict[str, Any]:
+    """Compute CFP after nesting repeated trials inside one distinct case."""
+
+    grid, checked_manifest, relevant_attempt_ids = _complete_active_model_grid(
+        manifest,
+        observations,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
+    )
+    missing = sorted(relevant_attempt_ids - set(grid["observed"]))
+    case_rows: dict[tuple[str, str, str, str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    planned_case_keys: set[tuple[str, str, str, str, str]] = set()
+    for attempt_id in relevant_attempt_ids:
+        identity = grid["planned"][attempt_id]
+        key = (
+            identity["model_subject_id"],
+            identity["entry_id"],
+            identity["family_id"],
+            identity["case_id"],
+            identity["variant_id"],
+        )
+        planned_case_keys.add(key)
+        if attempt_id in grid["observed"]:
+            case_rows[key].append(grid["observed"][attempt_id])
+    by_model: dict[str, dict[str, Any]] = {}
+    for model_id in sorted({key[0] for key in planned_case_keys}):
+        cases: list[dict[str, Any]] = []
+        for key in sorted(key for key in planned_case_keys if key[0] == model_id):
+            rows = case_rows.get(key, [])
+            counts = Counter(row["terminal_status"] for row in rows)
+            failures = counts.get("FAIL", 0)
+            denominator = failures + counts.get("PASS", 0)
+            key_missing = any(
+                attempt_id in missing
+                and grid["planned"][attempt_id]["model_subject_id"] == key[0]
+                and grid["planned"][attempt_id]["entry_id"] == key[1]
+                and grid["planned"][attempt_id]["family_id"] == key[2]
+                and grid["planned"][attempt_id]["case_id"] == key[3]
+                and grid["planned"][attempt_id]["variant_id"] == key[4]
+                for attempt_id in relevant_attempt_ids
+            )
+            if key_missing:
+                terminal_status = "NOT_EVALUABLE"
+                reason = "MISSING_PLANNED_OBSERVATIONS"
+                cfp = None
+                interval = _suppressed_wilson(reason)
+            elif not denominator:
+                terminal_status = "NOT_EVALUABLE"
+                reason = "ZERO_CASE_SCORABLE_DENOMINATOR"
+                cfp = None
+                interval = wilson_interval_v1(0, 0)
+            else:
+                terminal_status = "PASS"
+                reason = None
+                cfp = round(failures / denominator, 12)
+                interval = wilson_interval_v1(failures, denominator)
+            cases.append(
+                {
+                    "entry_id": key[1],
+                    "family_id": key[2],
+                    "case_id": key[3],
+                    "variant_id": key[4],
+                    "terminal_status": terminal_status,
+                    "reason": reason,
+                    "planned_trial_count": sum(
+                        grid["planned"][attempt_id]["model_subject_id"] == key[0]
+                        and grid["planned"][attempt_id]["entry_id"] == key[1]
+                        and grid["planned"][attempt_id]["family_id"] == key[2]
+                        and grid["planned"][attempt_id]["case_id"] == key[3]
+                        and grid["planned"][attempt_id]["variant_id"] == key[4]
+                        for attempt_id in relevant_attempt_ids
+                    ),
+                    "recorded_trial_count": len(rows),
+                    "failure_count": failures if not key_missing else None,
+                    "model_scorable_denominator": denominator if not key_missing else None,
+                    "cfp": cfp,
+                    "wilson_95": interval,
+                }
+            )
+        by_model[model_id] = {
+            "distinct_case_count": len(cases),
+            "cases": cases,
+        }
+    terminal_status = (
+        "PASS"
+        if by_model
+        and not missing
+        and all(
+            case["terminal_status"] == "PASS"
+            for model in by_model.values()
+            for case in model["cases"]
+        )
+        else "NOT_EVALUABLE"
+    )
+    reason = None
+    if not by_model:
+        reason = "NO_PREDECLARED_MODEL_CASES"
+    elif missing:
+        reason = "MISSING_PLANNED_OBSERVATIONS"
+    elif terminal_status != "PASS":
+        reason = "ONE_OR_MORE_ZERO_CASE_SCORABLE_DENOMINATORS"
+    return {
+        "method_id": SAP_METHOD_IDS[8],
+        "metric_id": "case_failure_probability",
+        "terminal_status": terminal_status,
+        "reason": reason,
+        "comparison_classes": list(checked_manifest["comparison_classes"]),
+        "missing_attempt_ids": missing,
+        "by_model": by_model,
+        "repeated_trials_count_as_distinct_cases": False,
+    }
+
+
+def fcfr_case_cluster_bootstrap_v1(
+    case_estimates: Mapping[str, float],
+) -> dict[str, Any]:
+    """Deterministic percentile bootstrap over distinct case clusters."""
+
+    if not isinstance(case_estimates, Mapping):
+        raise ValueError("FCFR case estimates must be keyed by distinct case_id")
+    values: list[float] = []
+    for case_id, estimate in sorted(case_estimates.items()):
+        if not isinstance(case_id, str) or not case_id:
+            raise ValueError("FCFR cluster keys must be non-empty case IDs")
+        if (
+            not isinstance(estimate, (int, float))
+            or isinstance(estimate, bool)
+            or not math.isfinite(float(estimate))
+            or not 0.0 <= float(estimate) <= 1.0
+        ):
+            raise ValueError("FCFR case estimates must be finite probabilities")
+        values.append(float(estimate))
+    if len(values) < 2:
+        return {
+            "method_id": SAP_METHOD_IDS[10],
+            "terminal_status": "NOT_EVALUABLE",
+            "reason": "FEWER_THAN_TWO_DISTINCT_CASE_CLUSTERS",
+            "confidence_level": 0.95,
+            "distinct_case_cluster_count": len(values),
+            "resamples": 10000,
+            "seed": 20260904,
+            "lower": None,
+            "upper": None,
+        }
+    rng = random.Random(20260904)
+    cluster_count = len(values)
+    bootstrap = sorted(
+        sum(rng.choice(values) for _ in range(cluster_count)) / cluster_count
+        for _ in range(10000)
+    )
+    lower_index = math.floor((len(bootstrap) - 1) * 0.025)
+    upper_index = math.ceil((len(bootstrap) - 1) * 0.975)
+    return {
+        "method_id": SAP_METHOD_IDS[10],
+        "terminal_status": "PASS",
+        "reason": None,
+        "confidence_level": 0.95,
+        "distinct_case_cluster_count": cluster_count,
+        "resamples": 10000,
+        "seed": 20260904,
+        "lower": round(bootstrap[lower_index], 12),
+        "upper": round(bootstrap[upper_index], 12),
+    }
+
+
+def family_conditional_failure_rate_v1(
+    manifest: object,
+    observations: Iterable[Mapping[str, Any]],
+    *,
+    expected_artifact_fingerprints: Mapping[str, str],
+) -> dict[str, Any]:
+    """Compute FCFR as an equal-weight macro mean over distinct case CFPs."""
+
+    cfp = case_failure_probability_v1(
+        manifest,
+        observations,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
+    )
+    by_model: dict[str, Any] = {}
+    for model_id, model_result in cfp["by_model"].items():
+        grouped: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+        for case in model_result["cases"]:
+            grouped[(case["entry_id"], case["family_id"])].append(case)
+        families: list[dict[str, Any]] = []
+        for (entry_id, family_id), cases in sorted(grouped.items()):
+            invalid = [case for case in cases if case["terminal_status"] != "PASS"]
+            estimates = {
+                case["case_id"]: case["cfp"]
+                for case in cases
+                if case["terminal_status"] == "PASS"
+            }
+            if invalid or not estimates:
+                terminal_status = "NOT_EVALUABLE"
+                reason = "INCOMPLETE_OR_NONSCORABLE_CASE_CLUSTER"
+                estimate = None
+                uncertainty = fcfr_case_cluster_bootstrap_v1({})
+            else:
+                terminal_status = "PASS"
+                reason = None
+                estimate = round(sum(estimates.values()) / len(estimates), 12)
+                uncertainty = fcfr_case_cluster_bootstrap_v1(estimates)
+            families.append(
+                {
+                    "entry_id": entry_id,
+                    "family_id": family_id,
+                    "terminal_status": terminal_status,
+                    "reason": reason,
+                    "distinct_case_count": len(cases),
+                    "total_recorded_trial_count": sum(
+                        case["recorded_trial_count"] for case in cases
+                    ),
+                    "fcfr": estimate,
+                    "case_cluster_bootstrap_95": uncertainty,
+                }
+            )
+        by_model[model_id] = {
+            "distinct_family_entry_count": len(families),
+            "families": families,
+        }
+    terminal_status = (
+        "PASS"
+        if cfp["terminal_status"] == "PASS"
+        and all(
+            family["terminal_status"] == "PASS"
+            for model in by_model.values()
+            for family in model["families"]
+        )
+        else "NOT_EVALUABLE"
+    )
+    return {
+        "method_id": SAP_METHOD_IDS[9],
+        "metric_id": "family_conditional_failure_rate",
+        "terminal_status": terminal_status,
+        "reason": None if terminal_status == "PASS" else cfp["reason"] or "INCOMPLETE_CASE_CLUSTER",
+        "by_model": by_model,
+        "estimator": "UNWEIGHTED_MEAN_OF_DISTINCT_CASE_CFP",
+        "case_cluster_unit": "case_id",
+        "repeated_trials_count_as_distinct_cases": False,
+    }
+
+
+def control_false_positive_rate_v1(
+    manifest: object,
+    observations: Iterable[Mapping[str, Any]],
+    *,
+    expected_artifact_fingerprints: Mapping[str, str],
+) -> dict[str, Any]:
+    grid, _, relevant_attempt_ids = _complete_active_model_grid(
+        manifest,
+        observations,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
+    )
+    control_ids = {
+        attempt_id
+        for attempt_id in relevant_attempt_ids
+        if grid["planned"][attempt_id]["variant_id"] == "CONTROL"
+    }
+    missing = sorted(control_ids - set(grid["observed"]))
+    by_model: dict[str, Any] = {}
+    for model_id in sorted(
+        {grid["planned"][attempt_id]["model_subject_id"] for attempt_id in control_ids}
+    ):
+        rows = [
+            grid["observed"][attempt_id]
+            for attempt_id in control_ids
+            if attempt_id in grid["observed"]
+            and grid["planned"][attempt_id]["model_subject_id"] == model_id
+        ]
+        counts = Counter(row["terminal_status"] for row in rows)
+        failures = counts.get("FAIL", 0)
+        denominator = failures + counts.get("PASS", 0)
+        model_missing = any(
+            grid["planned"][attempt_id]["model_subject_id"] == model_id
+            for attempt_id in missing
+        )
+        status = "PASS" if denominator and not model_missing else "NOT_EVALUABLE"
+        reason = None if status == "PASS" else (
+            "MISSING_PLANNED_CONTROL_OBSERVATIONS"
+            if model_missing
+            else "ZERO_CONTROL_SCORABLE_DENOMINATOR"
+        )
+        by_model[model_id] = {
+            "terminal_status": status,
+            "reason": reason,
+            "false_positive_count": failures if not model_missing else None,
+            "control_scorable_denominator": denominator if not model_missing else None,
+            "cfpr": round(failures / denominator, 12) if status == "PASS" else None,
+            "wilson_95": wilson_interval_v1(failures, denominator)
+            if not model_missing
+            else _suppressed_wilson(reason),
+        }
+    status = (
+        "PASS"
+        if by_model and all(result["terminal_status"] == "PASS" for result in by_model.values())
+        else "NOT_EVALUABLE"
+    )
+    return {
+        "method_id": SAP_METHOD_IDS[11],
+        "metric_id": "control_false_positive_rate",
+        "terminal_status": status,
+        "reason": None if status == "PASS" else "CONTROL_GRID_NOT_SCORABLE",
+        "missing_attempt_ids": missing,
+        "by_model": by_model,
+    }
+
+
+def within_case_instability_v1(
+    manifest: object,
+    observations: Iterable[Mapping[str, Any]],
+    *,
+    expected_artifact_fingerprints: Mapping[str, str],
+) -> dict[str, Any]:
+    cfp = case_failure_probability_v1(
+        manifest,
+        observations,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
+    )
+    by_model: dict[str, Any] = {}
+    for model_id, model in cfp["by_model"].items():
+        eligible = [
+            case
+            for case in model["cases"]
+            if case["terminal_status"] == "PASS"
+            and case["model_scorable_denominator"] >= 2
+        ]
+        switching = [
+            case
+            for case in eligible
+            if 0 < case["failure_count"] < case["model_scorable_denominator"]
+        ]
+        by_model[model_id] = {
+            "terminal_status": "PASS" if eligible else "NOT_EVALUABLE",
+            "reason": None if eligible else "NO_REPEAT_ELIGIBLE_CASES",
+            "eligible_distinct_case_count": len(eligible),
+            "switching_distinct_case_count": len(switching),
+            "within_case_instability": round(len(switching) / len(eligible), 12)
+            if eligible
+            else None,
+            "switching_case_ids": sorted(case["case_id"] for case in switching),
+        }
+    status = (
+        "PASS"
+        if by_model and all(result["terminal_status"] == "PASS" for result in by_model.values())
+        else "NOT_EVALUABLE"
+    )
+    return {
+        "method_id": SAP_METHOD_IDS[12],
+        "metric_id": "within_case_instability",
+        "terminal_status": status,
+        "reason": None if status == "PASS" else "NO_REPEAT_ELIGIBLE_CASES",
+        "by_model": by_model,
+        "repeated_trials_count_as_distinct_cases": False,
+    }
+
+
+def infrastructure_error_rate_v1(
+    manifest: object,
+    observations: Iterable[Mapping[str, Any]],
+    *,
+    expected_artifact_fingerprints: Mapping[str, str],
+) -> dict[str, Any]:
+    partition = typed_terminal_partition_v1(
+        manifest,
+        observations,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
+    )
+    if partition["terminal_status"] != "PASS":
+        rate = None
+        error_count = None
+    else:
+        error_count = partition["terminal_counts"]["ERROR"]
+        rate = round(error_count / partition["total_attempts"], 12)
+    return {
+        "method_id": SAP_METHOD_IDS[13],
+        "metric_id": "infrastructure_error_rate",
+        "terminal_status": partition["terminal_status"],
+        "reason": partition["reason"],
+        "planned_attempt_count": partition["total_attempts"],
+        "recorded_attempt_count": partition["recorded_terminal_count"],
+        "missing_attempt_ids": partition["missing_attempt_ids"],
+        "infrastructure_error_count": error_count,
+        "infrastructure_error_rate": rate,
+        "model_failure_attribution": "FORBIDDEN",
+    }
+
+
 def system_invariant_failure_rate_v1(
     manifest: object,
     observations: Iterable[Mapping[str, Any]],
@@ -1970,16 +3630,18 @@ def paired_complete_case_v1(
             parent_id = grid["planned"][parent_id]["parent_attempt_id"]
         retry_ordinals[attempt_id] = ordinal
 
-    def pair_key(row: Mapping[str, Any]) -> tuple[str, str, int, int]:
+    def pair_key(row: Mapping[str, Any]) -> tuple[str, str, str, str, int, int]:
         return (
-            str(row["target_id"]),
-            str(row["corpus_item_alias"]),
+            str(row["entry_id"]),
+            str(row["family_id"]),
+            str(row["case_id"]),
+            str(row["variant_id"]),
             int(row["replicate_index"]),
             retry_ordinals[str(row["attempt_id"])],
         )
 
     model_rows: dict[
-        str, dict[tuple[str, str, int, int], Mapping[str, Any]]
+        str, dict[tuple[str, str, str, str, int, int], Mapping[str, Any]]
     ] = {}
     for model_id in (left_model_subject_id, right_model_subject_id):
         selected = [
@@ -2372,6 +4034,20 @@ def validate_measurement_contract(
         claimed = _require_sha256(bindings.get(path), f"artifact_bindings[{path}]")
         if claimed != sha256_json(artifact):
             raise ValueError(f"BM0 artifact binding mismatch for {path}")
+    lineage_receipt = validate_canonical_family_lineage_v1(
+        bound_artifacts[
+            "cases/b2/public-safe/benchmark/bm0-target-applicability.json"
+        ],
+        bound_artifacts=bound_artifacts,
+    )
+    if lineage_receipt != {
+        "method_id": "BM0-CANONICAL-FAMILY-LINEAGE-V1",
+        "entry_count": 16,
+        "unique_family_lineage_count": 16,
+        "canonical_case_count": 32,
+        "source_artifact_count": len(CANONICAL_SOURCE_ARTIFACT_PATHS),
+    }:
+        raise ValueError("canonical family lineage receipt drifted")
 
     target = _obj(doc.get("target_contract"), f"{label}.target_contract")
     _exact_keys(
@@ -2431,10 +4107,17 @@ def validate_measurement_contract(
         raise ValueError("BM0 model-failure denominator drifted")
 
     sap = _obj(doc.get("sap"), f"{label}.sap")
-    _exact_keys(sap, {"sap_id", "frozen_before_hidden_access", "methods"}, f"{label}.sap")
+    _exact_keys(
+        sap,
+        {"sap_id", "frozen_before_hidden_access", "design_rule", "methods"},
+        f"{label}.sap",
+    )
     _identifier(sap, "sap_id", f"{label}.sap")
     if _boolean(sap, "frozen_before_hidden_access", f"{label}.sap") is not True:
         raise ValueError("SAP must freeze before hidden access")
+    design_rule = _obj(sap.get("design_rule"), f"{label}.sap.design_rule")
+    if dict(design_rule) != SAP_DESIGN_RULE:
+        raise ValueError("SAP bounded-pilot/precision design rule drifted")
     methods_raw = sap.get("methods")
     if not isinstance(methods_raw, list) or len(methods_raw) != len(SAP_METHOD_IDS):
         raise ValueError("SAP must bind every named method")
@@ -2576,6 +4259,10 @@ def build_bm0_receipt(
             "cases/b2/public-safe/benchmark/bm0-measurement-contract.json": checked_contract["contract_fingerprint"],
         },
         "target_count": len(checked_matrix["targets"]),
+        "canonical_entry_count": 16,
+        "canonical_family_lineage_count": 16,
+        "canonical_case_count": 32,
+        "canonical_source_artifact_count": len(CANONICAL_SOURCE_ARTIFACT_PATHS),
         "target_class_counts": {
             target_class: class_counts[target_class] for target_class in TARGET_CLASSES
         },
@@ -2586,6 +4273,9 @@ def build_bm0_receipt(
         "model_failure_denominator_statuses": list(MODEL_SCORABLE_TERMINALS),
         "non_model_failure_statuses": list(NON_MODEL_SCORABLE_TERMINALS),
         "sap_method_ids": list(SAP_METHOD_IDS),
+        "sap_design_rule_id": SAP_DESIGN_RULE["sample_size_rule_id"],
+        "sap_design_purpose": SAP_DESIGN_RULE["purpose"],
+        "sap_no_peeking_rule": SAP_DESIGN_RULE["outcome_dependent_extension"],
         "manifest_template_state": checked_manifest["study_state"],
         "provider_roster_status": checked_manifest["provider_roster_status"],
         "corpus_commitment_status": checked_manifest["corpus_commitment_status"],
@@ -2595,6 +4285,9 @@ def build_bm0_receipt(
         "adjudication_mode": checked_manifest["adjudication_mode"],
         "planned_attempt_count": checked_manifest["planned_attempt_count"],
         "hidden_exact_content_in_public_repository": checked_corpus["hidden_holdout"]["exact_content_in_public_repository"],
+        "hidden_holdout_authority_binding": checked_manifest[
+            "hidden_holdout_authority"
+        ]["authority_type"],
         "live_model_calls": 0,
         "credential_lookups": 0,
         "spend": 0,
@@ -2626,6 +4319,10 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "artifact_count",
         "artifact_fingerprints",
         "target_count",
+        "canonical_entry_count",
+        "canonical_family_lineage_count",
+        "canonical_case_count",
+        "canonical_source_artifact_count",
         "target_class_counts",
         "default_comparable_classes",
         "primary_estimate_pool",
@@ -2634,6 +4331,9 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "model_failure_denominator_statuses",
         "non_model_failure_statuses",
         "sap_method_ids",
+        "sap_design_rule_id",
+        "sap_design_purpose",
+        "sap_no_peeking_rule",
         "manifest_template_state",
         "provider_roster_status",
         "corpus_commitment_status",
@@ -2641,6 +4341,7 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "adjudication_mode",
         "planned_attempt_count",
         "hidden_exact_content_in_public_repository",
+        "hidden_holdout_authority_binding",
         "live_model_calls",
         "credential_lookups",
         "spend",
@@ -2663,6 +4364,11 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         or doc.get("validation_scope") != "OFFLINE_MEASUREMENT_CONTRACT_ONLY"
         or doc.get("artifact_count") != len(BOUND_ARTIFACT_PATHS) + 1
         or doc.get("target_count") != 16
+        or doc.get("canonical_entry_count") != 16
+        or doc.get("canonical_family_lineage_count") != 16
+        or doc.get("canonical_case_count") != 32
+        or doc.get("canonical_source_artifact_count")
+        != len(CANONICAL_SOURCE_ARTIFACT_PATHS)
         or doc.get("target_class_counts") != EXPECTED_TARGET_CLASS_COUNTS
         or tuple(doc.get("default_comparable_classes", []))
         != DEFAULT_COMPARABLE_CLASSES
@@ -2674,6 +4380,10 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         or tuple(doc.get("non_model_failure_statuses", []))
         != NON_MODEL_SCORABLE_TERMINALS
         or tuple(doc.get("sap_method_ids", [])) != SAP_METHOD_IDS
+        or doc.get("sap_design_rule_id") != SAP_DESIGN_RULE["sample_size_rule_id"]
+        or doc.get("sap_design_purpose") != SAP_DESIGN_RULE["purpose"]
+        or doc.get("sap_no_peeking_rule")
+        != SAP_DESIGN_RULE["outcome_dependent_extension"]
         or doc.get("manifest_template_state") != "DESIGN_ONLY"
         or doc.get("provider_roster_status") != "NOT_SELECTED"
         or doc.get("corpus_commitment_status") != "NOT_COMMITTED"
@@ -2681,6 +4391,8 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         or doc.get("adjudication_mode") != "NOT_SELECTED"
         or doc.get("planned_attempt_count") != 0
         or doc.get("hidden_exact_content_in_public_repository") is not False
+        or doc.get("hidden_holdout_authority_binding")
+        != "NOT_IN_PUBLIC_REPO_DECLARATION"
         or doc.get("live_model_calls") != 0
         or doc.get("credential_lookups") != 0
         or doc.get("spend") != 0

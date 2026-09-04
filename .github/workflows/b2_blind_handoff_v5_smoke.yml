@@ -1,0 +1,119 @@
+name: B2 Blind Handoff v5 Deterministic No-Provider Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/b2_blind_handoff_v5_live.yml
+      - .github/workflows/b2_blind_handoff_v5_smoke.yml
+      - .github/workflows/test.yml
+      - b2/blind_eval.py
+      - b2/blind_handoff.py
+      - docs/b2/blind-eval-bridge.md
+      - docs/b2/blind-handoff-v5.md
+      - pyproject.toml
+      - tests/test_b2_blind_eval.py
+      - tests/test_b2_blind_handoff.py
+  push:
+    branches:
+      - agent/b2-blind-handoff-v5-review-20260904
+    paths:
+      - .github/workflows/b2_blind_handoff_v5_live.yml
+      - .github/workflows/b2_blind_handoff_v5_smoke.yml
+      - .github/workflows/test.yml
+      - b2/blind_eval.py
+      - b2/blind_handoff.py
+      - docs/b2/blind-eval-bridge.md
+      - docs/b2/blind-handoff-v5.md
+      - pyproject.toml
+      - tests/test_b2_blind_eval.py
+      - tests/test_b2_blind_handoff.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b2-blind-v5-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-provider-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ACCEPTED_BRIDGE_MAIN_SHA: 901ba05b99c413d45415c474c71b5969c155dea1
+      EXECUTION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Check out exact review head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.EXECUTION_HEAD_SHA }}
+
+      - name: Bind smoke to exact head and accepted bridge main
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD_SHA"
+          git merge-base --is-ancestor "$ACCEPTED_BRIDGE_MAIN_SHA" "$EXECUTION_HEAD_SHA"
+
+      - name: Install deterministic handoff dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[blind-handoff]"
+
+      - name: Prove this workflow has no live or credential lane
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/b2_blind_handoff_v5_smoke.yml").read_text()
+          forbidden = (
+              "sec" + "rets.",
+              "Authorization:" + " Bearer",
+              "--authorize-" + "live-call",
+              "python -m b2." + "blind_eval",
+              "api." + "deepseek.com",
+          )
+          found = [token for token in forbidden if token in workflow]
+          if found:
+              raise SystemExit(f"provider/credential lane found: {found!r}")
+          PY
+
+      - name: Run focused deterministic and adversarial tests
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_b2_blind_eval tests.test_b2_blind_handoff -v
+
+      - name: Exercise synthetic encrypted return loop and cleanup
+        run: |
+          set -euo pipefail
+          smoke_root="${RUNNER_TEMP}/b2-handoff-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          now_unix="$(date +%s)"
+          python -m b2.blind_handoff deterministic-smoke \
+            --work-root "$smoke_root" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --execution-head-sha "$EXECUTION_HEAD_SHA" \
+            --bridge-main-sha "$ACCEPTED_BRIDGE_MAIN_SHA" \
+            --now-unix "$now_unix" \
+            > "${RUNNER_TEMP}/b2-handoff-smoke-receipt.json"
+          python - "${RUNNER_TEMP}/b2-handoff-smoke-receipt.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["schema_version"] == "b2-blind-handoff-offline-smoke/v2"
+          assert receipt["terminal_status"] == "HANDOFF_SMOKE_PASS"
+          assert receipt["provider_attempts"] == 0
+          assert receipt["credential_lookups"] == 0
+          assert receipt["automatic_retries"] == 0
+          assert receipt["return_decryptability_proven"] is True
+          assert receipt["return_private_key_possession_proven"] is True
+          assert receipt["cleanup_completed"] is True
+          PY
+          test ! -e "$smoke_root"

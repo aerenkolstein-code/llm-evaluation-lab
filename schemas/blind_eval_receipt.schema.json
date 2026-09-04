@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/schemas/blind_eval_receipt.schema.json",
-  "title": "B2 Blind Eval Receipt",
+  "title": "B2 Blind Eval Receipt v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -26,22 +26,44 @@
     "duration_ms",
     "http_status",
     "provider_response_id",
+    "response_json_parsed",
+    "response_schema_parsed",
+    "message_schema_parsed",
+    "finish_reason",
+    "reasoning_field_present",
+    "reasoning_bytes",
+    "reasoning_sha256",
+    "final_content_field_present",
+    "final_content_bytes",
+    "final_content_sha256",
     "usage",
+    "provider_attempts",
     "automatic_retries",
+    "quality_score",
     "error_code",
     "safe_error_message",
     "git_commit"
   ],
   "properties": {
-    "schema_version": {"const": "b2-blind-eval-bridge/v1"},
+    "schema_version": {"const": "b2-blind-eval-bridge/v2"},
     "run_id": {"type": "string", "minLength": 1},
     "terminal_status": {"enum": ["PASS", "NOT_EVALUABLE", "ERROR"]},
-    "protocol_version": {"const": "b2-blind-eval-bridge/v1"},
+    "protocol_version": {"const": "b2-blind-eval-bridge/v2"},
     "envelope_version": {"const": "b2-blind-input-envelope/v1"},
     "provider_label": {"type": "string", "minLength": 1},
     "provider_protocol": {"type": "string", "minLength": 1},
-    "requested_model_id": {"type": "string", "minLength": 1},
-    "resolved_model_id": {"type": ["string", "null"]},
+    "requested_model_id": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+\\-]{0,127}$"},
+        {"type": "null"}
+      ]
+    },
+    "resolved_model_id": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+\\-]{0,127}$"},
+        {"type": "null"}
+      ]
+    },
     "context_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "prompt_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "input_envelope_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
@@ -58,7 +80,37 @@
     "completed_at": {"type": "string", "minLength": 1},
     "duration_ms": {"type": "number", "minimum": 0},
     "http_status": {"type": ["integer", "null"], "minimum": 100, "maximum": 599},
-    "provider_response_id": {"type": ["string", "null"]},
+    "provider_response_id": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,127}$"},
+        {"type": "null"}
+      ]
+    },
+    "response_json_parsed": {"type": ["boolean", "null"]},
+    "response_schema_parsed": {"type": ["boolean", "null"]},
+    "message_schema_parsed": {"type": ["boolean", "null"]},
+    "finish_reason": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,63}$"},
+        {"type": "null"}
+      ]
+    },
+    "reasoning_field_present": {"type": ["boolean", "null"]},
+    "reasoning_bytes": {"type": ["integer", "null"], "minimum": 0},
+    "reasoning_sha256": {
+      "oneOf": [
+        {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        {"type": "null"}
+      ]
+    },
+    "final_content_field_present": {"type": ["boolean", "null"]},
+    "final_content_bytes": {"type": ["integer", "null"], "minimum": 0},
+    "final_content_sha256": {
+      "oneOf": [
+        {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        {"type": "null"}
+      ]
+    },
     "usage": {
       "oneOf": [
         {
@@ -73,7 +125,9 @@
         {"type": "null"}
       ]
     },
+    "provider_attempts": {"enum": [0, 1]},
     "automatic_retries": {"const": 0},
+    "quality_score": {"type": "null"},
     "error_code": {"type": ["string", "null"]},
     "safe_error_message": {"type": ["string", "null"], "maxLength": 501},
     "git_commit": {
@@ -88,10 +142,30 @@
       "if": {"properties": {"terminal_status": {"const": "PASS"}}},
       "then": {
         "properties": {
+          "provider_attempts": {"const": 1},
           "raw_output_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
           "raw_output_bytes": {"type": "integer", "minimum": 1},
+          "final_content_field_present": {"const": true},
+          "final_content_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "final_content_bytes": {"type": "integer", "minimum": 1},
           "error_code": {"type": "null"},
           "safe_error_message": {"type": "null"}
+        }
+      },
+      "else": {
+        "properties": {
+          "raw_output_sha256": {"type": "null"},
+          "raw_output_bytes": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"error_code": {"const": "EMPTY_FINAL_CONTENT"}}},
+      "then": {
+        "properties": {
+          "terminal_status": {"const": "NOT_EVALUABLE"},
+          "final_content_sha256": {"type": "null"},
+          "quality_score": {"type": "null"}
         }
       }
     }

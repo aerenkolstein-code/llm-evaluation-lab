@@ -1,6 +1,7 @@
 # B2 Generic Blind Eval Bridge v0.1
 
-Status: Work Order implementation / repair applied / pre-Independent-QA re-review.
+Status: accepted generic bridge plus `WO-B2-BLIND-02` observability hardening;
+pre-Independent-QA review and not live-authorized.
 
 This bridge is a thin private-lane-friendly invocation layer for B2 continuous evaluation. It exists because B2 already has case/rubric/oracle, typed terminal semantics, evidence receipts, regression infrastructure, and quality projection, but `main` previously had no generic way to send one byte-frozen long context plus one byte-frozen prompt to a live model.
 
@@ -33,7 +34,7 @@ The provider label, endpoint, requested model ID, and API-key environment variab
 - no tools, no SearchProxy, no browsing, no Search Cup `Submission` contract.
 - no hidden scorer/checkpoints are sent to the model.
 - no input body or output body is copied into the sanitized receipt.
-- provider-controlled success metadata is not trusted verbatim: resolved model IDs and response IDs are retained only when they satisfy a strict short ASCII token policy; otherwise they are omitted.
+- provider-controlled metadata is not trusted verbatim: requested/resolved model IDs, response IDs, and finish reasons are retained only when they satisfy strict short ASCII token policies; otherwise they are omitted or rejected before credential lookup.
 - provider HTTP error bodies are never copied into receipts because a provider may echo private request content.
 - API keys are environment-only and never rendered into receipts.
 - raw-output and receipt-output must resolve to distinct paths; aliasing is rejected before execution.
@@ -71,12 +72,27 @@ Public-safe receipt may retain only metadata/fingerprints such as:
 - requested model ID plus sanitized/validated resolved model ID when safe
 - SHA-256 fingerprints and byte counts
 - timestamps/duration
-- HTTP status plus sanitized/validated response ID when safe
-- token usage when available
+- HTTP status plus sanitized/validated response ID and finish reason when safe
+- JSON/response/message schema parse booleans
+- reasoning-field presence, UTF-8 byte count, and SHA-256 (never its body)
+- final-content-field presence, UTF-8 byte count, and SHA-256 only when non-empty
+- normalized non-negative token usage when available
+- provider-attempt count, `automatic_retries = 0`, and `quality_score = null`
 - terminal status and safe error metadata
 - git commit when supplied
 
 Do not commit private inputs or answers into this public repository.
+
+The hardened receipt schema is `b2-blind-eval-bridge/v2`. HTTP 200 alone is not
+PASS: a null, empty, or whitespace-only final remains
+`NOT_EVALUABLE / EMPTY_FINAL_CONTENT`, even when reasoning metadata is present.
+Only a non-empty final may produce bridge-level PASS, which still does not score
+answer quality.
+
+The transport boundary is separately specified in
+[B2 Blind Handoff v5.2](blind-handoff-v5.md). The durable review tree contains
+no live workflow; any future provider run requires separate authorization and a
+new reviewed exact-head orchestration change.
 
 ## Private output-pair semantics
 
@@ -98,6 +114,11 @@ The first Independent QA review identified three blockers. This revision adds de
 1. redirect suppression: `_NoRedirectHandler` refuses a follow-up request and the default transport returns 30x as the single attempt result;
 2. evidence-pair commit: stale raw removal, path alias rejection, raw-publication failure, and receipt-publication rollback are tested;
 3. provider-controlled metadata: private-looking/URL-like or over-length `model` / `id` values are omitted from receipts.
+
+`WO-B2-BLIND-02` adds deterministic coverage for reasoning-only, null/empty
+finals, finish-reason capture, schema diagnostics, body-free hashes/counts,
+strict requested-model validation, and exact one-attempt behavior on provider,
+schema, redirect, and transport failures.
 
 These repairs do not themselves constitute Independent QA PASS. Re-review must bind to the new exact head/tree and successful CI.
 

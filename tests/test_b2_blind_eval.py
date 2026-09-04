@@ -45,6 +45,14 @@ def make_request(context=b"context", prompt=b"prompt"):
     )
 
 
+def fixed_now():
+    return "2026-09-04T00:00:00Z"
+
+
+def fixed_perf():
+    return 100.0
+
+
 class BlindEvalBridgeTests(unittest.TestCase):
     def test_authorization_precedes_credential_lookup_and_network(self):
         looked_up = []
@@ -103,58 +111,77 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertTrue(receipt.prompt_sha256.startswith("sha256:"))
         self.assertTrue(receipt.raw_output_sha256.startswith("sha256:"))
 
-    def test_fingerprints_are_stable_for_same_bytes(self):
+    def test_fake_run_receipt_is_byte_stable_with_frozen_clock(self):
         req = make_request(context="材料".encode(), prompt="问题".encode())
         response = ProviderHTTPResponse(
             200,
-            json.dumps({"choices": [{"message": {"content": "答"}}]}).encode(),
+            json.dumps(
+                {
+                    "id": "fixed-response",
+                    "model": "fixed-model",
+                    "choices": [{"message": {"content": "固定答案"}}],
+                    "usage": {"total_tokens": 42},
+                },
+                ensure_ascii=False,
+            ).encode("utf-8"),
         )
-        a, _ = run_blind_eval(
-            req,
+        kwargs = dict(
             authorize_live_call=True,
-            credential_lookup=lambda _: "key",
-            transport=CountingTransport(response=response),
+            credential_lookup=lambda _: "fixture-key",
+            now_fn=fixed_now,
+            perf_fn=fixed_perf,
         )
-        b, _ = run_blind_eval(
-            req,
-            authorize_live_call=True,
-            credential_lookup=lambda _: "key",
-            transport=CountingTransport(response=response),
-        )
+        a, raw_a = run_blind_eval(req, transport=CountingTransport(response=response), **kwargs)
+        b, raw_b = run_blind_eval(req, transport=CountingTransport(response=response), **kwargs)
+        self.assertEqual("固定答案", raw_a)
+        self.assertEqual(raw_a, raw_b)
+        self.assertEqual(a.render_json(), b.render_json())
         self.assertEqual(a.context_sha256, b.context_sha256)
         self.assertEqual(a.prompt_sha256, b.prompt_sha256)
         self.assertEqual(a.input_envelope_sha256, b.input_envelope_sha256)
         self.assertEqual(a.raw_output_sha256, b.raw_output_sha256)
 
-    def test_http_error_is_not_evaluable_and_not_retried(self):
+    def test_http_error_body_is_never_copied_to_receipt(self):
         secret = "sk-do-not-leak-this"
-        response = ProviderHTTPResponse(429, json.dumps({"error": f"quota rejected {secret}"}).encode())
+        private_echo = "private context body echoed by provider"
+        response = ProviderHTTPResponse(
+            429,
+            json.dumps({"error": f"quota rejected {secret}; echo={private_echo}"}).encode(),
+        )
         transport = CountingTransport(response=response)
         receipt, raw = run_blind_eval(
+            make_request(context=b"private context body"),
+            authorize_live_call=True,
+            credential_lookup=lambda _: secret,
+            transport=transport,
+        )
+        self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
+        self.assertEqual("PROVIDER_HTTP_ERROR", receipt.error_code)
+        self.assertEqual(429, receipt.http_status)
+        self.assertEqual(1, transport.calls)
+        self.assertEqual(0, receipt.automatic_retries)
+        self.assertIsNone(raw)
+        rendered = receipt.render_json()
+        self.assertNotIn(secret, rendered)
+        self.assertNotIn(private_echo, rendered)
+        self.assertNotIn("quota rejected", rendered)
+        self.assertEqual("provider returned HTTP 429", receipt.safe_error_message)
+
+    def test_transport_error_is_not_evaluable_redacted_and_not_retried(self):
+        secret = "sk-transport-secret"
+        transport = CountingTransport(exc=OSError(f"network down Authorization: Bearer {secret}"))
+        receipt, _ = run_blind_eval(
             make_request(),
             authorize_live_call=True,
             credential_lookup=lambda _: secret,
             transport=transport,
         )
         self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
-        self.assertEqual(429, receipt.http_status)
         self.assertEqual(1, transport.calls)
+        self.assertEqual("TRANSPORT_ERROR", receipt.error_code)
         self.assertEqual(0, receipt.automatic_retries)
-        self.assertIsNone(raw)
         self.assertNotIn(secret, receipt.render_json())
         self.assertIn("[SECRET_REDACTED]", receipt.safe_error_message)
-
-    def test_network_error_is_not_evaluable_and_not_retried(self):
-        transport = CountingTransport(exc=OSError("network down"))
-        receipt, _ = run_blind_eval(
-            make_request(),
-            authorize_live_call=True,
-            credential_lookup=lambda _: "key",
-            transport=transport,
-        )
-        self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
-        self.assertEqual(1, transport.calls)
-        self.assertEqual("PROVIDER_OR_TRANSPORT_ERROR", receipt.error_code)
 
     def test_empty_output_is_not_evaluable(self):
         response = ProviderHTTPResponse(
@@ -168,6 +195,7 @@ class BlindEvalBridgeTests(unittest.TestCase):
             transport=CountingTransport(response=response),
         )
         self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
+        self.assertEqual("EMPTY_FINAL_CONTENT", receipt.error_code)
         self.assertIsNone(raw)
 
     def test_missing_credential_is_not_evaluable_without_network(self):
@@ -181,6 +209,18 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
         self.assertEqual("MISSING_CREDENTIAL", receipt.error_code)
         self.assertEqual(0, transport.calls)
+
+    def test_invalid_provider_json_is_not_evaluable(self):
+        transport = CountingTransport(response=ProviderHTTPResponse(200, b"not-json"))
+        receipt, raw = run_blind_eval(
+            make_request(),
+            authorize_live_call=True,
+            credential_lookup=lambda _: "key",
+            transport=transport,
+        )
+        self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
+        self.assertEqual("INVALID_PROVIDER_JSON", receipt.error_code)
+        self.assertIsNone(raw)
 
     def test_envelope_is_versioned_and_contains_exact_inputs(self):
         envelope = build_input_envelope(b"AAA", b"BBB").decode()

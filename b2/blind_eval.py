@@ -1,11 +1,9 @@
 """Generic B2 blind-evaluation bridge.
 
-This module converts two byte-frozen UTF-8 inputs (long context + prompt) into
-one provider call and a sanitized, body-free receipt. It does not score model
-quality, call tools/search, retry providers, or own canonical evaluation truth.
-
-Live execution is fail-closed and requires explicit authorization before any
-credential lookup or network request.
+The bridge sends two byte-frozen UTF-8 inputs (long context + prompt) through
+one explicitly authorized provider request and returns the raw answer separately
+from a sanitized, body-free receipt. It never scores model quality, calls tools
+or search, or retries a provider automatically.
 """
 
 from __future__ import annotations
@@ -39,6 +37,12 @@ def _sha256_bytes(value: bytes) -> str:
 
 
 def _safe_error_message(message: object, secrets: Sequence[str]) -> str:
+    """Redact credentials from local/transport exceptions.
+
+    Provider response bodies are deliberately never passed to this function;
+    HTTP failures are normalized to status-only messages before receipt creation.
+    """
+
     text = str(message)
     for secret in secrets:
         if secret:
@@ -137,8 +141,26 @@ class BlindEvalReceipt:
         return json.dumps(self.as_dict(), ensure_ascii=False, sort_keys=True, indent=2) + "\n"
 
 
+class ProviderCallError(RuntimeError):
+    """Typed provider failure carrying no provider response body."""
+
+    def __init__(
+        self,
+        *,
+        error_code: str,
+        safe_message: str,
+        http_status: int | None = None,
+    ) -> None:
+        super().__init__(safe_message)
+        self.error_code = error_code
+        self.safe_message = safe_message
+        self.http_status = http_status
+
+
 Transport = Callable[[str, Mapping[str, str], Mapping[str, object], float], ProviderHTTPResponse]
 CredentialLookup = Callable[[str], str | None]
+NowFn = Callable[[], str]
+PerfFn = Callable[[], float]
 
 
 def _default_transport(
@@ -213,29 +235,50 @@ def _invoke_openai_compatible(
     }
     response = transport(endpoint, headers, payload, timeout_seconds)
     if response.status < 200 or response.status >= 300:
-        try:
-            document = json.loads(response.body.decode("utf-8", errors="replace"))
-            message = document.get("error") if isinstance(document, Mapping) else document
-        except json.JSONDecodeError:
-            message = response.body.decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {response.status}: {message}")
+        # Never include a provider error body in a public-safe receipt. Providers
+        # may echo request content, so status-only normalization is intentional.
+        raise ProviderCallError(
+            error_code="PROVIDER_HTTP_ERROR",
+            safe_message=f"provider returned HTTP {response.status}",
+            http_status=response.status,
+        )
 
     try:
         document = json.loads(response.body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("provider response is not valid UTF-8 JSON") from exc
+        raise ProviderCallError(
+            error_code="INVALID_PROVIDER_JSON",
+            safe_message="provider response is not valid UTF-8 JSON",
+            http_status=response.status,
+        ) from exc
     if not isinstance(document, Mapping):
-        raise ValueError("provider response JSON must be an object")
+        raise ProviderCallError(
+            error_code="INVALID_PROVIDER_SCHEMA",
+            safe_message="provider response JSON must be an object",
+            http_status=response.status,
+        )
 
     choices = document.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], Mapping):
-        raise ValueError("provider response has no choices[0]")
+        raise ProviderCallError(
+            error_code="INVALID_PROVIDER_SCHEMA",
+            safe_message="provider response has no choices[0]",
+            http_status=response.status,
+        )
     message = choices[0].get("message")
     if not isinstance(message, Mapping):
-        raise ValueError("provider response has no choices[0].message")
+        raise ProviderCallError(
+            error_code="INVALID_PROVIDER_SCHEMA",
+            safe_message="provider response has no choices[0].message",
+            http_status=response.status,
+        )
     content = _extract_text_content(message.get("content"))
     if content is None or not content.strip():
-        raise ValueError("provider returned empty final content")
+        raise ProviderCallError(
+            error_code="EMPTY_FINAL_CONTENT",
+            safe_message="provider returned empty final content",
+            http_status=response.status,
+        )
 
     resolved_model = document.get("model")
     response_id = document.get("id")
@@ -255,6 +298,8 @@ def _receipt(
     envelope: bytes,
     started_at: str,
     started_perf: float,
+    now_fn: NowFn,
+    perf_fn: PerfFn,
     resolved_model_id: str | None = None,
     raw_output: str | None = None,
     http_status: int | None = None,
@@ -263,7 +308,7 @@ def _receipt(
     error_code: str | None = None,
     safe_error_message: str | None = None,
 ) -> BlindEvalReceipt:
-    completed_at = _utc_now()
+    completed_at = now_fn()
     raw_bytes = raw_output.encode("utf-8") if raw_output is not None else None
     return BlindEvalReceipt(
         schema_version=BLIND_EVAL_PROTOCOL_VERSION,
@@ -284,7 +329,7 @@ def _receipt(
         raw_output_bytes=len(raw_bytes) if raw_bytes is not None else None,
         started_at=started_at,
         completed_at=completed_at,
-        duration_ms=round((perf_counter() - started_perf) * 1000.0, 3),
+        duration_ms=round((perf_fn() - started_perf) * 1000.0, 3),
         http_status=http_status,
         provider_response_id=provider_response_id,
         usage=usage,
@@ -301,29 +346,32 @@ def run_blind_eval(
     authorize_live_call: bool,
     credential_lookup: CredentialLookup = os.environ.get,
     transport: Transport = _default_transport,
+    now_fn: NowFn = _utc_now,
+    perf_fn: PerfFn = perf_counter,
 ) -> tuple[BlindEvalReceipt, str | None]:
-    """Run exactly one provider attempt; never retries or scores quality."""
+    """Run exactly one provider attempt; never retry or score quality."""
 
-    started_at = _utc_now()
-    started_perf = perf_counter()
+    started_at = now_fn()
+    started_perf = perf_fn()
     try:
         envelope = build_input_envelope(req.context_bytes, req.prompt_bytes)
     except (UnicodeDecodeError, ValueError) as exc:
-        fallback = b""
         return (
             _receipt(
                 req=req,
                 terminal_status="ERROR",
-                envelope=fallback,
+                envelope=b"",
                 started_at=started_at,
                 started_perf=started_perf,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
                 error_code="INVALID_UTF8_INPUT",
                 safe_error_message=_safe_error_message(exc, ()),
             ),
             None,
         )
 
-    # Critical gate: authorization is checked before credential lookup or transport.
+    # Critical gate: authorization precedes credential lookup and transport.
     if not authorize_live_call:
         return (
             _receipt(
@@ -332,6 +380,8 @@ def run_blind_eval(
                 envelope=envelope,
                 started_at=started_at,
                 started_perf=started_perf,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
                 error_code="LIVE_CALL_NOT_AUTHORIZED",
                 safe_error_message="live call requires explicit authorization",
             ),
@@ -346,6 +396,8 @@ def run_blind_eval(
                 envelope=envelope,
                 started_at=started_at,
                 started_perf=started_perf,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
                 error_code="UNSUPPORTED_PROVIDER_PROTOCOL",
                 safe_error_message="provider protocol is not implemented by this bridge version",
             ),
@@ -361,6 +413,8 @@ def run_blind_eval(
                 envelope=envelope,
                 started_at=started_at,
                 started_perf=started_perf,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
                 error_code="MISSING_CREDENTIAL",
                 safe_error_message=f"credential env {req.api_key_env!r} is unavailable",
             ),
@@ -378,9 +432,7 @@ def run_blind_eval(
             max_tokens=req.max_tokens,
             transport=transport,
         )
-    except Exception as exc:  # provider/network/schema failures are not quality evidence
-        message = _safe_error_message(exc, (api_key,))
-        status_match = re.search(r"HTTP\s+(\d{3})", message)
+    except ProviderCallError as exc:
         return (
             _receipt(
                 req=req,
@@ -388,9 +440,26 @@ def run_blind_eval(
                 envelope=envelope,
                 started_at=started_at,
                 started_perf=started_perf,
-                http_status=int(status_match.group(1)) if status_match else None,
-                error_code="PROVIDER_OR_TRANSPORT_ERROR",
-                safe_error_message=message,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
+                http_status=exc.http_status,
+                error_code=exc.error_code,
+                safe_error_message=exc.safe_message,
+            ),
+            None,
+        )
+    except Exception as exc:  # local transport failures are not quality evidence
+        return (
+            _receipt(
+                req=req,
+                terminal_status="NOT_EVALUABLE",
+                envelope=envelope,
+                started_at=started_at,
+                started_perf=started_perf,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
+                error_code="TRANSPORT_ERROR",
+                safe_error_message=_safe_error_message(exc, (api_key,)),
             ),
             None,
         )
@@ -402,6 +471,8 @@ def run_blind_eval(
             envelope=envelope,
             started_at=started_at,
             started_perf=started_perf,
+            now_fn=now_fn,
+            perf_fn=perf_fn,
             resolved_model_id=result.resolved_model_id,
             raw_output=result.raw_output,
             http_status=result.http_status,
@@ -460,7 +531,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if receipt.terminal_status == "PASS" and raw_output is not None:
         Path(args.raw_output).write_text(raw_output, encoding="utf-8")
     print(receipt.render_json(), end="")
-    return 0 if receipt.terminal_status == "PASS" else 2 if receipt.terminal_status == "NOT_EVALUABLE" else 3
+    if receipt.terminal_status == "PASS":
+        return 0
+    return 2 if receipt.terminal_status == "NOT_EVALUABLE" else 3
 
 
 if __name__ == "__main__":

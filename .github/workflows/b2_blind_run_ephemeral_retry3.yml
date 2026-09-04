@@ -1,0 +1,104 @@
+name: B2 Blind Run Ephemeral Q1 R1 Retry3
+on:
+  push:
+    branches: [agent/b2-blind-run-q1-20260904-r1]
+    paths: [.github/workflows/b2_blind_run_ephemeral_retry3.yml]
+permissions:
+  contents: read
+jobs:
+  blind-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_CONTEXT_SHA256: a595fb210b225e201e6b9a191a2559880ebd118946f770b440e5326955d58e58
+      EXPECTED_PROMPT_SHA256: c27eeeab07789ed2ac49c3c5a6034093659c35cdf8b76b1c78b2b670872c5d4c
+      EXPECTED_CONTEXT_BYTES: '108230'
+      EXPECTED_PROMPT_BYTES: '2308'
+      B2_MAIN_COMMIT: 901ba05b99c413d45415c474c71b5969c155dea1
+      RUN_ID: B2-DITING-Q1-R1-DEEPSEEK-V4-PRO-20260904
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install
+        run: python -m pip install -e . cryptography
+      - name: Generate input key
+        run: |
+          mkdir -p /tmp/b2h
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out /tmp/b2h/priv.pem >/dev/null 2>&1
+          openssl rsa -pubout -in /tmp/b2h/priv.pem -out /tmp/b2h/pub.pem >/dev/null 2>&1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b2-blind-q1-r1-input-public-key-v3
+          path: /tmp/b2h/pub.pem
+          retention-days: 1
+      - name: Wait and reconstruct encrypted payload
+        env: {GH_READ_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          base="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/blind-input-r3"
+          hdr=(-H "Authorization: Bearer ${GH_READ_TOKEN}" -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          ok=0
+          for _ in $(seq 1 144); do
+            if curl -fsSL "${hdr[@]}" "$base/manifest.json?ref=${GITHUB_REF_NAME}" -o /tmp/b2h/manifest.json; then ok=1; break; fi
+            sleep 5
+          done
+          test "$ok" = 1
+          n=$(python -c "import json;print(json.load(open('/tmp/b2h/manifest.json'))['parts'])")
+          want=$(python -c "import json;print(json.load(open('/tmp/b2h/manifest.json'))['payload_sha256'])")
+          : > /tmp/b2h/payload.json
+          for i in $(seq 1 "$n"); do
+            f=$(printf 'part%02d.txt' "$i")
+            curl -fsSL "${hdr[@]}" "$base/$f?ref=${GITHUB_REF_NAME}" -o "/tmp/b2h/$f"
+            cat "/tmp/b2h/$f" >> /tmp/b2h/payload.json
+          done
+          test "$(sha256sum /tmp/b2h/payload.json | cut -d' ' -f1)" = "$want"
+      - name: Decrypt and verify inputs
+        run: |
+          python - <<'PY'
+          import base64,hashlib,io,json,os,pathlib,zipfile
+          from cryptography.hazmat.primitives import hashes,serialization
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          p=json.loads(pathlib.Path('/tmp/b2h/payload.json').read_text())
+          k=serialization.load_pem_private_key(pathlib.Path('/tmp/b2h/priv.pem').read_bytes(),password=None)
+          aes=k.decrypt(base64.b64decode(p['wrapped_key_b64']),padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))
+          z=AESGCM(aes).decrypt(base64.b64decode(p['nonce_b64']),base64.b64decode(p['ciphertext_b64']),b'B2-DITING-Q1-R1')
+          with zipfile.ZipFile(io.BytesIO(z)) as q: c=q.read('context.txt'); t=q.read('prompt.txt')
+          assert len(c)==int(os.environ['EXPECTED_CONTEXT_BYTES']) and hashlib.sha256(c).hexdigest()==os.environ['EXPECTED_CONTEXT_SHA256']
+          assert len(t)==int(os.environ['EXPECTED_PROMPT_BYTES']) and hashlib.sha256(t).hexdigest()==os.environ['EXPECTED_PROMPT_SHA256']
+          pathlib.Path('/tmp/context.txt').write_bytes(c); pathlib.Path('/tmp/prompt.txt').write_bytes(t)
+          PY
+      - name: Execute one blind provider attempt
+        env: {DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}'}
+        run: |
+          set +e
+          python -m b2.blind_eval --context-file /tmp/context.txt --prompt-file /tmp/prompt.txt --provider deepseek --protocol openai-compatible-chat-completions/v1 --model deepseek-v4-pro --endpoint https://api.deepseek.com/chat/completions --api-key-env DEEPSEEK_API_KEY --run-id "$RUN_ID" --git-commit "$B2_MAIN_COMMIT" --timeout 180 --temperature 0 --max-tokens 8192 --raw-output /tmp/run.raw.txt --receipt-output /tmp/run.receipt.json --authorize-live-call > /tmp/bridge.stdout.json
+          echo $? > /tmp/bridge.exit.txt
+          set -e
+          test -f /tmp/run.receipt.json
+      - name: Encrypt result
+        run: |
+          python - <<'PY'
+          import base64,io,json,pathlib,secrets,zipfile
+          from cryptography.hazmat.primitives import hashes,serialization
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          b=io.BytesIO()
+          with zipfile.ZipFile(b,'w',zipfile.ZIP_DEFLATED) as z:
+            for f,a in [('/tmp/run.receipt.json','receipt.json'),('/tmp/bridge.stdout.json','bridge_stdout.json'),('/tmp/bridge.exit.txt','bridge_exit_code.txt')]: z.writestr(a,pathlib.Path(f).read_bytes())
+            if pathlib.Path('/tmp/run.raw.txt').exists(): z.writestr('raw_answer.txt',pathlib.Path('/tmp/run.raw.txt').read_bytes())
+          pub=serialization.load_pem_public_key(pathlib.Path('blind-handshake/return_public.pem').read_bytes())
+          key=secrets.token_bytes(32); nonce=secrets.token_bytes(12); ct=AESGCM(key).encrypt(nonce,b.getvalue(),b'B2-DITING-Q1-R1-RESULT')
+          wrapped=pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))
+          o={'wrapped_key_b64':base64.b64encode(wrapped).decode(),'nonce_b64':base64.b64encode(nonce).decode(),'ciphertext_b64':base64.b64encode(ct).decode()}
+          pathlib.Path('/tmp/result.enc.json').write_text(json.dumps(o,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b2-blind-q1-r1-encrypted-result-v3
+          path: /tmp/result.enc.json
+          retention-days: 1
+      - name: Cleanup
+        if: always()
+        run: rm -f /tmp/context.txt /tmp/prompt.txt /tmp/run.raw.txt /tmp/run.receipt.json /tmp/bridge.stdout.json /tmp/b2h/priv.pem /tmp/b2h/payload.json /tmp/b2h/part*.txt

@@ -91,6 +91,16 @@ Do not commit private inputs or answers into this public repository.
 
 This prevents a new failure receipt from being paired with an old answer and prevents a PASS receipt from surviving without its corresponding raw artifact.
 
+## IQA Round-1 repair coverage
+
+The first Independent QA review identified three blockers. This revision adds deterministic regression coverage for each:
+
+1. redirect suppression: `_NoRedirectHandler` refuses a follow-up request and the default transport returns 30x as the single attempt result;
+2. evidence-pair commit: stale raw removal, path alias rejection, raw-publication failure, and receipt-publication rollback are tested;
+3. provider-controlled metadata: private-looking/URL-like or over-length `model` / `id` values are omitted from receipts.
+
+These repairs do not themselves constitute Independent QA PASS. Re-review must bind to the new exact head/tree and successful CI.
+
 ## CLI
 
 ```bash

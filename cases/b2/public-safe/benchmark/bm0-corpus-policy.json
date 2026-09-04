@@ -35,7 +35,7 @@
       "purpose": "Sealed primary-estimate items unavailable to model, developer, scorer tuning, and public repository before manifest freeze",
       "allowed_in_primary_estimate": true,
       "content_location": "OUTSIDE_PUBLIC_REPOSITORY",
-      "selection_timing": "AFTER_FROZEN_MANIFEST",
+      "selection_timing": "BEFORE_EXECUTION_MANIFEST_FREEZE_BY_INDEPENDENT_CURATOR",
       "lineage_role": "PRIMARY_HOLDOUT_ONLY"
     }
   ],
@@ -47,10 +47,10 @@
     "promotion_requires_new_contract_version": true
   },
   "access_sequence": [
-    "FREEZE_MANIFEST",
-    "SEAL_AGGREGATE_COMMITMENT",
+    "CURATOR_SELECT_AND_COMMIT_PRIVATE_HOLDOUT",
+    "FREEZE_EXECUTION_MANIFEST",
     "AUTHORIZE_EXECUTION",
-    "OPEN_PRIVATE_HOLDOUT",
+    "OPEN_PRIVATE_HOLDOUT_TO_EXECUTION_PATH",
     "LOG_ACCESS"
   ],
   "hidden_holdout": {
@@ -59,6 +59,7 @@
     "private_locator_in_public_repository": false,
     "per_case_commitments_in_public_repository": false,
     "aggregate_commitment_required_before_execution": true,
+    "independent_curator_seal_before_manifest_freeze": true,
     "access_after_manifest_freeze": true,
     "access_log_required": true
   },
@@ -68,5 +69,5 @@
     "control cases as hidden model-quality evidence",
     "mutation children across train and holdout lineage"
   ],
-  "policy_fingerprint": "sha256:28b4e69d66424b7bc7aa31dd3f4f6170a56fcd932dd46774469edb8872673103"
+  "policy_fingerprint": "sha256:b52c9b747bcc3619f2b0e96af9594c715638d061693466fc21d305c74726e6a8"
 }

@@ -84,17 +84,72 @@
       "type": "array",
       "minItems": 6,
       "maxItems": 6,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["terminal_status", "category", "model_failure_denominator", "model_failure_numerator"],
-        "properties": {
-          "terminal_status": {"enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]},
-          "category": {"enum": ["MODEL_SCORABLE", "NON_EVALUABLE", "GOVERNANCE_BLOCK", "INFRASTRUCTURE_ERROR", "INSUFFICIENT_EVIDENCE"]},
-          "model_failure_denominator": {"type": "boolean"},
-          "model_failure_numerator": {"type": "boolean"}
+      "prefixItems": [
+        {
+          "properties": {
+            "terminal_status": {"const": "PASS"},
+            "category": {"const": "MODEL_SCORABLE"},
+            "model_failure_denominator": {"const": true},
+            "model_failure_numerator": {"const": false}
+          }
+        },
+        {
+          "properties": {
+            "terminal_status": {"const": "FAIL"},
+            "category": {"const": "MODEL_SCORABLE"},
+            "model_failure_denominator": {"const": true},
+            "model_failure_numerator": {"const": true}
+          }
+        },
+        {
+          "properties": {
+            "terminal_status": {"const": "NOT_EVALUABLE"},
+            "category": {"const": "NON_EVALUABLE"},
+            "model_failure_denominator": {"const": false},
+            "model_failure_numerator": {"const": false}
+          }
+        },
+        {
+          "properties": {
+            "terminal_status": {"const": "BLOCKED"},
+            "category": {"const": "GOVERNANCE_BLOCK"},
+            "model_failure_denominator": {"const": false},
+            "model_failure_numerator": {"const": false}
+          }
+        },
+        {
+          "properties": {
+            "terminal_status": {"const": "ERROR"},
+            "category": {"const": "INFRASTRUCTURE_ERROR"},
+            "model_failure_denominator": {"const": false},
+            "model_failure_numerator": {"const": false}
+          }
+        },
+        {
+          "properties": {
+            "terminal_status": {"const": "UNKNOWN"},
+            "category": {"const": "INSUFFICIENT_EVIDENCE"},
+            "model_failure_denominator": {"const": false},
+            "model_failure_numerator": {"const": false}
+          }
         }
-      }
+      ],
+      "allOf": [
+        {
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["terminal_status", "category", "model_failure_denominator", "model_failure_numerator"],
+            "properties": {
+              "terminal_status": {"enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]},
+              "category": {"enum": ["MODEL_SCORABLE", "NON_EVALUABLE", "GOVERNANCE_BLOCK", "INFRASTRUCTURE_ERROR", "INSUFFICIENT_EVIDENCE"]},
+              "model_failure_denominator": {"type": "boolean"},
+              "model_failure_numerator": {"type": "boolean"}
+            }
+          }
+        }
+      ],
+      "items": false
     },
     "model_failure_denominator": {
       "type": "object",
@@ -123,17 +178,72 @@
           "type": "array",
           "minItems": 8,
           "maxItems": 8,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["method_id", "implementation", "purpose", "frozen_parameters"],
-            "properties": {
-              "method_id": {"type": "string", "pattern": "^BM0-SAP-0[1-8]-[A-Z0-9-]+-V1$"},
-              "implementation": {"type": "string", "minLength": 1},
-              "purpose": {"type": "string", "minLength": 1},
-              "frozen_parameters": {"type": "object"}
+          "prefixItems": [
+            {
+              "properties": {
+                "method_id": {"const": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1"},
+                "implementation": {"const": "fixed_attempt_stop_v1"}
+              }
+            },
+            {
+              "properties": {
+                "method_id": {"const": "BM0-SAP-02-IDENTITY-GRID-V1"},
+                "implementation": {"const": "validate_observation_grid_v1"}
+              }
+            },
+            {
+              "properties": {
+                "method_id": {"const": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1"},
+                "implementation": {"const": "typed_terminal_partition_v1"}
+              }
+            },
+            {
+              "properties": {
+                "method_id": {"const": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1"},
+                "implementation": {"const": "model_failure_denominator_v1"}
+              }
+            },
+            {
+              "properties": {
+                "method_id": {"const": "BM0-SAP-05-WILSON-INTERVAL-V1"},
+                "implementation": {"const": "wilson_interval_v1"}
+              }
+            },
+            {
+              "properties": {
+                "method_id": {"const": "BM0-SAP-06-PAIRED-COMPLETE-CASE-V1"},
+                "implementation": {"const": "paired_complete_case_v1"}
+              }
+            },
+            {
+              "properties": {
+                "method_id": {"const": "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1"},
+                "implementation": {"const": "resolve_adjudication_v1"}
+              }
+            },
+            {
+              "properties": {
+                "method_id": {"const": "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1"},
+                "implementation": {"const": "system_invariant_failure_rate_v1"}
+              }
             }
-          }
+          ],
+          "allOf": [
+            {
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["method_id", "implementation", "purpose", "frozen_parameters"],
+                "properties": {
+                  "method_id": {"type": "string", "pattern": "^BM0-SAP-0[1-8]-[A-Z0-9-]+-V1$"},
+                  "implementation": {"type": "string", "minLength": 1},
+                  "purpose": {"type": "string", "minLength": 1},
+                  "frozen_parameters": {"type": "object"}
+                }
+              }
+            }
+          ],
+          "items": false
         }
       }
     },
@@ -146,7 +256,7 @@
         "distinct_adjudicators_required": true,
         "adjudicator_configuration_bound": true,
         "predeclared_tiebreaker_required": true,
-        "tiebreak_rule": "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ON_DISAGREEMENT",
+        "tiebreak_rule": "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ONLY_ON_PASS_FAIL_DISAGREEMENT",
         "model_identity_blinded": true,
         "provider_identity_blinded": true,
         "peer_decisions_blinded": true

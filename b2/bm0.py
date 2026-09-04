@@ -42,6 +42,10 @@ DEFAULT_COMPARABLE_CLASSES = (
     "MODEL_DIRECT",
     "MODEL_CONTEXT_GROUNDED",
 )
+MODEL_METRIC_TARGET_CLASSES = {
+    "model_failure_rate": DEFAULT_COMPARABLE_CLASSES,
+    "sandboxed_agent_failure_rate": ("AGENT_STANDARDIZED",),
+}
 TARGET_IDS_BY_CLASS = {
     "MODEL_DIRECT": (
         "BM0-TUT-D01-CONSTRAINT-ADHERENCE",
@@ -169,6 +173,8 @@ SAP_FROZEN_PARAMETERS = {
         "coercion": "FORBIDDEN",
         "diagnostic_numerator": list(NON_MODEL_SCORABLE_TERMINALS),
         "diagnostic_denominator": list(TERMINAL_STATUSES),
+        "identity_source": "FROZEN_MANIFEST_GRID",
+        "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
         "zero_scheduled_attempts": "NOT_EVALUABLE",
         "corpus_pool": "ALL_DECLARED_POOLS",
     },
@@ -177,6 +183,11 @@ SAP_FROZEN_PARAMETERS = {
         "denominator": ["PASS", "FAIL"],
         "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
         "zero_denominator": "NOT_EVALUABLE",
+        "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
+        "metric_target_classes": {
+            metric_id: list(target_classes)
+            for metric_id, target_classes in MODEL_METRIC_TARGET_CLASSES.items()
+        },
         "ranking": "FORBIDDEN_AT_BM0",
         "corpus_pool": PRIMARY_ESTIMATE_POOL_ID,
     },
@@ -196,6 +207,10 @@ SAP_FROZEN_PARAMETERS = {
         "non_scorable_pair_policy": "SYMMETRIC_EXCLUSION",
         "unpaired_design": "NOT_EVALUABLE",
         "identity_mismatch": "NOT_EVALUABLE",
+        "metric_target_classes": {
+            metric_id: list(target_classes)
+            for metric_id, target_classes in MODEL_METRIC_TARGET_CLASSES.items()
+        },
         "ranking": "NOT_EMITTED",
         "corpus_pool": PRIMARY_ESTIMATE_POOL_ID,
     },
@@ -203,6 +218,8 @@ SAP_FROZEN_PARAMETERS = {
         "primary_records": 2,
         "distinct_adjudicators": True,
         "tiebreakers_on_disagreement": 1,
+        "tiebreak_eligible_decisions": ["PASS", "FAIL"],
+        "unknown_semantics": "TERMINAL_NOT_TIEBREAKABLE",
         "identity_blinding": True,
         "peer_decision_blinding": True,
     },
@@ -212,6 +229,7 @@ SAP_FROZEN_PARAMETERS = {
         "numerator": ["FAIL"],
         "denominator": ["PASS", "FAIL"],
         "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
+        "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
         "model_attribution": "FORBIDDEN",
         "ranking": "FORBIDDEN",
         "corpus_pool": PRIMARY_ESTIMATE_POOL_ID,
@@ -230,12 +248,72 @@ EXPECTED_POOL_IDS = {
     "MUTATION",
     "PRIVATE_HIDDEN_HOLDOUT",
 }
+EXPECTED_POOL_CONTRACTS = {
+    "PUBLIC_DEVELOPMENT": {
+        "visibility": "PUBLIC_SAFE",
+        "purpose": (
+            "Design, scorer debugging, and documented examples visible before "
+            "study freeze"
+        ),
+        "allowed_in_primary_estimate": False,
+        "content_location": "PUBLIC_REPOSITORY_ALLOWED",
+        "selection_timing": "BEFORE_FROZEN_MANIFEST",
+        "lineage_role": "DEVELOPMENT_ONLY",
+    },
+    "PUBLIC_CONTROL": {
+        "visibility": "PUBLIC_SAFE",
+        "purpose": "Matched controls for false-reject and contract-regression checks",
+        "allowed_in_primary_estimate": False,
+        "content_location": "PUBLIC_REPOSITORY_ALLOWED",
+        "selection_timing": "BEFORE_FROZEN_MANIFEST",
+        "lineage_role": "CONTROL_ONLY",
+    },
+    "MUTATION": {
+        "visibility": "PUBLIC_SAFE_GENERATED",
+        "purpose": (
+            "Mechanism-preserving generated variants with parent lineage and "
+            "mutation operator recorded"
+        ),
+        "allowed_in_primary_estimate": False,
+        "content_location": "PUBLIC_REPOSITORY_ALLOWED_AFTER_PUBLIC_SAFETY_CHECK",
+        "selection_timing": "BEFORE_FROZEN_MANIFEST",
+        "lineage_role": "STRESS_TEST_ONLY",
+    },
+    "PRIVATE_HIDDEN_HOLDOUT": {
+        "visibility": "PRIVATE_EXTERNAL",
+        "purpose": (
+            "Sealed primary-estimate items unavailable to model, developer, scorer "
+            "tuning, and public repository before manifest freeze"
+        ),
+        "allowed_in_primary_estimate": True,
+        "content_location": "OUTSIDE_PUBLIC_REPOSITORY",
+        "selection_timing": (
+            "BEFORE_EXECUTION_MANIFEST_FREEZE_BY_INDEPENDENT_CURATOR"
+        ),
+        "lineage_role": "PRIMARY_HOLDOUT_ONLY",
+    },
+}
+HIDDEN_ACCESS_SEQUENCE = (
+    "CURATOR_SELECT_AND_COMMIT_PRIVATE_HOLDOUT",
+    "FREEZE_EXECUTION_MANIFEST",
+    "AUTHORIZE_EXECUTION",
+    "OPEN_PRIVATE_HOLDOUT_TO_EXECUTION_PATH",
+    "LOG_ACCESS",
+)
 SANDBOX_EQUIVALENCE_EVIDENCE_TYPES = (
     "SANDBOX_IMAGE",
     "TOOL_SURFACE",
     "BUDGET_RETRY",
     "NETWORK_CREDENTIAL_POLICY",
     "INDEPENDENT_EQUIVALENCE_RECEIPT",
+)
+MANIFEST_ARTIFACT_FINGERPRINT_KEYS = (
+    "measurement_contract_core",
+    "target_matrix",
+    "metric_registry",
+    "corpus_policy",
+    "analysis_plan",
+    "analysis_implementation",
 )
 BOUND_ARTIFACT_PATHS = (
     "b2/bm0.py",
@@ -293,7 +371,9 @@ def _text(document: Mapping[str, Any], key: str, label: str) -> str:
     value = document.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label}.{key} must be a non-empty string")
-    return value.strip()
+    if value != value.strip():
+        raise ValueError(f"{label}.{key} must not contain edge whitespace")
+    return value
 
 
 def _identifier(document: Mapping[str, Any], key: str, label: str) -> str:
@@ -335,7 +415,11 @@ def _strings(
     for index, item in enumerate(value):
         if not isinstance(item, str) or not item.strip():
             raise ValueError(f"{label}.{key}[{index}] must be a non-empty string")
-        result.append(item.strip())
+        if item != item.strip():
+            raise ValueError(
+                f"{label}.{key}[{index}] must not contain edge whitespace"
+            )
+        result.append(item)
     if unique and len(result) != len(set(result)):
         raise ValueError(f"{label}.{key} must contain unique values")
     return result
@@ -368,6 +452,25 @@ def _verify_fingerprint(
         raise ValueError(f"{label}.{field} does not match canonical content")
     copied[field] = claimed
     return copied
+
+
+def measurement_contract_core_fingerprint_v1(document: object) -> str:
+    """Bind contract semantics without creating a contract/manifest hash cycle."""
+
+    doc = _obj(document, "bm0-measurement-contract-core")
+    if "artifact_bindings" not in doc or "contract_fingerprint" not in doc:
+        raise ValueError(
+            "measurement contract core requires artifact bindings and fingerprint fields"
+        )
+    core = deepcopy(dict(doc))
+    core.pop("artifact_bindings")
+    core.pop("contract_fingerprint")
+    return sha256_json(
+        {
+            "commitment_scheme": "B2-BM0-MEASUREMENT-CONTRACT-CORE-V1",
+            "contract": core,
+        }
+    )
 
 
 def validate_target_matrix(document: object) -> dict[str, Any]:
@@ -743,6 +846,11 @@ def validate_corpus_policy(document: object) -> dict[str, Any]:
         ):
             _text(pool, key, entry_label)
         _boolean(pool, "allowed_in_primary_estimate", entry_label)
+        observed_contract = {
+            key: value for key, value in pool.items() if key != "pool_id"
+        }
+        if observed_contract != EXPECTED_POOL_CONTRACTS[pool_id]:
+            raise ValueError(f"{pool_id} corpus-pool semantics drifted")
     if tuple(pool["pool_id"] for pool in pools_raw) != (
         "PUBLIC_DEVELOPMENT",
         "PUBLIC_CONTROL",
@@ -750,18 +858,6 @@ def validate_corpus_policy(document: object) -> dict[str, Any]:
         "PRIVATE_HIDDEN_HOLDOUT",
     ):
         raise ValueError("corpus pool order drifted")
-    hidden_pool = pools["PRIVATE_HIDDEN_HOLDOUT"]
-    if (
-        hidden_pool["visibility"] != "PRIVATE_EXTERNAL"
-        or hidden_pool["content_location"] != "OUTSIDE_PUBLIC_REPOSITORY"
-        or hidden_pool["selection_timing"] != "AFTER_FROZEN_MANIFEST"
-        or hidden_pool["allowed_in_primary_estimate"] is not True
-    ):
-        raise ValueError("hidden holdout boundary is not fail closed")
-    for pool_id in ("PUBLIC_DEVELOPMENT", "PUBLIC_CONTROL", "MUTATION"):
-        if pools[pool_id]["allowed_in_primary_estimate"] is not False:
-            raise ValueError(f"{pool_id} must not enter the primary hidden estimate")
-
     split = _obj(doc.get("split_rules"), f"{label}.split_rules")
     _exact_keys(
         split,
@@ -777,13 +873,7 @@ def validate_corpus_policy(document: object) -> dict[str, Any]:
     if not all(_boolean(split, key, f"{label}.split_rules") for key in split):
         raise ValueError("all corpus split rules must fail closed")
     access_sequence = _strings(doc, "access_sequence", label)
-    if access_sequence != [
-        "FREEZE_MANIFEST",
-        "SEAL_AGGREGATE_COMMITMENT",
-        "AUTHORIZE_EXECUTION",
-        "OPEN_PRIVATE_HOLDOUT",
-        "LOG_ACCESS",
-    ]:
+    if tuple(access_sequence) != HIDDEN_ACCESS_SEQUENCE:
         raise ValueError("hidden corpus access sequence drifted")
     hidden = _obj(doc.get("hidden_holdout"), f"{label}.hidden_holdout")
     _exact_keys(
@@ -794,6 +884,7 @@ def validate_corpus_policy(document: object) -> dict[str, Any]:
             "private_locator_in_public_repository",
             "per_case_commitments_in_public_repository",
             "aggregate_commitment_required_before_execution",
+            "independent_curator_seal_before_manifest_freeze",
             "access_after_manifest_freeze",
             "access_log_required",
         },
@@ -809,6 +900,7 @@ def validate_corpus_policy(document: object) -> dict[str, Any]:
             raise ValueError(f"hidden holdout public field {key} must remain false")
     for key in (
         "aggregate_commitment_required_before_execution",
+        "independent_curator_seal_before_manifest_freeze",
         "access_after_manifest_freeze",
         "access_log_required",
     ):
@@ -1013,29 +1105,36 @@ def corpus_aggregate_commitment_v1(
     """Commit the unique private-holdout item identities in a stable order."""
 
     attempts = [validate_trial_identity(attempt) for attempt in planned_attempts]
-    alias_bindings: dict[tuple[str, str], str] = {}
-    commitment_pools: dict[str, str] = {}
+    alias_bindings: dict[str, tuple[str, str]] = {}
+    commitment_bindings: dict[str, tuple[str, str]] = {}
     mutation_parents: set[str] = set()
     for attempt in attempts:
         pool_id = attempt["corpus_pool_id"]
         alias = attempt["corpus_item_alias"]
         commitment = attempt["corpus_item_commitment"]
-        alias_key = (pool_id, alias)
-        if alias_key in alias_bindings and alias_bindings[alias_key] != commitment:
-            raise ValueError("one corpus alias cannot bind multiple item commitments")
-        alias_bindings[alias_key] = commitment
+        binding = (pool_id, commitment)
+        if alias in alias_bindings and alias_bindings[alias] != binding:
+            raise ValueError(
+                "one corpus alias cannot cross pools or bind multiple commitments"
+            )
+        alias_bindings[alias] = binding
+        reverse_binding = (pool_id, alias)
         if (
-            commitment in commitment_pools
-            and commitment_pools[commitment] != pool_id
+            commitment in commitment_bindings
+            and commitment_bindings[commitment] != reverse_binding
         ):
-            raise ValueError("one corpus item commitment cannot cross corpus pools")
-        commitment_pools[commitment] = pool_id
+            raise ValueError(
+                "one corpus item commitment cannot cross pools or bind multiple aliases"
+            )
+        commitment_bindings[commitment] = reverse_binding
         if attempt["mutation_parent_commitment"] is not None:
+            if attempt["mutation_parent_commitment"] == commitment:
+                raise ValueError("a mutation cannot name itself as its parent commitment")
             mutation_parents.add(attempt["mutation_parent_commitment"])
     hidden_items = sorted(
         {
             (alias, commitment)
-            for (pool_id, alias), commitment in alias_bindings.items()
+            for alias, (pool_id, commitment) in alias_bindings.items()
             if pool_id == PRIMARY_ESTIMATE_POOL_ID
         }
     )
@@ -1163,17 +1262,15 @@ def validate_benchmark_manifest(
     )
     _exact_keys(
         artifact_fingerprints,
-        {
-            "target_matrix",
-            "metric_registry",
-            "corpus_policy",
-            "analysis_plan",
-            "analysis_implementation",
-        },
+        set(MANIFEST_ARTIFACT_FINGERPRINT_KEYS),
         f"{label}.artifact_fingerprints",
     )
     for key, value in artifact_fingerprints.items():
         _require_sha256(value, f"artifact_fingerprints.{key}")
+    if state == "FROZEN" and expected_artifact_fingerprints is None:
+        raise ValueError(
+            "a FROZEN manifest requires independently supplied artifact fingerprints"
+        )
     if expected_artifact_fingerprints is not None:
         if dict(artifact_fingerprints) != dict(expected_artifact_fingerprints):
             raise ValueError("manifest artifact fingerprint binding drifted")
@@ -1191,6 +1288,11 @@ def validate_benchmark_manifest(
     if len({attempt["study_id"] for attempt in attempts}) > 1:
         raise ValueError("a frozen manifest cannot mix study identities")
     expected_corpus_aggregate = corpus_aggregate_commitment_v1(attempts)
+    hidden_attempts = [
+        attempt
+        for attempt in attempts
+        if attempt["corpus_pool_id"] == PRIMARY_ESTIMATE_POOL_ID
+    ]
     model_subject_bindings: dict[str, tuple[str, str]] = {}
     for attempt in attempts:
         if attempt["target_class"] == "SYSTEM_EVAL_ONLY":
@@ -1317,6 +1419,7 @@ def validate_benchmark_manifest(
             or adjudication_plan is None
             or adjudication_plan["mode"] != adjudication_mode
             or not attempts
+            or not hidden_attempts
         ):
             raise ValueError("frozen execution manifest is incomplete")
     assert_public_safe(doc)
@@ -1502,25 +1605,51 @@ def validate_observation_grid_v1(
 
 
 def typed_terminal_partition_v1(
+    manifest: object,
     observations: Iterable[Mapping[str, Any]],
+    *,
+    expected_artifact_fingerprints: Mapping[str, str],
 ) -> dict[str, Any]:
-    rows = [validate_observation(row) for row in observations]
-    counts = Counter(row["terminal_status"] for row in rows)
+    """Partition only a manifest-bound, identity-complete observation grid."""
+
+    rows = list(observations)
+    grid = validate_observation_grid_v1(
+        manifest,
+        rows,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
+    )
+    planned_count = len(grid["planned"])
+    observed_rows = list(grid["observed"].values())
+    missing = list(grid["missing_attempt_ids"])
+    counts = Counter(row["terminal_status"] for row in observed_rows)
     non_scorable_count = sum(
         counts.get(status, 0) for status in NON_MODEL_SCORABLE_TERMINALS
     )
+    if not planned_count:
+        terminal_status = "NOT_EVALUABLE"
+        reason = "ZERO_SCHEDULED_ATTEMPTS"
+    elif missing:
+        terminal_status = "NOT_EVALUABLE"
+        reason = "MISSING_PLANNED_OBSERVATIONS"
+    else:
+        terminal_status = "PASS"
+        reason = None
     return {
         "method_id": SAP_METHOD_IDS[2],
-        "terminal_status": "PASS" if rows else "NOT_EVALUABLE",
-        "reason": None if rows else "ZERO_SCHEDULED_ATTEMPTS",
-        "total_attempts": len(rows),
+        "terminal_status": terminal_status,
+        "reason": reason,
+        "total_attempts": planned_count,
+        "recorded_terminal_count": len(observed_rows),
+        "missing_attempt_ids": missing,
         "terminal_counts": {status: counts.get(status, 0) for status in TERMINAL_STATUSES},
         "scorable_terminal_count": sum(
             counts.get(status, 0) for status in MODEL_SCORABLE_TERMINALS
         ),
         "non_scorable_terminal_count": non_scorable_count,
         "non_scorable_attempt_rate": (
-            round(non_scorable_count / len(rows), 12) if rows else None
+            round(non_scorable_count / planned_count, 12)
+            if terminal_status == "PASS"
+            else None
         ),
     }
 
@@ -1562,10 +1691,42 @@ def wilson_interval_v1(failures: int, denominator: int) -> dict[str, Any]:
     }
 
 
+def _suppressed_wilson(reason: str) -> dict[str, Any]:
+    return {
+        "method_id": SAP_METHOD_IDS[4],
+        "terminal_status": "NOT_EVALUABLE",
+        "reason": reason,
+        "confidence_level": 0.95,
+        "lower": None,
+        "upper": None,
+    }
+
+
+def _metric_target_classes(
+    checked_manifest: Mapping[str, Any], metric_id: str
+) -> tuple[str, ...]:
+    if metric_id not in MODEL_METRIC_TARGET_CLASSES:
+        raise ValueError("unsupported model-failure metric ID")
+    target_classes = MODEL_METRIC_TARGET_CLASSES[metric_id]
+    if not set(target_classes).issubset(checked_manifest["comparison_classes"]):
+        raise ValueError(
+            f"metric {metric_id} is not active under the frozen comparison classes"
+        )
+    if (
+        metric_id == "sandboxed_agent_failure_rate"
+        and checked_manifest["sandbox_equivalence"]["status"] != "ESTABLISHED"
+    ):
+        raise ValueError(
+            "sandboxed agent failure cannot run without established equivalence"
+        )
+    return target_classes
+
+
 def model_failure_denominator_v1(
     manifest: object,
     observations: Iterable[Mapping[str, Any]],
     *,
+    metric_id: str = "model_failure_rate",
     expected_artifact_fingerprints: Mapping[str, str],
 ) -> dict[str, Any]:
     rows = list(observations)
@@ -1578,44 +1739,82 @@ def model_failure_denominator_v1(
         manifest,
         expected_artifact_fingerprints=expected_artifact_fingerprints,
     )
-    comparison_classes = set(checked_manifest["comparison_classes"])
+    metric_classes = _metric_target_classes(checked_manifest, metric_id)
+    class_set = set(metric_classes)
     comparable_rows = [
         row
         for attempt_id, row in grid["observed"].items()
-        if row["target_class"] in comparison_classes
+        if row["target_class"] in class_set
         and grid["planned"][attempt_id]["corpus_pool_id"]
         == PRIMARY_ESTIMATE_POOL_ID
     ]
+    planned_comparable = {
+        attempt_id: attempt
+        for attempt_id, attempt in grid["planned"].items()
+        if attempt["target_class"] in class_set
+        and attempt["corpus_pool_id"] == PRIMARY_ESTIMATE_POOL_ID
+    }
     missing_comparable = sorted(
         attempt_id
         for attempt_id in grid["missing_attempt_ids"]
-        if grid["planned"][attempt_id]["target_class"] in comparison_classes
+        if grid["planned"][attempt_id]["target_class"] in class_set
         and grid["planned"][attempt_id]["corpus_pool_id"]
         == PRIMARY_ESTIMATE_POOL_ID
     )
     by_model: dict[str, dict[str, Any]] = {}
-    for model_id in sorted({row["model_subject_id"] for row in comparable_rows}):
+    planned_model_ids = sorted(
+        {attempt["model_subject_id"] for attempt in planned_comparable.values()}
+    )
+    for model_id in planned_model_ids:
+        planned_model_count = sum(
+            attempt["model_subject_id"] == model_id
+            for attempt in planned_comparable.values()
+        )
         model_rows = [row for row in comparable_rows if row["model_subject_id"] == model_id]
         counts = Counter(row["terminal_status"] for row in model_rows)
         numerator = counts.get("FAIL", 0)
         denominator = counts.get("PASS", 0) + numerator
-        interval = wilson_interval_v1(numerator, denominator)
-        by_model[model_id] = {
-            "terminal_status": "PASS" if denominator else "NOT_EVALUABLE",
-            "reason": None if denominator else "ZERO_MODEL_SCORABLE_DENOMINATOR",
-            "failure_count": numerator,
-            "model_scorable_denominator": denominator,
-            "failure_rate": round(numerator / denominator, 12) if denominator else None,
-            "excluded_terminal_counts": {
+        if missing_comparable:
+            model_terminal = "NOT_EVALUABLE"
+            model_reason = "MISSING_PLANNED_OBSERVATIONS"
+            reported_numerator: int | None = None
+            reported_denominator: int | None = None
+            failure_rate = None
+            excluded_counts: dict[str, int] | None = None
+            interval = _suppressed_wilson("MISSING_PLANNED_OBSERVATIONS")
+        else:
+            model_terminal = "PASS" if denominator else "NOT_EVALUABLE"
+            model_reason = (
+                None if denominator else "ZERO_MODEL_SCORABLE_DENOMINATOR"
+            )
+            reported_numerator = numerator
+            reported_denominator = denominator
+            failure_rate = (
+                round(numerator / denominator, 12) if denominator else None
+            )
+            excluded_counts = {
                 status: counts.get(status, 0)
                 for status in NON_MODEL_SCORABLE_TERMINALS
-            },
+            }
+            interval = wilson_interval_v1(numerator, denominator)
+        by_model[model_id] = {
+            "terminal_status": model_terminal,
+            "reason": model_reason,
+            "planned_attempt_count": planned_model_count,
+            "recorded_attempt_count": len(model_rows),
+            "failure_count": reported_numerator,
+            "model_scorable_denominator": reported_denominator,
+            "failure_rate": failure_rate,
+            "excluded_terminal_counts": excluded_counts,
             "wilson_95": interval,
         }
     if missing_comparable:
         study_terminal = "NOT_EVALUABLE"
         reason = "MISSING_PLANNED_OBSERVATIONS"
-    elif not by_model or any(
+    elif not by_model:
+        study_terminal = "NOT_EVALUABLE"
+        reason = "NO_PREDECLARED_METRIC_ATTEMPTS"
+    elif any(
         result["terminal_status"] != "PASS" for result in by_model.values()
     ):
         study_terminal = "NOT_EVALUABLE"
@@ -1625,10 +1824,11 @@ def model_failure_denominator_v1(
         reason = None
     return {
         "method_id": SAP_METHOD_IDS[3],
+        "metric_id": metric_id,
         "terminal_status": study_terminal,
         "reason": reason,
         "missing_attempt_ids": missing_comparable,
-        "comparison_classes": list(checked_manifest["comparison_classes"]),
+        "target_classes": list(metric_classes),
         "corpus_pool": PRIMARY_ESTIMATE_POOL_ID,
         "by_model": by_model,
         "ranking_emitted": False,
@@ -1677,6 +1877,23 @@ def system_invariant_failure_rate_v1(
     else:
         terminal_status = "PASS"
         reason = None
+    if missing:
+        reported_failures: int | None = None
+        reported_denominator: int | None = None
+        failure_rate = None
+        excluded_counts: dict[str, int] | None = None
+        interval = _suppressed_wilson("MISSING_PLANNED_SYSTEM_OBSERVATIONS")
+    else:
+        reported_failures = failures
+        reported_denominator = denominator
+        failure_rate = (
+            round(failures / denominator, 12) if denominator else None
+        )
+        excluded_counts = {
+            status: counts.get(status, 0)
+            for status in NON_MODEL_SCORABLE_TERMINALS
+        }
+        interval = wilson_interval_v1(failures, denominator)
     return {
         "method_id": SAP_METHOD_IDS[7],
         "terminal_status": terminal_status,
@@ -1684,16 +1901,12 @@ def system_invariant_failure_rate_v1(
         "planned_system_attempt_count": len(system_attempt_ids),
         "corpus_pool": PRIMARY_ESTIMATE_POOL_ID,
         "missing_attempt_ids": missing,
-        "failure_count": failures,
-        "system_scorable_denominator": denominator,
-        "failure_rate": (
-            round(failures / denominator, 12) if denominator else None
-        ),
-        "excluded_terminal_counts": {
-            status: counts.get(status, 0)
-            for status in NON_MODEL_SCORABLE_TERMINALS
-        },
-        "wilson_95": wilson_interval_v1(failures, denominator),
+        "recorded_system_attempt_count": len(system_rows),
+        "failure_count": reported_failures,
+        "system_scorable_denominator": reported_denominator,
+        "failure_rate": failure_rate,
+        "excluded_terminal_counts": excluded_counts,
+        "wilson_95": interval,
         "model_attribution_emitted": False,
         "ranking_emitted": False,
         "claim_scope": "SYSTEM_ONLY_NOT_MODEL_QUALITY",
@@ -1706,6 +1919,7 @@ def paired_complete_case_v1(
     *,
     left_model_subject_id: str,
     right_model_subject_id: str,
+    metric_id: str = "model_failure_rate",
     expected_artifact_fingerprints: Mapping[str, str],
 ) -> dict[str, Any]:
     if left_model_subject_id == right_model_subject_id:
@@ -1716,12 +1930,12 @@ def paired_complete_case_v1(
         rows,
         expected_artifact_fingerprints=expected_artifact_fingerprints,
     )
-    comparison_classes = set(
-        validate_benchmark_manifest(
-            manifest,
-            expected_artifact_fingerprints=expected_artifact_fingerprints,
-        )["comparison_classes"]
+    checked_manifest = validate_benchmark_manifest(
+        manifest,
+        expected_artifact_fingerprints=expected_artifact_fingerprints,
     )
+    metric_classes = _metric_target_classes(checked_manifest, metric_id)
+    comparison_classes = set(metric_classes)
     relevant_missing = sorted(
         attempt_id
         for attempt_id in grid["missing_attempt_ids"]
@@ -1734,6 +1948,8 @@ def paired_complete_case_v1(
     if relevant_missing:
         return {
             "method_id": SAP_METHOD_IDS[5],
+            "metric_id": metric_id,
+            "target_classes": list(metric_classes),
             "terminal_status": "NOT_EVALUABLE",
             "reason": "MISSING_PLANNED_OBSERVATIONS",
             "paired_scorable_count": 0,
@@ -1783,6 +1999,8 @@ def paired_complete_case_v1(
     if not left or set(left) != set(right):
         return {
             "method_id": SAP_METHOD_IDS[5],
+            "metric_id": metric_id,
+            "target_classes": list(metric_classes),
             "terminal_status": "NOT_EVALUABLE",
             "reason": "UNPAIRED_PREDECLARED_DESIGN",
             "paired_scorable_count": 0,
@@ -1802,6 +2020,8 @@ def paired_complete_case_v1(
         ):
             return {
                 "method_id": SAP_METHOD_IDS[5],
+                "metric_id": metric_id,
+                "target_classes": list(metric_classes),
                 "terminal_status": "NOT_EVALUABLE",
                 "reason": "PAIRED_IDENTITY_MISMATCH",
                 "paired_scorable_count": 0,
@@ -1821,6 +2041,8 @@ def paired_complete_case_v1(
     if not included:
         return {
             "method_id": SAP_METHOD_IDS[5],
+            "metric_id": metric_id,
+            "target_classes": list(metric_classes),
             "terminal_status": "NOT_EVALUABLE",
             "reason": "ZERO_PAIRED_MODEL_SCORABLE_DENOMINATOR",
             "paired_scorable_count": 0,
@@ -1835,6 +2057,8 @@ def paired_complete_case_v1(
     right_rate = sum(right[key]["terminal_status"] == "FAIL" for key in included) / len(included)
     return {
         "method_id": SAP_METHOD_IDS[5],
+        "metric_id": metric_id,
+        "target_classes": list(metric_classes),
         "terminal_status": "PASS",
         "reason": None,
         "paired_scorable_count": len(included),
@@ -2020,6 +2244,10 @@ def resolve_adjudication_v1(
     if len(primaries) > 2:
         raise ValueError("at most two predeclared primary adjudicators are allowed")
     if any(row["record_status"] == "ERROR" for row in primaries):
+        if tiebreakers:
+            raise ValueError(
+                "a tiebreaker is forbidden when a primary adjudication errored"
+            )
         return {
             "method_id": SAP_METHOD_IDS[6],
             "terminal_status": "ERROR",
@@ -2027,6 +2255,10 @@ def resolve_adjudication_v1(
             "decision": None,
         }
     if len(primaries) != 2:
+        if tiebreakers:
+            raise ValueError(
+                "a tiebreaker requires both predeclared primary adjudications"
+            )
         return {
             "method_id": SAP_METHOD_IDS[6],
             "terminal_status": "UNKNOWN",
@@ -2035,6 +2267,17 @@ def resolve_adjudication_v1(
         }
     if supplied_primaries != planned_primaries:
         raise ValueError("the primary adjudicator set drifted from the frozen plan")
+    if any(row["decision"] == "UNKNOWN" for row in primaries):
+        if tiebreakers:
+            raise ValueError(
+                "a tiebreaker cannot convert insufficient evidence into PASS or FAIL"
+            )
+        return {
+            "method_id": SAP_METHOD_IDS[6],
+            "terminal_status": "UNKNOWN",
+            "reason": "PRIMARY_INSUFFICIENT_EVIDENCE",
+            "decision": None,
+        }
     primary_decisions = {row["decision"] for row in primaries}
     if len(primary_decisions) == 1:
         if tiebreakers:
@@ -2061,6 +2304,13 @@ def resolve_adjudication_v1(
             "decision": None,
         }
     decision = tiebreakers[0]["decision"]
+    if decision == "UNKNOWN":
+        return {
+            "method_id": SAP_METHOD_IDS[6],
+            "terminal_status": "UNKNOWN",
+            "reason": "TIEBREAK_INSUFFICIENT_EVIDENCE",
+            "decision": None,
+        }
     return {
         "method_id": SAP_METHOD_IDS[6],
         "terminal_status": decision,
@@ -2223,7 +2473,8 @@ def validate_measurement_contract(
                 "peer_decisions_blinded",
             )
         )
-        or adjudication.get("tiebreak_rule") != "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ON_DISAGREEMENT"
+        or adjudication.get("tiebreak_rule")
+        != "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ONLY_ON_PASS_FAIL_DISAGREEMENT"
     ):
         raise ValueError("BM0 adjudication contract drifted")
 
@@ -2284,8 +2535,24 @@ def build_bm0_receipt(
     checked_contract = validate_measurement_contract(
         contract, bound_artifacts=bound_artifacts
     )
+    supplied_artifacts = {
+        "cases/b2/public-safe/benchmark/bm0-target-applicability.json": target_matrix,
+        "cases/b2/public-safe/benchmark/bm0-metric-registry.json": metric_registry,
+        "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": corpus_policy,
+        "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": manifest_template,
+    }
+    for path, artifact in supplied_artifacts.items():
+        if path not in bound_artifacts or sha256_json(bound_artifacts[path]) != sha256_json(
+            artifact
+        ):
+            raise ValueError(
+                f"receipt input {path} is not the artifact bound by the contract"
+            )
     sap_fingerprint = sha256_json(checked_contract["sap"])
     expected_manifest_artifacts = {
+        "measurement_contract_core": measurement_contract_core_fingerprint_v1(
+            checked_contract
+        ),
         "target_matrix": checked_matrix["matrix_fingerprint"],
         "metric_registry": checked_registry["registry_fingerprint"],
         "corpus_policy": checked_corpus["policy_fingerprint"],

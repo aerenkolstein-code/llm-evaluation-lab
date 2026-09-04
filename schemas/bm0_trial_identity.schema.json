@@ -43,7 +43,11 @@
     "model_snapshot_id": {
       "allOf": [
         {"$ref": "#/$defs/identifier"},
-        {"not": {"enum": ["latest", "default", "auto", "not_selected"]}}
+        {
+          "not": {
+            "pattern": "^(?:[Ll][Aa][Tt][Ee][Ss][Tt]|[Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Aa][Uu][Tt][Oo]|[Nn][Oo][Tt]_[Ss][Ee][Ll][Ee][Cc][Tt][Ee][Dd])$"
+          }
+        }
       ]
     },
     "target_id": {"$ref": "#/$defs/identifier"},
@@ -108,6 +112,78 @@
           "provider_subject_id": {"not": {"const": "SYSTEM_SCOPE"}},
           "model_subject_id": {"not": {"const": "SYSTEM_SCOPE"}},
           "model_snapshot_id": {"not": {"const": "SYSTEM_SCOPE"}}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"target_class": {"const": "MODEL_DIRECT"}},
+        "required": ["target_class"]
+      },
+      "then": {
+        "properties": {
+          "target_id": {
+            "enum": [
+              "BM0-TUT-D01-CONSTRAINT-ADHERENCE",
+              "BM0-TUT-D02-REASONING-INTEGRITY",
+              "BM0-TUT-D03-CALIBRATED-ABSTENTION"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"target_class": {"const": "MODEL_CONTEXT_GROUNDED"}},
+        "required": ["target_class"]
+      },
+      "then": {
+        "properties": {
+          "target_id": {
+            "enum": [
+              "BM0-TUT-G01-ENTITY-ATTRIBUTE-BINDING",
+              "BM0-TUT-G02-INVENTORY-EVIDENCE-SCOPE",
+              "BM0-TUT-G03-SOURCE-MODALITY-PROVENANCE",
+              "BM0-TUT-G04-LONG-CONTEXT-CONSTRAINT-PERSISTENCE",
+              "BM0-TUT-G05-CITATION-EVIDENCE-COMPLETENESS"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"target_class": {"const": "AGENT_STANDARDIZED"}},
+        "required": ["target_class"]
+      },
+      "then": {
+        "properties": {
+          "target_id": {
+            "enum": [
+              "BM0-TUT-A01-CONNECTOR-SCHEMA-READBACK-RETRY",
+              "BM0-TUT-A02-CAPABILITY-PERMISSION-ROUTING",
+              "BM0-TUT-A03-DESTRUCTIVE-WRITE-RECOVERY",
+              "BM0-TUT-A04-TOOL-SEQUENCE-GLOBAL-INTEGRITY"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"target_class": {"const": "SYSTEM_EVAL_ONLY"}},
+        "required": ["target_class"]
+      },
+      "then": {
+        "properties": {
+          "target_id": {
+            "enum": [
+              "BM0-TUT-S01-FULL-SET-PROJECTION-COMPLETENESS",
+              "BM0-TUT-S02-TERMINAL-STATE-PERSISTENCE",
+              "BM0-TUT-S03-ADAPTER-RECONCILIATION",
+              "BM0-TUT-S04-CLAIM-EVIDENCE-INTEGRITY"
+            ]
+          }
         }
       }
     }

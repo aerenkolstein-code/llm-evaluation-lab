@@ -6,7 +6,7 @@
       "metric_id": "model_failure_rate",
       "version": "v1",
       "kind": "MODEL_QUALITY",
-      "description": "FAIL observations divided only by PASS plus FAIL observations for the complete predeclared private hidden model-direct and context-grounded attempt grid.",
+      "description": "FAIL observations divided only by PASS plus FAIL observations for the complete predeclared private hidden model-direct and context-grounded attempt grid; agent observations remain a separate metric even after sandbox equivalence.",
       "applicability_classes": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
       "numerator_statuses": ["FAIL"],
       "denominator_statuses": ["PASS", "FAIL"],
@@ -23,7 +23,7 @@
       "metric_id": "sandboxed_agent_failure_rate",
       "version": "v1",
       "kind": "MODEL_QUALITY_CONDITIONAL",
-      "description": "FAIL observations divided only by PASS plus FAIL observations for an agent grid after independent sandbox equivalence is established.",
+      "description": "FAIL observations divided only by PASS plus FAIL observations for the complete predeclared private hidden agent grid after independent sandbox equivalence is established; direct and context-grounded observations are excluded.",
       "applicability_classes": ["AGENT_STANDARDIZED"],
       "numerator_statuses": ["FAIL"],
       "denominator_statuses": ["PASS", "FAIL"],
@@ -40,7 +40,7 @@
       "metric_id": "system_invariant_failure_rate",
       "version": "v1",
       "kind": "SYSTEM_QUALITY",
-      "description": "FAIL system observations divided only by PASS plus FAIL system observations; the value is never attributed to model quality.",
+      "description": "FAIL system observations divided only by PASS plus FAIL system observations for the complete predeclared private hidden system grid; any missing scheduled system observation suppresses the aggregate, and the value is never attributed to model quality.",
       "applicability_classes": ["SYSTEM_EVAL_ONLY"],
       "numerator_statuses": ["FAIL"],
       "denominator_statuses": ["PASS", "FAIL"],
@@ -57,7 +57,7 @@
       "metric_id": "non_scorable_attempt_rate",
       "version": "v1",
       "kind": "INFRASTRUCTURE_AND_EVIDENCE_DIAGNOSTIC",
-      "description": "NOT_EVALUABLE, BLOCKED, ERROR, or UNKNOWN observations divided by every scheduled terminal observation; this diagnostic never enters model failure.",
+      "description": "NOT_EVALUABLE, BLOCKED, ERROR, or UNKNOWN observations divided by every scheduled terminal observation only after the manifest-bound observation grid is complete; duplicate or unplanned rows are rejected and missing rows suppress the rate. This diagnostic never enters model failure.",
       "applicability_classes": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED", "AGENT_STANDARDIZED", "SYSTEM_EVAL_ONLY"],
       "numerator_statuses": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
       "denominator_statuses": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
@@ -71,5 +71,5 @@
       "claim_scope": "DIAGNOSTIC_ONLY_NOT_MODEL_FAILURE"
     }
   ],
-  "registry_fingerprint": "sha256:3273d2ab9cae0a3dd12bfa64288ad35741847ab7c9d46b65da67eb5647358eb1"
+  "registry_fingerprint": "sha256:4b4b190d12bdc0e8bd675eaf2848a1e26ca772f82f5dbaa999045d4a91fbc17d"
 }

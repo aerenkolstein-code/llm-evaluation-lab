@@ -28,6 +28,10 @@ The default comparable set is exactly `MODEL_DIRECT` plus
 `AGENT_STANDARDIZED` only when it binds all five frozen sandbox-equivalence
 evidence types: image, tool surface, budget/retry, network/credential policy,
 and an independent equivalence receipt.
+That expansion permits the separately registered
+`sandboxed_agent_failure_rate`; it does not mix agent observations into
+`model_failure_rate`, whose target classes remain direct plus
+context-grounded.
 `SYSTEM_EVAL_ONLY` can never enter a model-comparison denominator.
 
 ## Terminal and denominator semantics
@@ -46,7 +50,9 @@ For each model subject, the descriptive model-failure rate is
 comparable `PRIVATE_HIDDEN_HOLDOUT` grid. Public development, control, and
 mutation attempts remain available to the all-pool diagnostic but cannot enter
 this primary estimate. Missing planned hidden observations fail closed as
-`NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS`. A zero model-scorable denominator
+`NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS` and suppress the numerator,
+denominator, rate, excluded-state aggregates, and interval rather than exposing
+a partial estimate. A zero model-scorable denominator
 fails closed as `NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR`. Retries require
 new predeclared attempt identities; a later row may not silently replace an
 earlier attempt.
@@ -60,16 +66,19 @@ any hidden-corpus access:
 |---|---|---|
 | `BM0-SAP-01-FIXED-ATTEMPT-STOP-V1` | `fixed_attempt_stop_v1` | stop only after all predeclared attempt IDs are recorded; reject outcome-bearing stop inputs |
 | `BM0-SAP-02-IDENTITY-GRID-V1` | `validate_observation_grid_v1` | reject duplicate, substituted, or unplanned observations; expose missing IDs |
-| `BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1` | `typed_terminal_partition_v1` | retain all six terminal states without coercion |
-| `BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1` | `model_failure_denominator_v1` | use only `FAIL / (PASS + FAIL)` and emit no ranking |
+| `BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1` | `typed_terminal_partition_v1` | bind rows to the frozen manifest, reject duplicate/unplanned rows, retain all six states, and suppress the diagnostic rate for a partial grid |
+| `BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1` | `model_failure_denominator_v1` | use only `FAIL / (PASS + FAIL)` on one registered metric's target classes, suppress incomplete-grid aggregates, and emit no ranking |
 | `BM0-SAP-05-WILSON-INTERVAL-V1` | `wilson_interval_v1` | deterministic two-sided 95% Wilson interval; zero denominator is not evaluable |
 | `BM0-SAP-06-PAIRED-COMPLETE-CASE-V1` | `paired_complete_case_v1` | pair on target, corpus alias, replicate, and derived retry ordinal; require matching target class, corpus commitment, prompt, harness, adapter version, seed, and environment; otherwise fail closed |
-| `BM0-SAP-07-ADJUDICATION-RESOLUTION-V1` | `resolve_adjudication_v1` | two distinct blind primaries; exactly one distinct blind tiebreaker on disagreement |
-| `BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1` | `system_invariant_failure_rate_v1` | compute a system-only typed rate under `SYSTEM_SCOPE`; never attribute it to a model or emit a ranking |
+| `BM0-SAP-07-ADJUDICATION-RESOLUTION-V1` | `resolve_adjudication_v1` | two distinct blind primaries; one distinct blind tiebreaker only for PASS-versus-FAIL disagreement; UNKNOWN is terminal |
+| `BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1` | `system_invariant_failure_rate_v1` | compute a complete-grid system-only typed rate under `SYSTEM_SCOPE`; suppress partial aggregates and never attribute it to a model or emit a ranking |
 
 The no-peeking stop function accepts only `attempt_id` and `recorded`. The
-manifest binds both the frozen SAP and its executable implementation by
-fingerprint.
+manifest binds the central measurement-contract core, target matrix, metric
+registry, corpus policy, frozen SAP, and executable implementation by
+fingerprint. A `FROZEN` manifest is accepted only when the validator receives
+the expected fingerprint map from an independent caller; a self-consistent
+manifest alone is insufficient.
 `terminal_status`, `model_failure_value`, `score`, output content, and
 adjudication decisions are rejected rather than ignored.
 
@@ -101,10 +110,13 @@ The checked manifest is deliberately a `DESIGN_ONLY` template:
 - sandbox equivalence: `NOT_ESTABLISHED`.
 
 Execution requires a separate, fully populated `FROZEN` manifest created before
-private-holdout access. `SEALED` requires a non-null aggregate corpus
+runtime access to the private holdout and containing at least one predeclared
+private-hidden attempt. `SEALED` requires a non-null aggregate corpus
 commitment, not a status assertion alone. The aggregate is deterministically
-rebuilt from the unique private-holdout aliases and per-item commitments; alias
-drift and reuse of the same item commitment across pools are rejected. That
+rebuilt from the unique private-holdout aliases and per-item commitments. A
+corpus alias has exactly one pool/commitment binding, and an item commitment has
+exactly one pool/alias binding; cross-pool alias drift, alias splitting, and
+self-parenting mutations are rejected. That
 manifest must also fingerprint the adjudication
 plan: mode, allowed metrics, two primary identities and types, one distinct
 tiebreak identity and type, an immutable configuration fingerprint for every
@@ -123,8 +135,12 @@ Every mutation-pool identity must disclose its parent commitment. A mutation
 whose parent commitment occurs in the private hidden pool is rejected, as is
 reuse of one exact item commitment across corpus pools.
 
-The required order is: freeze the manifest, seal an aggregate commitment,
-authorize execution, open the private holdout, and log access. The contract
+An independent curator first selects the private holdout and creates its
+aggregate commitment outside the public repository. The execution manifest
+then freezes that commitment and the opaque planned identities; only afterward
+may execution be authorized, the holdout be opened to the execution path, and
+access be logged. Thus exact content remains hidden from developers and models
+before freeze while the manifest can truthfully bind a pre-existing seal. The contract
 forbids treating the `B2-BLIND-01` / PR #30 corpus or outputs as BM0 material by
 assumption.
 
@@ -134,8 +150,10 @@ PASS or FAIL adjudication requires complete evidence. Primaries and any
 tiebreaker must use distinct adjudicator identities and remain blind to model,
 provider, and peer decisions. Runtime records must match the adjudicator set,
 mode composition, metric, attempt, item alias, and rubric frozen in the
-manifest; an unplanned substitute is rejected. Missing adjudication remains
-`UNKNOWN`; an adjudication-system failure remains `ERROR` and is never
+manifest; an unplanned substitute is rejected. Missing or insufficient
+adjudication remains `UNKNOWN` and cannot be converted to PASS or FAIL by a
+tiebreaker. A tiebreaker is legal only when two complete primaries disagree
+PASS versus FAIL. An adjudication-system failure remains `ERROR` and is never
 converted to model failure.
 
 BM0 permits only these developer claims:
@@ -163,7 +181,10 @@ GREEN are outside the claim ceiling.
 
 Artifact fingerprints use the repository's canonical `sha256_json` encoding.
 JSON artifacts are hashed as parsed canonical objects; the Python implementation
-and its tests are hashed as canonical UTF-8 source strings.
+and its tests are hashed as canonical UTF-8 source strings. The manifest's
+`measurement_contract_core` commitment hashes the central contract with only
+`artifact_bindings` and `contract_fingerprint` removed, which binds semantics
+without creating a contract↔manifest fingerprint cycle.
 
 ## Acceptance boundary
 

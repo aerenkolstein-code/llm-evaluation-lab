@@ -6,18 +6,18 @@
   "validation_scope": "OFFLINE_MEASUREMENT_CONTRACT_ONLY",
   "artifact_count": 12,
   "artifact_fingerprints": {
-    "b2/bm0.py": "sha256:3061789a823f5363b241501f2695e4e48f6f3a4543cfdffd002e1fefe59300aa",
-    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:765950f0ef31d7ef941c50aa10c7b2425086f327535c92ff5f43bc51f4db219d",
-    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:095a7740b1dde0dcc8ba023f5976419fdffe87d2851dc7a235e7717521f901f5",
-    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:7aa69e5871e499d41a52b8259e7e3e7c7828f6467bcf957edec470b4a6d9d130",
+    "b2/bm0.py": "sha256:fb5e5fb4fe2a086abb0ea7053bf997df8f46c856674fee548c2e2caab82d03a0",
+    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:2ce43338e2b3eeecdb593ee7ddb4d31152900d35a39115ef52dc0a871535c9c6",
+    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:44b6b3fe730440a1d2c9b2ccc729dbc30b7f67448ee8a607d8e0314660aba030",
+    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:a211c5197a0e0f059ff2a59aa06bd4c4769d8303e77e26883a1e464d2eeb20fb",
     "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:f7977d941237210d6cec8261c0b9e60ce1e0d62f63bce6dd948b189a82280a30",
-    "schemas/bm0_adjudication_record.schema.json": "sha256:81c57f199c00e96fcb18b9bfb119a143b373ca0216e0d838c3b750d12305d4da",
-    "schemas/bm0_benchmark_manifest.schema.json": "sha256:53f86eb62d4b8e3f11170510e4948b3a3131d852bbb22597d9c4caf4a30f37b5",
-    "schemas/bm0_measurement_contract.schema.json": "sha256:7f045c92abb38e71eb2d87e0a6057af4e536a72575ea12dc9f292c16b0b5b357",
-    "schemas/bm0_observation.schema.json": "sha256:be4725f6b40f462882185b0bd7af5950e81f9181a873b5fa6af698ecf90b127a",
-    "schemas/bm0_trial_identity.schema.json": "sha256:f09cedda3863ca021ed11f5d1feb38fea5f3858179ed8918eb435b35e24f89f4",
-    "tests/test_b2_bm0.py": "sha256:57a7e91382832c59f2e3bb8f6f1ca55f666443fa5a821f52230666443b13c4bd",
-    "cases/b2/public-safe/benchmark/bm0-measurement-contract.json": "sha256:0bb31ac869f899b2c20433b89417e87ad9ccf08cfc673af0b72281045414ac6d"
+    "schemas/bm0_adjudication_record.schema.json": "sha256:1871b02631970651502ea6de611e6bdc02875bcbebbf2a8b8fcba83a481a1906",
+    "schemas/bm0_benchmark_manifest.schema.json": "sha256:eb77c6d82096afa7e264f13664bf7c2bbdca7a764d0d62ffdf0990c1fea90b06",
+    "schemas/bm0_measurement_contract.schema.json": "sha256:fe476234b0d90ece7be323e79f7e19c82043e0ddfc99a5594c1b47a3d44afbaa",
+    "schemas/bm0_observation.schema.json": "sha256:b617b324cd579395ad6f65100fc9128b1b5081f282235bc78134948e626355c7",
+    "schemas/bm0_trial_identity.schema.json": "sha256:6f7d5c7818d273a72fdf73d8a0acfe084dc4e01f464ea96b236facb7b4abe5c8",
+    "tests/test_b2_bm0.py": "sha256:a28d62b70b35bfbee02e7da2eac92a4a17676f83518db28b04ca96da7e7a2fb2",
+    "cases/b2/public-safe/benchmark/bm0-measurement-contract.json": "sha256:d0b27ae3371b4c444ee818f7325068abba71e1b305fc22cb3503959c34f4155a"
   },
   "target_count": 16,
   "target_class_counts": {
@@ -81,5 +81,5 @@
     "No provider/model roster, hidden corpus, live call, ranking, or population estimate is selected or executed.",
     "Developer validation cannot satisfy the distinct BM0 Independent QA gate."
   ],
-  "receipt_fingerprint": "sha256:dce85baffe2fe4d51442fb1f94d60cc1a1a88c97c05a38274f99cad4be9d57e8"
+  "receipt_fingerprint": "sha256:5e99086d49c7168f419717c24a225a010e828177cba5125abecbd8ea83522243"
 }

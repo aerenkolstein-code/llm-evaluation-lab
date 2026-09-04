@@ -19,6 +19,7 @@ from b2.bm0 import (
     build_bm0_receipt,
     corpus_aggregate_commitment_v1,
     fixed_attempt_stop_v1,
+    measurement_contract_core_fingerprint_v1,
     model_failure_denominator_v1,
     paired_complete_case_v1,
     resolve_adjudication_v1,
@@ -86,7 +87,9 @@ def identity(
         "target_class": target_class,
         "corpus_pool_id": "PRIVATE_HIDDEN_HOLDOUT",
         "corpus_item_alias": item,
-        "corpus_item_commitment": "sha256:" + "1" * 64,
+        "corpus_item_commitment": sha256_json(
+            {"fixture": "bm0-item", "item": item}
+        ),
         "mutation_parent_commitment": None,
         "prompt_template_version": "prompt-v1",
         "harness_version": "harness-v1",
@@ -386,13 +389,44 @@ class B2BM0Tests(unittest.TestCase):
         unsealed["corpus_aggregate_commitment"] = None
         unsealed = refingerprint(unsealed, "manifest_fingerprint")
         with self.assertRaises(ValueError):
-            validate_benchmark_manifest(unsealed)
+            validate_benchmark_manifest(
+                unsealed,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
         false_seal = self.frozen_manifest([identity()])
         false_seal["corpus_aggregate_commitment"] = "sha256:" + "f" * 64
         false_seal = refingerprint(false_seal, "manifest_fingerprint")
         with self.assertRaises(ValueError):
-            validate_benchmark_manifest(false_seal)
+            validate_benchmark_manifest(
+                false_seal,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+    def test_frozen_manifest_requires_independent_bindings_and_hidden_holdout(self):
+        manifest = self.frozen_manifest([identity()])
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(manifest)
+
+        tampered = copy.deepcopy(manifest)
+        tampered["artifact_fingerprints"]["analysis_plan"] = (
+            "sha256:" + "f" * 64
+        )
+        tampered = refingerprint(tampered, "manifest_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(
+                tampered,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        public_attempt = identity(item="public-control-item")
+        public_attempt["corpus_pool_id"] = "PUBLIC_CONTROL"
+        public_only = self.frozen_manifest([public_attempt])
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(
+                public_only,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
     def test_agent_comparison_requires_sandbox_equivalence_evidence(self):
         agent_attempt = identity(
@@ -403,14 +437,20 @@ class B2BM0Tests(unittest.TestCase):
             [agent_attempt], comparison_classes=classes
         )
         with self.assertRaises(ValueError):
-            validate_benchmark_manifest(no_evidence)
+            validate_benchmark_manifest(
+                no_evidence,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
         with_evidence = self.frozen_manifest(
             [agent_attempt],
             comparison_classes=classes,
             establish_sandbox=True,
         )
-        checked = validate_benchmark_manifest(with_evidence)
+        checked = validate_benchmark_manifest(
+            with_evidence,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
         self.assertEqual(checked["sandbox_equivalence"]["status"], "ESTABLISHED")
 
         incomplete_evidence = copy.deepcopy(with_evidence)
@@ -419,7 +459,10 @@ class B2BM0Tests(unittest.TestCase):
             incomplete_evidence, "manifest_fingerprint"
         )
         with self.assertRaises(ValueError):
-            validate_benchmark_manifest(incomplete_evidence)
+            validate_benchmark_manifest(
+                incomplete_evidence,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
     def test_frozen_adjudication_mode_requires_matching_composition(self):
         manifest = self.frozen_manifest([identity()])
@@ -430,7 +473,10 @@ class B2BM0Tests(unittest.TestCase):
         )
         manifest = refingerprint(manifest, "manifest_fingerprint")
         with self.assertRaises(ValueError):
-            validate_benchmark_manifest(manifest)
+            validate_benchmark_manifest(
+                manifest,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
     def test_system_eval_only_never_enters_model_comparison(self):
         system_attempt = identity(
@@ -441,7 +487,10 @@ class B2BM0Tests(unittest.TestCase):
             [system_attempt], comparison_classes=classes
         )
         with self.assertRaises(ValueError):
-            validate_benchmark_manifest(manifest)
+            validate_benchmark_manifest(
+                manifest,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
     def test_system_attempts_are_scheduled_without_model_attribution(self):
         attempts = [
@@ -454,7 +503,10 @@ class B2BM0Tests(unittest.TestCase):
             for index in range(3)
         ]
         manifest = self.frozen_manifest(attempts)
-        validate_benchmark_manifest(manifest)
+        validate_benchmark_manifest(
+            manifest,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
         rows = [
             observation(attempt, status)
             for attempt, status in zip(attempts, ("PASS", "FAIL", "ERROR"))
@@ -478,10 +530,12 @@ class B2BM0Tests(unittest.TestCase):
             validate_trial_identity(attributed)
 
     def test_trial_identity_rejects_moving_snapshot_and_class_mismatch(self):
-        moving = identity()
-        moving["model_snapshot_id"] = "latest"
-        with self.assertRaises(ValueError):
-            validate_trial_identity(moving)
+        for alias in ("latest", "LATEST", "latest "):
+            with self.subTest(alias=alias):
+                moving = identity()
+                moving["model_snapshot_id"] = alias
+                with self.assertRaises(ValueError):
+                    validate_trial_identity(moving)
 
         mismatch = identity()
         mismatch["target_class"] = "SYSTEM_EVAL_ONLY"
@@ -504,37 +558,49 @@ class B2BM0Tests(unittest.TestCase):
         child["attempt_id"] = "attempt-model-a-retry-child"
         child["parent_attempt_id"] = root["attempt_id"]
         manifest = self.frozen_manifest([root, child])
-        validate_benchmark_manifest(manifest)
+        validate_benchmark_manifest(
+            manifest,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
 
         orphan = copy.deepcopy(child)
         orphan["parent_attempt_id"] = "attempt-missing-parent"
         with self.assertRaises(ValueError):
-            validate_benchmark_manifest(self.frozen_manifest([root, orphan]))
+            validate_benchmark_manifest(
+                self.frozen_manifest([root, orphan]),
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
         drifted = copy.deepcopy(child)
         drifted["model_snapshot_id"] = "snapshot-model-a-different"
         with self.assertRaises(ValueError):
-            validate_benchmark_manifest(self.frozen_manifest([root, drifted]))
+            validate_benchmark_manifest(
+                self.frozen_manifest([root, drifted]),
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
         sibling = copy.deepcopy(child)
         sibling["attempt_id"] = "attempt-model-a-retry-sibling"
         with self.assertRaises(ValueError):
             validate_benchmark_manifest(
-                self.frozen_manifest([root, child, sibling])
+                self.frozen_manifest([root, child, sibling]),
+                expected_artifact_fingerprints=self.execution_bindings,
             )
 
         mixed_study = identity(serial="other-study")
         mixed_study["study_id"] = "study-002"
         with self.assertRaises(ValueError):
             validate_benchmark_manifest(
-                self.frozen_manifest([root, mixed_study])
+                self.frozen_manifest([root, mixed_study]),
+                expected_artifact_fingerprints=self.execution_bindings,
             )
 
         snapshot_drift = identity(serial="snapshot-drift", item="item-002")
         snapshot_drift["model_snapshot_id"] = "snapshot-model-a-20260905"
         with self.assertRaises(ValueError):
             validate_benchmark_manifest(
-                self.frozen_manifest([root, snapshot_drift])
+                self.frozen_manifest([root, snapshot_drift]),
+                expected_artifact_fingerprints=self.execution_bindings,
             )
 
     def test_fixed_attempt_stop_is_outcome_blind(self):
@@ -706,6 +772,34 @@ class B2BM0Tests(unittest.TestCase):
         self.assertEqual(result["wilson_95"]["reason"], "ZERO_DENOMINATOR")
         self.assertFalse(result["model_attribution_emitted"])
 
+    def test_missing_system_observation_suppresses_partial_rate(self):
+        attempts = [
+            identity(
+                target_class="SYSTEM_EVAL_ONLY",
+                model="system",
+                serial=f"system-{index:03d}",
+                item=f"system-item-{index:03d}",
+            )
+            for index in range(2)
+        ]
+        manifest = self.frozen_manifest(attempts)
+        result = system_invariant_failure_rate_v1(
+            manifest,
+            [observation(attempts[0], "PASS")],
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(result["terminal_status"], "NOT_EVALUABLE")
+        self.assertEqual(result["reason"], "MISSING_PLANNED_SYSTEM_OBSERVATIONS")
+        self.assertEqual(result["missing_attempt_ids"], [attempts[1]["attempt_id"]])
+        self.assertIsNone(result["failure_count"])
+        self.assertIsNone(result["system_scorable_denominator"])
+        self.assertIsNone(result["failure_rate"])
+        self.assertIsNone(result["excluded_terminal_counts"])
+        self.assertEqual(
+            result["wilson_95"]["reason"],
+            "MISSING_PLANNED_SYSTEM_OBSERVATIONS",
+        )
+
     def test_missing_planned_observation_fails_closed(self):
         attempts = [identity(serial="001"), identity(serial="002", item="item-002")]
         manifest = self.frozen_manifest(attempts)
@@ -717,6 +811,16 @@ class B2BM0Tests(unittest.TestCase):
         self.assertEqual(result["terminal_status"], "NOT_EVALUABLE")
         self.assertEqual(result["reason"], "MISSING_PLANNED_OBSERVATIONS")
         self.assertEqual(result["missing_attempt_ids"], [attempts[1]["attempt_id"]])
+        model = result["by_model"]["model-a"]
+        self.assertIsNone(model["failure_count"])
+        self.assertIsNone(model["model_scorable_denominator"])
+        self.assertIsNone(model["failure_rate"])
+        self.assertIsNone(model["excluded_terminal_counts"])
+        self.assertEqual(
+            model["wilson_95"]["reason"], "MISSING_PLANNED_OBSERVATIONS"
+        )
+        self.assertIsNone(model["wilson_95"]["lower"])
+        self.assertIsNone(model["wilson_95"]["upper"])
         self.assertFalse(result["ranking_emitted"])
 
     def test_model_denominator_ignores_missing_system_only_observation(self):
@@ -763,12 +867,72 @@ class B2BM0Tests(unittest.TestCase):
             observation(attempt, status)
             for attempt, status in zip(attempts, TERMINAL_STATUSES)
         ]
-        result = typed_terminal_partition_v1(rows)
+        manifest = self.frozen_manifest(attempts)
+        result = typed_terminal_partition_v1(
+            manifest,
+            rows,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
         self.assertEqual(result["total_attempts"], 6)
         self.assertEqual(result["terminal_counts"], {status: 1 for status in TERMINAL_STATUSES})
         self.assertEqual(result["scorable_terminal_count"], 2)
         self.assertEqual(result["non_scorable_terminal_count"], 4)
         self.assertAlmostEqual(result["non_scorable_attempt_rate"], 4 / 6)
+
+    def test_typed_partition_is_manifest_bound_and_suppresses_partial_rate(self):
+        attempts = [identity(serial="001"), identity(serial="002", item="item-002")]
+        manifest = self.frozen_manifest(attempts)
+        first = observation(attempts[0], "ERROR")
+        with self.assertRaises(ValueError):
+            typed_terminal_partition_v1(
+                manifest,
+                [first, first],
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        result = typed_terminal_partition_v1(
+            manifest,
+            [first],
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(result["terminal_status"], "NOT_EVALUABLE")
+        self.assertEqual(result["reason"], "MISSING_PLANNED_OBSERVATIONS")
+        self.assertEqual(result["recorded_terminal_count"], 1)
+        self.assertEqual(result["missing_attempt_ids"], [attempts[1]["attempt_id"]])
+        self.assertIsNone(result["non_scorable_attempt_rate"])
+
+    def test_model_and_agent_metrics_remain_class_separated_after_equivalence(self):
+        direct = identity(model="model-a", serial="direct", item="direct-item")
+        agent = identity(
+            model="model-a",
+            target_class="AGENT_STANDARDIZED",
+            serial="agent",
+            item="agent-item",
+        )
+        manifest = self.frozen_manifest(
+            [direct, agent],
+            comparison_classes=[*DEFAULT_COMPARABLE_CLASSES, "AGENT_STANDARDIZED"],
+            establish_sandbox=True,
+        )
+        rows = [observation(direct, "FAIL"), observation(agent, "PASS")]
+        direct_result = model_failure_denominator_v1(
+            manifest,
+            rows,
+            metric_id="model_failure_rate",
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        agent_result = model_failure_denominator_v1(
+            manifest,
+            rows,
+            metric_id="sandboxed_agent_failure_rate",
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(direct_result["target_classes"], list(DEFAULT_COMPARABLE_CLASSES))
+        self.assertEqual(direct_result["by_model"]["model-a"]["planned_attempt_count"], 1)
+        self.assertEqual(direct_result["by_model"]["model-a"]["failure_rate"], 1.0)
+        self.assertEqual(agent_result["target_classes"], ["AGENT_STANDARDIZED"])
+        self.assertEqual(agent_result["by_model"]["model-a"]["planned_attempt_count"], 1)
+        self.assertEqual(agent_result["by_model"]["model-a"]["failure_rate"], 0.0)
 
     def test_wilson_interval_is_deterministic_and_zero_safe(self):
         self.assertEqual(wilson_interval_v1(1, 2), wilson_interval_v1(1, 2))
@@ -902,6 +1066,58 @@ class B2BM0Tests(unittest.TestCase):
         self.assertEqual(resolved["terminal_status"], "FAIL")
         self.assertEqual(resolved["reason"], "PREDECLARED_TIEBREAK")
 
+    def test_unknown_primary_is_terminal_and_cannot_be_tiebroken(self):
+        manifest = self.frozen_manifest(
+            [identity(model="blind", item="item-blind-001", serial="001")]
+        )
+        pass_primary = adjudication(
+            adjudicator="reviewer-a", decision="PASS", serial="001"
+        )
+        unknown_primary = adjudication(
+            adjudicator="reviewer-b", decision="UNKNOWN", serial="002"
+        )
+        result = resolve_adjudication_v1(
+            manifest,
+            [pass_primary, unknown_primary],
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(result["terminal_status"], "UNKNOWN")
+        self.assertEqual(result["reason"], "PRIMARY_INSUFFICIENT_EVIDENCE")
+        self.assertIsNone(result["decision"])
+
+        tiebreak = adjudication(
+            adjudicator="reviewer-c",
+            decision="FAIL",
+            role="TIEBREAK",
+            serial="003",
+        )
+        with self.assertRaises(ValueError):
+            resolve_adjudication_v1(
+                manifest,
+                [pass_primary, unknown_primary, tiebreak],
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        fail_primary = adjudication(
+            adjudicator="reviewer-b", decision="FAIL", serial="004"
+        )
+        unknown_tiebreak = adjudication(
+            adjudicator="reviewer-c",
+            decision="UNKNOWN",
+            role="TIEBREAK",
+            serial="005",
+        )
+        unresolved_tiebreak = resolve_adjudication_v1(
+            manifest,
+            [pass_primary, fail_primary, unknown_tiebreak],
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(unresolved_tiebreak["terminal_status"], "UNKNOWN")
+        self.assertEqual(
+            unresolved_tiebreak["reason"], "TIEBREAK_INSUFFICIENT_EVIDENCE"
+        )
+        self.assertIsNone(unresolved_tiebreak["decision"])
+
     def test_adjudication_rejects_identity_leak_duplicate_and_extra_tiebreak(self):
         manifest = self.frozen_manifest(
             [identity(model="blind", item="item-blind-001", serial="001")]
@@ -999,6 +1215,19 @@ class B2BM0Tests(unittest.TestCase):
         self.assertEqual(result["terminal_status"], "ERROR")
         self.assertIsNone(result["decision"])
 
+        invalid_tiebreak = adjudication(
+            adjudicator="reviewer-c",
+            decision="FAIL",
+            role="TIEBREAK",
+            serial="003",
+        )
+        with self.assertRaises(ValueError):
+            resolve_adjudication_v1(
+                manifest,
+                [completed, errored, invalid_tiebreak],
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
         incomplete_error = resolve_adjudication_v1(
             manifest,
             [errored],
@@ -1016,13 +1245,14 @@ class B2BM0Tests(unittest.TestCase):
         self.assertEqual(
             checked["access_sequence"],
             [
-                "FREEZE_MANIFEST",
-                "SEAL_AGGREGATE_COMMITMENT",
+                "CURATOR_SELECT_AND_COMMIT_PRIVATE_HOLDOUT",
+                "FREEZE_EXECUTION_MANIFEST",
                 "AUTHORIZE_EXECUTION",
-                "OPEN_PRIVATE_HOLDOUT",
+                "OPEN_PRIVATE_HOLDOUT_TO_EXECUTION_PATH",
                 "LOG_ACCESS",
             ],
         )
+        self.assertTrue(hidden["independent_curator_seal_before_manifest_freeze"])
 
         leaked = copy.deepcopy(self.corpus)
         leaked["hidden_holdout"]["exact_content"] = "forbidden-public-leak"
@@ -1031,8 +1261,9 @@ class B2BM0Tests(unittest.TestCase):
             validate_corpus_policy(leaked)
 
         hidden_attempt = identity(serial="hidden", item="shared-item")
-        control_attempt = identity(serial="control", item="control-item")
+        control_attempt = identity(serial="control", item="shared-item")
         control_attempt["corpus_pool_id"] = "PUBLIC_CONTROL"
+        control_attempt["corpus_item_commitment"] = "sha256:" + "c" * 64
         with self.assertRaises(ValueError):
             corpus_aggregate_commitment_v1([hidden_attempt, control_attempt])
 
@@ -1040,6 +1271,17 @@ class B2BM0Tests(unittest.TestCase):
         alias_drift["corpus_item_commitment"] = "sha256:" + "d" * 64
         with self.assertRaises(ValueError):
             corpus_aggregate_commitment_v1([hidden_attempt, alias_drift])
+
+        commitment_alias_drift = identity(
+            serial="commitment-alias-drift", item="different-alias"
+        )
+        commitment_alias_drift["corpus_item_commitment"] = hidden_attempt[
+            "corpus_item_commitment"
+        ]
+        with self.assertRaises(ValueError):
+            corpus_aggregate_commitment_v1(
+                [hidden_attempt, commitment_alias_drift]
+            )
 
         mutation = identity(serial="mutation", item="mutation-item")
         mutation["corpus_pool_id"] = "MUTATION"
@@ -1050,6 +1292,16 @@ class B2BM0Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             corpus_aggregate_commitment_v1([hidden_attempt, mutation])
 
+        self_parent_mutation = identity(
+            serial="self-parent-mutation", item="self-parent-mutation-item"
+        )
+        self_parent_mutation["corpus_pool_id"] = "MUTATION"
+        self_parent_mutation["mutation_parent_commitment"] = (
+            self_parent_mutation["corpus_item_commitment"]
+        )
+        with self.assertRaises(ValueError):
+            corpus_aggregate_commitment_v1([self_parent_mutation])
+
     def test_contract_binding_rejects_refingerprinted_artifact_tamper(self):
         tampered_matrix = copy.deepcopy(self.matrix)
         tampered_matrix["limitations"].append("semantic-drift")
@@ -1058,6 +1310,28 @@ class B2BM0Tests(unittest.TestCase):
         bound["cases/b2/public-safe/benchmark/bm0-target-applicability.json"] = tampered_matrix
         with self.assertRaises(ValueError):
             validate_measurement_contract(self.contract, bound_artifacts=bound)
+
+    def test_receipt_rejects_cross_wired_explicit_and_bound_artifacts(self):
+        tampered_matrix = copy.deepcopy(self.matrix)
+        tampered_matrix["limitations"].append("valid-but-cross-wired")
+        tampered_matrix = refingerprint(tampered_matrix, "matrix_fingerprint")
+        with self.assertRaises(ValueError):
+            build_bm0_receipt(
+                contract=self.contract,
+                target_matrix=tampered_matrix,
+                metric_registry=self.registry,
+                corpus_policy=self.corpus,
+                manifest_template=self.manifest_template,
+                bound_artifacts=self.bound_artifacts,
+            )
+
+    def test_manifest_binds_measurement_contract_core(self):
+        self.assertEqual(
+            self.manifest_template["artifact_fingerprints"][
+                "measurement_contract_core"
+            ],
+            measurement_contract_core_fingerprint_v1(self.contract),
+        )
 
     def test_contract_rejects_refingerprinted_sap_semantic_tamper(self):
         tampered = copy.deepcopy(self.contract)
@@ -1137,6 +1411,56 @@ class B2BM0Tests(unittest.TestCase):
                 self.assertEqual(schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
                 self.assertFalse(schema["additionalProperties"])
                 self.assertEqual(set(schema["required"]), set(schema["properties"]))
+
+        trial_schema = load_json(ROOT / "schemas" / "bm0_trial_identity.schema.json")
+        observation_schema = load_json(ROOT / "schemas" / "bm0_observation.schema.json")
+        for target_ids in TARGET_IDS_BY_CLASS.values():
+            for target_id in target_ids:
+                self.assertIn(target_id, json.dumps(trial_schema, sort_keys=True))
+                self.assertIn(target_id, json.dumps(observation_schema, sort_keys=True))
+        snapshot_rule = trial_schema["properties"]["model_snapshot_id"]["allOf"][1]
+        self.assertIn("pattern", snapshot_rule["not"])
+
+        manifest_schema = load_json(
+            ROOT / "schemas" / "bm0_benchmark_manifest.schema.json"
+        )
+        self.assertIn(
+            "measurement_contract_core",
+            manifest_schema["properties"]["artifact_fingerprints"]["required"],
+        )
+        self.assertIn(
+            "PRIVATE_HIDDEN_HOLDOUT", json.dumps(manifest_schema, sort_keys=True)
+        )
+
+        contract_schema = load_json(
+            ROOT / "schemas" / "bm0_measurement_contract.schema.json"
+        )
+        terminal_prefix = contract_schema["properties"]["terminal_semantics"][
+            "prefixItems"
+        ]
+        self.assertEqual(
+            [entry["properties"]["terminal_status"]["const"] for entry in terminal_prefix],
+            list(TERMINAL_STATUSES),
+        )
+        self.assertFalse(
+            contract_schema["properties"]["terminal_semantics"]["items"]
+        )
+        self.assertIn(
+            "items",
+            contract_schema["properties"]["terminal_semantics"]["allOf"][0],
+        )
+        method_prefix = contract_schema["properties"]["sap"]["properties"][
+            "methods"
+        ]["prefixItems"]
+        self.assertEqual(
+            [entry["properties"]["method_id"]["const"] for entry in method_prefix],
+            list(SAP_METHOD_IDS),
+        )
+        self.assertFalse(
+            contract_schema["properties"]["sap"]["properties"]["methods"][
+                "items"
+            ]
+        )
 
     def test_checked_in_receipt_matches_regeneration(self):
         checked_in = load_json(RESULTS / "bm0-contract-validation.json")

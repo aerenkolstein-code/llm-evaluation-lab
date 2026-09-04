@@ -54,6 +54,15 @@
   },
   "allOf": [
     {
+      "if": {
+        "properties": {"record_status": {"const": "COMPLETED"}},
+        "required": ["record_status"]
+      },
+      "then": {
+        "properties": {"decision": {"enum": ["PASS", "FAIL", "UNKNOWN"]}}
+      }
+    },
+    {
       "if": {"properties": {"record_status": {"const": "ERROR"}}, "required": ["record_status"]},
       "then": {
         "properties": {

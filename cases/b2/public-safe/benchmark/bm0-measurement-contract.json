@@ -7,17 +7,17 @@
   "authority": "MEASUREMENT_CONTRACT_NOT_BENCHMARK_RESULT",
   "provider_roster_status": "NOT_SELECTED",
   "artifact_bindings": {
-    "b2/bm0.py": "sha256:3061789a823f5363b241501f2695e4e48f6f3a4543cfdffd002e1fefe59300aa",
-    "tests/test_b2_bm0.py": "sha256:57a7e91382832c59f2e3bb8f6f1ca55f666443fa5a821f52230666443b13c4bd",
+    "b2/bm0.py": "sha256:fb5e5fb4fe2a086abb0ea7053bf997df8f46c856674fee548c2e2caab82d03a0",
+    "tests/test_b2_bm0.py": "sha256:a28d62b70b35bfbee02e7da2eac92a4a17676f83518db28b04ca96da7e7a2fb2",
     "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:f7977d941237210d6cec8261c0b9e60ce1e0d62f63bce6dd948b189a82280a30",
-    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:7aa69e5871e499d41a52b8259e7e3e7c7828f6467bcf957edec470b4a6d9d130",
-    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:095a7740b1dde0dcc8ba023f5976419fdffe87d2851dc7a235e7717521f901f5",
-    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:765950f0ef31d7ef941c50aa10c7b2425086f327535c92ff5f43bc51f4db219d",
-    "schemas/bm0_trial_identity.schema.json": "sha256:f09cedda3863ca021ed11f5d1feb38fea5f3858179ed8918eb435b35e24f89f4",
-    "schemas/bm0_observation.schema.json": "sha256:be4725f6b40f462882185b0bd7af5950e81f9181a873b5fa6af698ecf90b127a",
-    "schemas/bm0_adjudication_record.schema.json": "sha256:81c57f199c00e96fcb18b9bfb119a143b373ca0216e0d838c3b750d12305d4da",
-    "schemas/bm0_benchmark_manifest.schema.json": "sha256:53f86eb62d4b8e3f11170510e4948b3a3131d852bbb22597d9c4caf4a30f37b5",
-    "schemas/bm0_measurement_contract.schema.json": "sha256:7f045c92abb38e71eb2d87e0a6057af4e536a72575ea12dc9f292c16b0b5b357"
+    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:a211c5197a0e0f059ff2a59aa06bd4c4769d8303e77e26883a1e464d2eeb20fb",
+    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:44b6b3fe730440a1d2c9b2ccc729dbc30b7f67448ee8a607d8e0314660aba030",
+    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:2ce43338e2b3eeecdb593ee7ddb4d31152900d35a39115ef52dc0a871535c9c6",
+    "schemas/bm0_trial_identity.schema.json": "sha256:6f7d5c7818d273a72fdf73d8a0acfe084dc4e01f464ea96b236facb7b4abe5c8",
+    "schemas/bm0_observation.schema.json": "sha256:b617b324cd579395ad6f65100fc9128b1b5081f282235bc78134948e626355c7",
+    "schemas/bm0_adjudication_record.schema.json": "sha256:1871b02631970651502ea6de611e6bdc02875bcbebbf2a8b8fcba83a481a1906",
+    "schemas/bm0_benchmark_manifest.schema.json": "sha256:eb77c6d82096afa7e264f13664bf7c2bbdca7a764d0d62ffdf0990c1fea90b06",
+    "schemas/bm0_measurement_contract.schema.json": "sha256:fe476234b0d90ece7be323e79f7e19c82043e0ddfc99a5594c1b47a3d44afbaa"
   },
   "target_contract": {
     "target_count": 16,
@@ -106,12 +106,14 @@
       {
         "method_id": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1",
         "implementation": "typed_terminal_partition_v1",
-        "purpose": "Count all six terminal states without coercing infrastructure, governance, or missing-evidence states into model quality.",
+        "purpose": "Partition the frozen manifest-bound observation grid into all six terminal states; reject duplicates and unplanned rows, and suppress the diagnostic rate when scheduled rows are missing.",
         "frozen_parameters": {
           "terminal_statuses": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
           "coercion": "FORBIDDEN",
           "diagnostic_numerator": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
           "diagnostic_denominator": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "identity_source": "FROZEN_MANIFEST_GRID",
+          "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
           "zero_scheduled_attempts": "NOT_EVALUABLE",
           "corpus_pool": "ALL_DECLARED_POOLS"
         }
@@ -119,12 +121,17 @@
       {
         "method_id": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1",
         "implementation": "model_failure_denominator_v1",
-        "purpose": "Compute each model subject's descriptive failure rate as FAIL divided only by PASS plus FAIL on the complete predeclared comparable grid.",
+        "purpose": "Compute each model subject's descriptive failure rate on the complete predeclared metric-specific grid, keeping direct/context and sandboxed-agent estimates separate and suppressing outcome aggregates when rows are missing.",
         "frozen_parameters": {
           "numerator": ["FAIL"],
           "denominator": ["PASS", "FAIL"],
           "excluded": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
           "zero_denominator": "NOT_EVALUABLE",
+          "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
+          "metric_target_classes": {
+            "model_failure_rate": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
+            "sandboxed_agent_failure_rate": ["AGENT_STANDARDIZED"]
+          },
           "ranking": "FORBIDDEN_AT_BM0",
           "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
         }
@@ -162,6 +169,10 @@
           "non_scorable_pair_policy": "SYMMETRIC_EXCLUSION",
           "unpaired_design": "NOT_EVALUABLE",
           "identity_mismatch": "NOT_EVALUABLE",
+          "metric_target_classes": {
+            "model_failure_rate": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
+            "sandboxed_agent_failure_rate": ["AGENT_STANDARDIZED"]
+          },
           "ranking": "NOT_EMITTED",
           "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
         }
@@ -169,11 +180,13 @@
       {
         "method_id": "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1",
         "implementation": "resolve_adjudication_v1",
-        "purpose": "Resolve two independent blind primary records by agreement or exactly one predeclared distinct blind tiebreaker; retain UNKNOWN and ERROR.",
+        "purpose": "Resolve two independent blind primary records; use one predeclared distinct blind tiebreaker only for PASS versus FAIL disagreement, while UNKNOWN remains terminal and not tiebreakable.",
         "frozen_parameters": {
           "primary_records": 2,
           "distinct_adjudicators": true,
           "tiebreakers_on_disagreement": 1,
+          "tiebreak_eligible_decisions": ["PASS", "FAIL"],
+          "unknown_semantics": "TERMINAL_NOT_TIEBREAKABLE",
           "identity_blinding": true,
           "peer_decision_blinding": true
         }
@@ -181,13 +194,14 @@
       {
         "method_id": "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1",
         "implementation": "system_invariant_failure_rate_v1",
-        "purpose": "Compute FAIL divided by PASS plus FAIL for predeclared SYSTEM_EVAL_ONLY attempts while forbidding model attribution and rankings.",
+        "purpose": "Compute FAIL divided by PASS plus FAIL only for the complete predeclared SYSTEM_EVAL_ONLY grid; suppress partial outcome aggregates and forbid model attribution and rankings.",
         "frozen_parameters": {
           "target_class": "SYSTEM_EVAL_ONLY",
           "subject_identity": "SYSTEM_SCOPE",
           "numerator": ["FAIL"],
           "denominator": ["PASS", "FAIL"],
           "excluded": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
           "model_attribution": "FORBIDDEN",
           "ranking": "FORBIDDEN",
           "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
@@ -203,7 +217,7 @@
     "distinct_adjudicators_required": true,
     "adjudicator_configuration_bound": true,
     "predeclared_tiebreaker_required": true,
-    "tiebreak_rule": "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ON_DISAGREEMENT",
+    "tiebreak_rule": "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ONLY_ON_PASS_FAIL_DISAGREEMENT",
     "model_identity_blinded": true,
     "provider_identity_blinded": true,
     "peer_decisions_blinded": true
@@ -250,5 +264,5 @@
     "The provider/model roster, adjudication mode, and private holdout aggregate commitment remain NOT_SELECTED or NOT_COMMITTED.",
     "Developer contract PASS is neither exact-head CI nor distinct Independent QA PASS and cannot make BM0 GREEN."
   ],
-  "contract_fingerprint": "sha256:0bb31ac869f899b2c20433b89417e87ad9ccf08cfc673af0b72281045414ac6d"
+  "contract_fingerprint": "sha256:d0b27ae3371b4c444ee818f7325068abba71e1b305fc22cb3503959c34f4155a"
 }

@@ -88,8 +88,9 @@
     "artifact_fingerprints": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["target_matrix", "metric_registry", "corpus_policy", "analysis_plan", "analysis_implementation"],
+      "required": ["measurement_contract_core", "target_matrix", "metric_registry", "corpus_policy", "analysis_plan", "analysis_implementation"],
       "properties": {
+        "measurement_contract_core": {"$ref": "#/$defs/sha256"},
         "target_matrix": {"$ref": "#/$defs/sha256"},
         "metric_registry": {"$ref": "#/$defs/sha256"},
         "corpus_policy": {"$ref": "#/$defs/sha256"},
@@ -154,7 +155,17 @@
           "corpus_aggregate_commitment": {"$ref": "#/$defs/sha256"},
           "adjudication_mode": {"enum": ["HUMAN_HUMAN", "HUMAN_JUDGE", "JUDGE_JUDGE"]},
           "adjudication_plan": {"$ref": "#/$defs/adjudication_plan"},
-          "planned_attempts": {"minItems": 1},
+          "planned_attempts": {
+            "minItems": 1,
+            "contains": {
+              "type": "object",
+              "properties": {
+                "corpus_pool_id": {"const": "PRIVATE_HIDDEN_HOLDOUT"}
+              },
+              "required": ["corpus_pool_id"]
+            },
+            "minContains": 1
+          },
           "planned_attempt_count": {"minimum": 1}
         }
       }

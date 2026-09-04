@@ -1,0 +1,242 @@
+name: B2 Blind Handoff v5 Q1 R1 Live
+
+on:
+  push:
+    branches:
+      - agent/b2-blind-handoff-v5-q1-20260904
+    paths:
+      - .github/workflows/b2_blind_handoff_v5_live.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b2-blind-q1-r1-v5-live
+  cancel-in-progress: false
+
+jobs:
+  blind-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      B2_MAIN_COMMIT: 901ba05b99c413d45415c474c71b5969c155dea1
+      EXPECTED_CONTEXT_SHA256: a595fb210b225e201e6b9a191a2559880ebd118946f770b440e5326955d58e58
+      EXPECTED_CONTEXT_BYTES: '108230'
+      EXPECTED_PROMPT_SHA256: c27eeeab07789ed2ac49c3c5a6034093659c35cdf8b76b1c78b2b670872c5d4c
+      EXPECTED_PROMPT_BYTES: '2308'
+      HANDOFF_MODE: live
+      EVALUATION_RUN_ID: B2-DITING-Q1-R1-DEEPSEEK-V4-PRO-20260904-V5
+
+    steps:
+      - name: Check out exact execution head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Bind execution to accepted main bridge
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$B2_MAIN_COMMIT" "$GITHUB_SHA"
+          test "$(git rev-parse "$B2_MAIN_COMMIT:b2/blind_eval.py")" = "$(git hash-object b2/blind_eval.py)"
+
+      - name: Install handoff implementation
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[blind-handoff]"
+
+      - name: Generate run-unique input key
+        run: |
+          set -euo pipefail
+          install -d -m 700 /tmp/b2h/runner
+          python -m b2.blind_handoff generate-input-key \
+            --private-key /tmp/b2h/input-private.pem \
+            --public-key /tmp/b2h/input-public.pem \
+            --fingerprint-output /tmp/b2h/input-public.sha256 \
+            > /tmp/b2h/input-key-receipt.json
+          input_key_sha="$(tr -d '\n' < /tmp/b2h/input-public.sha256)"
+          test "${#input_key_sha}" -eq 64
+          echo "INPUT_KEY_SHA=$input_key_sha" >> "$GITHUB_ENV"
+
+      - name: Publish exact run input public key
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-blind-v5-live-input-public-key-${{ github.run_id }}
+          path: |
+            /tmp/b2h/input-public.pem
+            /tmp/b2h/input-public.sha256
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Wait for exact run-scoped encrypted payload
+        env:
+          GH_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          handoff_root="blind-handoff/v5/${GITHUB_RUN_ID}/${INPUT_KEY_SHA}"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${handoff_root}/payload.json?ref=${GITHUB_REF_NAME}"
+          found=0
+          for _ in $(seq 1 180); do
+            if ! code="$(curl --silent --show-error \
+                --output /tmp/b2h/payload.candidate \
+                --write-out '%{http_code}' \
+                --header "Authorization: Bearer ${GH_READ_TOKEN}" \
+                --header 'Accept: application/vnd.github.raw+json' \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                "$api")"; then
+              rm -f /tmp/b2h/payload.candidate
+              sleep 5
+              continue
+            fi
+            if [ "$code" = 200 ]; then
+              mv /tmp/b2h/payload.candidate /tmp/b2h/payload.json
+              found=1
+              break
+            fi
+            rm -f /tmp/b2h/payload.candidate
+            if [ "$code" != 404 ]; then
+              echo "Unexpected GitHub contents status while waiting for payload: $code" >&2
+              exit 70
+            fi
+            sleep 5
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Exact run-scoped encrypted payload did not arrive in time." >&2
+            exit 70
+          fi
+          echo "HANDOFF_ROOT=$handoff_root" >> "$GITHUB_ENV"
+
+      - name: Decrypt and verify frozen inputs and return key
+        run: |
+          set -euo pipefail
+          python -m b2.blind_handoff accept-input \
+            --input-private-key /tmp/b2h/input-private.pem \
+            --payload /tmp/b2h/payload.json \
+            --state-dir /tmp/b2h/runner \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --execution-head-sha "$GITHUB_SHA" \
+            --bridge-main-sha "$B2_MAIN_COMMIT" \
+            --input-public-key-sha256 "$INPUT_KEY_SHA" \
+            --context-sha256 "$EXPECTED_CONTEXT_SHA256" \
+            --context-bytes "$EXPECTED_CONTEXT_BYTES" \
+            --prompt-sha256 "$EXPECTED_PROMPT_SHA256" \
+            --prompt-bytes "$EXPECTED_PROMPT_BYTES" \
+            --mode "$HANDOFF_MODE" \
+            --evaluation-run-id "$EVALUATION_RUN_ID" \
+            > /tmp/b2h/input-accept-receipt.json
+
+      - name: Encrypt return-key challenge response
+        run: |
+          set -euo pipefail
+          python -m b2.blind_handoff encrypt-challenge \
+            --state-dir /tmp/b2h/runner \
+            --output /tmp/b2h/challenge.enc.json \
+            > /tmp/b2h/challenge-receipt.json
+
+      - name: Publish encrypted return-key challenge
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-blind-v5-live-challenge-${{ github.run_id }}
+          path: /tmp/b2h/challenge.enc.json
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Wait for exact authenticated challenge acknowledgement
+        env:
+          GH_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${HANDOFF_ROOT}/challenge-ack.json?ref=${GITHUB_REF_NAME}"
+          found=0
+          for _ in $(seq 1 180); do
+            if ! code="$(curl --silent --show-error \
+                --output /tmp/b2h/ack.candidate \
+                --write-out '%{http_code}' \
+                --header "Authorization: Bearer ${GH_READ_TOKEN}" \
+                --header 'Accept: application/vnd.github.raw+json' \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                "$api")"; then
+              rm -f /tmp/b2h/ack.candidate
+              sleep 5
+              continue
+            fi
+            if [ "$code" = 200 ]; then
+              mv /tmp/b2h/ack.candidate /tmp/b2h/challenge-ack.json
+              found=1
+              break
+            fi
+            rm -f /tmp/b2h/ack.candidate
+            if [ "$code" != 404 ]; then
+              echo "Unexpected GitHub contents status while waiting for acknowledgement: $code" >&2
+              exit 71
+            fi
+            sleep 5
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Exact challenge acknowledgement did not arrive in time." >&2
+            exit 71
+          fi
+
+      - name: Verify return decryptability before provider gate
+        run: |
+          set -euo pipefail
+          python -m b2.blind_handoff verify-ack \
+            --state-dir /tmp/b2h/runner \
+            --challenge-envelope /tmp/b2h/challenge.enc.json \
+            --acknowledgement /tmp/b2h/challenge-ack.json \
+            > /tmp/b2h/ack-receipt.json
+
+      - name: Execute exactly one authorized blind provider attempt
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          set +e
+          python -m b2.blind_eval \
+            --context-file /tmp/b2h/runner/context.txt \
+            --prompt-file /tmp/b2h/runner/prompt.txt \
+            --provider deepseek \
+            --protocol openai-compatible-chat-completions/v1 \
+            --model deepseek-v4-pro \
+            --endpoint https://api.deepseek.com/chat/completions \
+            --api-key-env DEEPSEEK_API_KEY \
+            --run-id "$EVALUATION_RUN_ID" \
+            --git-commit "$B2_MAIN_COMMIT" \
+            --timeout 180 \
+            --temperature 0 \
+            --max-tokens 8192 \
+            --raw-output /tmp/b2h/run.raw.txt \
+            --receipt-output /tmp/b2h/run.receipt.json \
+            --authorize-live-call \
+            > /tmp/b2h/bridge-stdout.json
+          bridge_code=$?
+          set -e
+          printf '%s\n' "$bridge_code" > /tmp/b2h/bridge-exit-code.txt
+          test -s /tmp/b2h/run.receipt.json
+
+      - name: Encrypt complete private result evidence
+        run: |
+          set -euo pipefail
+          python -m b2.blind_handoff make-live-result \
+            --state-dir /tmp/b2h/runner \
+            --receipt /tmp/b2h/run.receipt.json \
+            --raw-answer /tmp/b2h/run.raw.txt \
+            --bridge-stdout /tmp/b2h/bridge-stdout.json \
+            --bridge-exit-code /tmp/b2h/bridge-exit-code.txt \
+            --output /tmp/b2h/result.enc.json \
+            > /tmp/b2h/result-encryption-receipt.json
+
+      - name: Publish encrypted private result
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-blind-v5-live-encrypted-result-${{ github.run_id }}
+          path: /tmp/b2h/result.enc.json
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove plaintext private working files
+        if: always()
+        run: |
+          find /tmp/b2h -type f -delete 2>/dev/null || true
+          find /tmp/b2h -depth -type d -empty -delete 2>/dev/null || true

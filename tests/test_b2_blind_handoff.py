@@ -232,6 +232,16 @@ class BlindHandoffV5Tests(unittest.TestCase):
         self.assertIn("blind-handoff/v5/${GITHUB_RUN_ID}/${INPUT_KEY_SHA}", workflow)
         self.assertIn("provider attempts stay zero", workflow.lower())
 
+    def test_live_workflow_opens_provider_only_after_return_key_proof(self):
+        workflow = Path(".github/workflows/b2_blind_handoff_v5_live.yml").read_text()
+        self.assertNotIn("payload_pointer", workflow)
+        self.assertNotIn("curl -L", workflow)
+        self.assertEqual(1, workflow.count("python -m b2.blind_eval"))
+        self.assertEqual(1, workflow.count("secrets.DEEPSEEK_API_KEY"))
+        self.assertLess(workflow.index("verify-ack"), workflow.index("python -m b2.blind_eval"))
+        self.assertIn("--model deepseek-v4-pro", workflow)
+        self.assertIn("--endpoint https://api.deepseek.com/chat/completions", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

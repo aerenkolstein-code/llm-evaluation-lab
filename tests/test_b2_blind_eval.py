@@ -105,13 +105,19 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertIsNone(raw)
 
     def test_success_is_one_attempt_with_body_free_receipt(self):
-        secret = "sk-super-secret-value"
+        secret = "fixture-credential-value"
         response = ProviderHTTPResponse(
             200,
             json.dumps({
                 "id": "resp-123",
                 "model": "fixture-model-resolved",
-                "choices": [{"message": {"content": "model answer"}}],
+                "choices": [{
+                    "finish_reason": "stop",
+                    "message": {
+                        "reasoning_content": "private reasoning body",
+                        "content": "model answer",
+                    },
+                }],
                 "usage": {"prompt_tokens": 20, "completion_tokens": 3, "total_tokens": 23},
             }).encode(),
         )
@@ -126,14 +132,27 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertEqual("PASS", receipt.terminal_status)
         self.assertEqual(1, transport.calls)
         self.assertEqual(AUTOMATIC_RETRIES, receipt.automatic_retries)
+        self.assertEqual(1, receipt.provider_attempts)
         self.assertEqual("model answer", raw)
         self.assertEqual("fixture-model-resolved", receipt.resolved_model_id)
         self.assertEqual("resp-123", receipt.provider_response_id)
         self.assertEqual(23, receipt.usage["total_tokens"])
+        self.assertEqual("stop", receipt.finish_reason)
+        self.assertTrue(receipt.response_json_parsed)
+        self.assertTrue(receipt.response_schema_parsed)
+        self.assertTrue(receipt.message_schema_parsed)
+        self.assertTrue(receipt.reasoning_field_present)
+        self.assertEqual(len(b"private reasoning body"), receipt.reasoning_bytes)
+        self.assertTrue(receipt.reasoning_sha256.startswith("sha256:"))
+        self.assertTrue(receipt.final_content_field_present)
+        self.assertEqual(len(b"model answer"), receipt.final_content_bytes)
+        self.assertEqual(receipt.raw_output_sha256, receipt.final_content_sha256)
+        self.assertIsNone(receipt.quality_score)
         rendered = receipt.render_json()
         self.assertNotIn("private context body", rendered)
         self.assertNotIn("private prompt body", rendered)
         self.assertNotIn("model answer", rendered)
+        self.assertNotIn("private reasoning body", rendered)
         self.assertNotIn(secret, rendered)
 
     def test_fake_run_receipt_is_byte_stable_with_frozen_clock(self):
@@ -159,18 +178,32 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertEqual(raw_a, raw_b)
         self.assertEqual(a.render_json(), b.render_json())
 
+    def test_v2_receipt_fields_match_closed_json_schema(self):
+        receipt, _ = success_receipt()
+        document = receipt.as_dict()
+        schema = json.loads(
+            Path("schemas/blind_eval_receipt.schema.json").read_text(encoding="utf-8")
+        )
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual("b2-blind-eval-bridge/v2", schema["properties"]["schema_version"]["const"])
+        self.assertEqual(set(schema["required"]), set(document))
+        self.assertEqual(set(schema["properties"]), set(document))
+
     def test_http_error_body_is_never_copied_to_receipt(self):
         private_echo = "private context body echoed by provider"
         response = ProviderHTTPResponse(429, json.dumps({"error": private_echo}).encode())
+        transport = CountingTransport(response=response)
         receipt, raw = run_blind_eval(
             make_request(context=b"private context body"),
             authorize_live_call=True,
-            credential_lookup=lambda _: "sk-secret",
-            transport=CountingTransport(response=response),
+            credential_lookup=lambda _: "fixture-credential",
+            transport=transport,
         )
         self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
         self.assertEqual("PROVIDER_HTTP_ERROR", receipt.error_code)
         self.assertEqual(429, receipt.http_status)
+        self.assertEqual(1, receipt.provider_attempts)
+        self.assertEqual(1, transport.calls)
         self.assertIsNone(raw)
         self.assertNotIn(private_echo, receipt.render_json())
 
@@ -351,6 +384,141 @@ class BlindEvalBridgeTests(unittest.TestCase):
         )
         self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
         self.assertEqual("EMPTY_FINAL_CONTENT", receipt.error_code)
+        self.assertEqual(200, receipt.http_status)
+        self.assertEqual(1, receipt.provider_attempts)
+        self.assertTrue(receipt.final_content_field_present)
+        self.assertEqual(3, receipt.final_content_bytes)
+        self.assertIsNone(receipt.final_content_sha256)
+        self.assertIsNone(receipt.quality_score)
+        self.assertIsNone(raw)
+
+    def test_null_and_reasoning_only_final_are_diagnosable_without_body(self):
+        private_reasoning = "private chain of thought"
+        for content in (None, ""):
+            response = ProviderHTTPResponse(
+                200,
+                json.dumps({
+                    "id": "resp-reasoning-only",
+                    "model": "fixture-model-resolved",
+                    "choices": [{
+                        "finish_reason": "length",
+                        "message": {
+                            "reasoning_content": private_reasoning,
+                            "content": content,
+                        },
+                    }],
+                    "usage": {
+                        "prompt_tokens": 10,
+                        "completion_tokens": 20,
+                        "total_tokens": 30,
+                    },
+                }).encode(),
+            )
+            with self.subTest(content=content):
+                receipt, raw = run_blind_eval(
+                    make_request(),
+                    authorize_live_call=True,
+                    credential_lookup=lambda _: "fixture-key",
+                    transport=CountingTransport(response=response),
+                    now_fn=fixed_now,
+                    perf_fn=fixed_perf,
+                )
+                self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
+                self.assertEqual("EMPTY_FINAL_CONTENT", receipt.error_code)
+                self.assertEqual("length", receipt.finish_reason)
+                self.assertTrue(receipt.response_json_parsed)
+                self.assertTrue(receipt.response_schema_parsed)
+                self.assertTrue(receipt.message_schema_parsed)
+                self.assertTrue(receipt.reasoning_field_present)
+                self.assertEqual(len(private_reasoning.encode()), receipt.reasoning_bytes)
+                self.assertTrue(receipt.reasoning_sha256.startswith("sha256:"))
+                self.assertTrue(receipt.final_content_field_present)
+                self.assertEqual(0, receipt.final_content_bytes)
+                self.assertIsNone(receipt.final_content_sha256)
+                self.assertIsNone(receipt.quality_score)
+                self.assertIsNone(raw)
+                self.assertNotIn(private_reasoning, receipt.render_json())
+
+    def test_finish_reason_and_provider_ids_are_strictly_sanitized(self):
+        private = "private locator"
+        response = ProviderHTTPResponse(
+            200,
+            json.dumps({
+                "id": f"https://private.invalid/{private}",
+                "model": private,
+                "choices": [{
+                    "finish_reason": "unsafe reason with spaces",
+                    "message": {"content": "answer"},
+                }],
+            }).encode(),
+        )
+        receipt, raw = run_blind_eval(
+            make_request(), authorize_live_call=True,
+            credential_lookup=lambda _: "fixture-key",
+            transport=CountingTransport(response=response),
+        )
+        self.assertEqual("answer", raw)
+        self.assertIsNone(receipt.provider_response_id)
+        self.assertIsNone(receipt.resolved_model_id)
+        self.assertIsNone(receipt.finish_reason)
+        self.assertNotIn(private, receipt.render_json())
+
+    def test_schema_diagnostics_distinguish_json_response_and_message(self):
+        cases = (
+            (b"not-json", "INVALID_PROVIDER_JSON", False, False, False),
+            (b"[]", "INVALID_PROVIDER_SCHEMA", True, False, False),
+            (b'{"choices":[]}', "INVALID_PROVIDER_SCHEMA", True, False, False),
+            (
+                b'{"choices":[{"finish_reason":"stop","message":null}]}',
+                "INVALID_PROVIDER_SCHEMA", True, True, False,
+            ),
+        )
+        for body, code, json_ok, response_ok, message_ok in cases:
+            transport = CountingTransport(response=ProviderHTTPResponse(200, body))
+            with self.subTest(code=code, body=body):
+                receipt, raw = run_blind_eval(
+                    make_request(), authorize_live_call=True,
+                    credential_lookup=lambda _: "fixture-key", transport=transport,
+                )
+                self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
+                self.assertEqual(code, receipt.error_code)
+                self.assertEqual(1, receipt.provider_attempts)
+                self.assertEqual(1, transport.calls)
+                self.assertIs(json_ok, receipt.response_json_parsed)
+                self.assertIs(response_ok, receipt.response_schema_parsed)
+                self.assertIs(message_ok, receipt.message_schema_parsed)
+                self.assertIsNone(raw)
+
+    def test_transport_error_is_exactly_one_attempt_and_secret_free(self):
+        transport = CountingTransport(
+            exc=TimeoutError("timeout with fixture-credential-value")
+        )
+        receipt, raw = run_blind_eval(
+            make_request(), authorize_live_call=True,
+            credential_lookup=lambda _: "fixture-credential-value", transport=transport,
+        )
+        self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
+        self.assertEqual("TRANSPORT_ERROR", receipt.error_code)
+        self.assertEqual(1, transport.calls)
+        self.assertEqual(1, receipt.provider_attempts)
+        self.assertEqual(0, receipt.automatic_retries)
+        self.assertNotIn("fixture-credential-value", receipt.render_json())
+        self.assertIsNone(raw)
+
+    def test_invalid_requested_model_fails_before_credential_and_network(self):
+        req = make_request()
+        object.__setattr__(req, "requested_model_id", "https://private.invalid/model")
+        looked_up = []
+        transport = CountingTransport()
+        receipt, raw = run_blind_eval(
+            req, authorize_live_call=True,
+            credential_lookup=lambda name: looked_up.append(name), transport=transport,
+        )
+        self.assertEqual("INVALID_REQUESTED_MODEL_ID", receipt.error_code)
+        self.assertIsNone(receipt.requested_model_id)
+        self.assertEqual(0, receipt.provider_attempts)
+        self.assertEqual([], looked_up)
+        self.assertEqual(0, transport.calls)
         self.assertIsNone(raw)
 
     def test_missing_credential_is_not_evaluable_without_network(self):

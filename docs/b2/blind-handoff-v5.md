@@ -1,91 +1,120 @@
-# B2 Blind Handoff v5
+# B2 Blind Handoff v5.1
 
-Status: execution-only repair branch; no provider call is permitted until the
-run-bound no-provider smoke has completed and the private orchestrator has
-decrypted and verified its synthetic result.
+Status: durable review implementation for `WO-B2-BLIND-02`; offline and
+deterministic only. Engineering completion does not approve a live run, mark
+the historical Q1-R1 result scorable, satisfy Independent QA, or authorize a
+merge.
 
-## Repair boundary
+## Authority and trigger boundary
 
-This protocol repairs only the transport/orchestration failure that prevented
-the accepted B2 blind-eval bridge from receiving its byte-frozen input.  It is
-based on `main@901ba05b99c413d45415c474c71b5969c155dea1`; the workflow verifies
-that the `b2/blind_eval.py` blob is byte-identical to that accepted base before
-continuing.
+The durable tree contains no live provider workflow. The historical push-bound
+live workflow was removed, so pull requests, review-branch pushes, ordinary CI,
+documentation changes, and the smoke workflow have no provider or credential
+lane. A future live workflow requires a separately authorized work order and
+must be reviewed as a new exact-head change before it can exist or run.
 
-The historical execution branch and its fixed `payload_pointer.json` plus
-arbitrary payload URL are not valid v5 inputs.  v5 accepts exactly one payload
-at:
+`.github/workflows/b2_blind_handoff_v5_smoke.yml` is intentionally safe to run
+on pull requests, the PR #33 review branch, or manual dispatch. It imports no
+credential, invokes no provider adapter, and asserts `provider_attempts = 0`,
+`credential_lookups = 0`, and `automatic_retries = 0`.
 
-```text
-blind-handoff/v5/<workflow_run_id>/<input_public_key_sha256>/payload.json
-```
+The one-line `.github/workflows/test.yml` dependency change is necessary: the
+full repository suite now imports the handoff module, whose optional
+`blind-handoff` extra supplies `cryptography`. It does not add a live adapter or
+credential path.
 
-It accepts the challenge acknowledgement only at the sibling path
-`challenge-ack.json`.  The runner performs a same-origin GitHub Contents read
-without redirect following; the payload contains no URL.
+## Private and public boundary
 
-## Cryptographic and evidence binding
+Private-only material includes context and prompt bodies, input/return private
+keys, acknowledgement keys, challenge plaintext, reasoning bodies, final-answer
+bodies, credentials, authorization headers, scoring material, and private
+locators. None may be committed to the repository or printed in workflow logs.
 
-Every encrypted envelope is authenticated with canonical JSON additional data
-that freezes:
+Public-safe evidence is limited to protocol/status labels, exact run and commit
+identities, strict token-like provider metadata, timestamps/expiry, byte counts,
+SHA-256 fingerprints, zero-retry/attempt counters, and encrypted envelopes.
+Encryption does not make a real run object durable source code: the historical
+run-scoped `payload.json` and `challenge-ack.json` are removed from the final
+tree. Any future exchange objects must live in a separately authorized,
+run-scoped ephemeral lane with explicit deletion; synthetic fixtures must say
+that they are synthetic and non-private.
 
-- workflow run ID and exact execution head;
-- accepted bridge main commit;
-- ephemeral input public-key SHA-256;
-- run-unique return public-key SHA-256;
+## Identity binding and freshness
+
+Every v5.1 envelope authenticates the complete canonical binding as AEAD
+additional data and repeats it inside the encrypted archive. The binding
+contains:
+
+- a run-unique `handoff_id` and `workflow_run_id`;
+- exact execution-head and accepted bridge-main SHAs;
+- ephemeral input and return public-key SHA-256 fingerprints;
 - context and prompt SHA-256 plus exact byte counts;
-- `smoke` or `live` mode and the evaluation run ID.
+- handoff mode, evaluation run ID, issue time, and expiry time.
 
-RSA-OAEP-SHA256 wraps a fresh AES-256 key. AES-GCM authenticates both the body
-and all binding fields. Both RSA key pairs must contain at least 3072 bits.
-Archives have an exact, flat member allowlist, per-member SHA-256/byte evidence,
-duplicate-name rejection, and bounded compressed and uncompressed sizes.
+The maximum lifetime is six hours, with only five minutes of forward clock skew.
+Expired and not-yet-valid payloads, challenges, acknowledgements, and results
+fail closed. A different run, head, bridge base, key, fingerprint, mode, or
+evaluation ID is not accepted as “close enough.”
 
-## Return-key proof gate
+RSA-OAEP-SHA256 wraps a fresh AES-256 key and AES-GCM authenticates each body and
+binding. RSA keys are at least 3072 bits. ZIP packages use exact flat-member
+allowlists, duplicate-name rejection, bounded compressed/uncompressed size, and
+per-member byte/hash evidence.
 
-The private orchestrator generates a new return key pair, a random challenge,
-and a random acknowledgement key for every workflow run. Only the return public
-key, challenge, and acknowledgement key enter the encrypted input package.
+## Return proof, replay defense, and publication
 
-The runner must encrypt the challenge under the return public key. The private
-orchestrator decrypts and compares the exact 32 challenge bytes, then publishes
-a run-bound HMAC-authenticated acknowledgement. The runner verifies that HMAC
-before opening the execution gate. A missing, stale, forged, or cross-run
-acknowledgement fails closed before any provider credential lookup.
+The private side proves possession of the matching return private key by
+decrypting an exact 32-byte challenge and returning a binding-bound HMAC
+acknowledgement. The runner records the accepted acknowledgement as a one-time,
+exclusive claim before any future provider gate may open. Payload, challenge,
+acknowledgement, result-start, and result-accept claims cannot be overwritten;
+reuse is a replay/collision error.
 
-## No-provider smoke
+State directories and verified result directories are staged completely and
+published by atomic rename. Existing/partial directories, parent-child path
+collisions, same-file aliases, and symlink traversal fail closed. PASS output
+publication remains a pair: a receipt cannot survive as PASS without its
+matching private raw body, and a publication failure rolls the pair back.
 
-`.github/workflows/b2_blind_handoff_v5_smoke.yml` exercises the whole handoff:
+## EMPTY_FINAL_CONTENT observability
 
-1. exact-base verification;
-2. ephemeral input public-key artifact publication;
-3. run-scoped encrypted payload receipt and frozen-input verification;
-4. return-key challenge, private-side decryption, and authenticated ack;
-5. deterministic synthetic result encryption and artifact publication;
-6. private-side result decryption and evidence verification.
+The body-free v2 blind-eval receipt distinguishes transport success from
+scorability. When supplied by the provider, it retains:
 
-The workflow does not reference a provider credential, endpoint, or model. Its
-receipt asserts `provider_attempts = 0` and `automatic_retries = 0`. A GitHub job
-success alone is insufficient: the smoke is GREEN only after the private
-orchestrator decrypts and verifies the final synthetic result.
+- HTTP status, strictly sanitized requested/resolved model IDs and response ID;
+- strictly sanitized `finish_reason`;
+- JSON, response-schema, and message-schema parse status;
+- reasoning-field presence, UTF-8 byte count, and SHA-256 only;
+- final-content-field presence, UTF-8 byte count, and SHA-256 only when non-empty;
+- normalized non-negative usage/token metadata;
+- provider-attempt count, `automatic_retries = 0`, terminal status, diagnostic
+  error code, and `quality_score = null`.
 
-## Publish order and cleanup
+Reasoning and final bodies never enter the receipt. HTTP 200 is not PASS.
+Reasoning with a null/empty final is
+`NOT_EVALUABLE / EMPTY_FINAL_CONTENT` and has no quality score. A non-empty final
+permits bridge-level PASS only; it does not establish answer correctness or a
+benchmark GREEN result.
 
-For each run, the input public-key artifact is published first. The external
-orchestrator then commits the single complete encrypted payload. The challenge
-artifact follows, and the authenticated acknowledgement is committed last as
-the challenge gate marker. The encrypted result artifact is published only
-after that gate.
+## Deterministic smoke and cleanup
 
-Run-scoped rendezvous files are temporary public ciphertext/metadata and must be
-deleted after the encrypted result is downloaded and privately verified. Input
-and return private keys, plaintext inputs, raw model answers, and scoring
-material never enter the public repository or workflow logs.
+`python -m b2.blind_handoff deterministic-smoke` creates only labeled synthetic
+bytes, performs input encryption/decryption, full binding checks, return-key
+proof, authenticated acknowledgement, result encryption/decryption, and
+evidence verification. It never looks up a credential or calls a provider.
 
-## Live-run boundary
+The smoke uses one explicit ephemeral root and removes it through the protocol's
+verified cleanup routine. Cleanup does not follow symlinks, rejects broad roots,
+surfaces any deletion failure, and reports success only after the root is gone.
+A cleanup failure is therefore an explicit non-PASS condition rather than
+manual aftercare.
 
-A live workflow may be added only after the no-provider smoke is GREEN. It must
-retain all v5 gates, invoke `b2.blind_eval` exactly once with
-`automatic_retries = 0`, and encrypt either the complete PASS evidence pair or
-the body-free `NOT_EVALUABLE`/`ERROR` receipt. Infrastructure or provider
-failure is not a model-quality score and must not trigger an automatic retry.
+## Historical Q1-R1 status
+
+The earlier run remains exactly:
+
+`HISTORICAL-EXECUTION-ONLY / HTTP 200 / EMPTY_FINAL_CONTENT / NO SCORABLE ANSWER / NOT_EVALUABLE`
+
+This repair adds the diagnostics that a future separately authorized run would
+need. It does not retroactively manufacture missing evidence, relabel the run,
+or authorize R1b.

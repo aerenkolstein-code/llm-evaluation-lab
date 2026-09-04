@@ -1,214 +1,117 @@
-name: B2 Blind Handoff v5 No-Provider Smoke
+name: B2 Blind Handoff v5 Deterministic No-Provider Smoke
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/b2_blind_handoff_v5_live.yml
+      - .github/workflows/b2_blind_handoff_v5_smoke.yml
+      - .github/workflows/test.yml
+      - b2/blind_eval.py
+      - b2/blind_handoff.py
+      - docs/b2/blind-eval-bridge.md
+      - docs/b2/blind-handoff-v5.md
+      - pyproject.toml
+      - tests/test_b2_blind_eval.py
+      - tests/test_b2_blind_handoff.py
   push:
     branches:
-      - agent/b2-blind-handoff-v5-q1-20260904
+      - agent/b2-blind-handoff-v5-review-20260904
     paths:
+      - .github/workflows/b2_blind_handoff_v5_live.yml
       - .github/workflows/b2_blind_handoff_v5_smoke.yml
+      - .github/workflows/test.yml
+      - b2/blind_eval.py
+      - b2/blind_handoff.py
+      - docs/b2/blind-eval-bridge.md
+      - docs/b2/blind-handoff-v5.md
+      - pyproject.toml
+      - tests/test_b2_blind_eval.py
+      - tests/test_b2_blind_handoff.py
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: b2-blind-v5-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  handoff-smoke:
+  no-provider-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
     env:
-      B2_MAIN_COMMIT: 901ba05b99c413d45415c474c71b5969c155dea1
-      EXPECTED_CONTEXT_SHA256: a595fb210b225e201e6b9a191a2559880ebd118946f770b440e5326955d58e58
-      EXPECTED_CONTEXT_BYTES: '108230'
-      EXPECTED_PROMPT_SHA256: c27eeeab07789ed2ac49c3c5a6034093659c35cdf8b76b1c78b2b670872c5d4c
-      EXPECTED_PROMPT_BYTES: '2308'
-      HANDOFF_MODE: smoke
-      EVALUATION_RUN_ID: B2-HANDOFF-V5-SMOKE-20260904
+      ACCEPTED_BRIDGE_MAIN_SHA: 901ba05b99c413d45415c474c71b5969c155dea1
+      EXECUTION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
-      - name: Check out exact execution head
+      - name: Check out exact review head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ env.EXECUTION_HEAD_SHA }}
 
-      - name: Bind execution to accepted main bridge
+      - name: Bind smoke to exact head and accepted bridge main
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git merge-base --is-ancestor "$B2_MAIN_COMMIT" "$GITHUB_SHA"
-          test "$(git rev-parse "$B2_MAIN_COMMIT:b2/blind_eval.py")" = "$(git hash-object b2/blind_eval.py)"
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD_SHA"
+          git merge-base --is-ancestor "$ACCEPTED_BRIDGE_MAIN_SHA" "$EXECUTION_HEAD_SHA"
 
-      - name: Install handoff implementation
+      - name: Install deterministic handoff dependencies
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
           python -m pip install -e ".[blind-handoff]"
 
-      - name: Generate run-unique input key
+      - name: Prove this workflow has no live or credential lane
         run: |
           set -euo pipefail
-          install -d -m 700 /tmp/b2h/runner
-          python -m b2.blind_handoff generate-input-key \
-            --private-key /tmp/b2h/input-private.pem \
-            --public-key /tmp/b2h/input-public.pem \
-            --fingerprint-output /tmp/b2h/input-public.sha256 \
-            > /tmp/b2h/input-key-receipt.json
-          input_key_sha="$(tr -d '\n' < /tmp/b2h/input-public.sha256)"
-          test "${#input_key_sha}" -eq 64
-          echo "INPUT_KEY_SHA=$input_key_sha" >> "$GITHUB_ENV"
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Publish exact run input public key
-        uses: actions/upload-artifact@v4
-        with:
-          name: b2-blind-v5-smoke-input-public-key-${{ github.run_id }}
-          path: |
-            /tmp/b2h/input-public.pem
-            /tmp/b2h/input-public.sha256
-          retention-days: 1
-          if-no-files-found: error
+          workflow = Path(".github/workflows/b2_blind_handoff_v5_smoke.yml").read_text()
+          forbidden = (
+              "sec" + "rets.",
+              "Authorization:" + " Bearer",
+              "--authorize-" + "live-call",
+              "python -m b2." + "blind_eval",
+              "api." + "deepseek.com",
+          )
+          found = [token for token in forbidden if token in workflow]
+          if found:
+              raise SystemExit(f"provider/credential lane found: {found!r}")
+          PY
 
-      - name: Wait for exact run-scoped encrypted payload
-        env:
-          GH_READ_TOKEN: ${{ github.token }}
+      - name: Run focused deterministic and adversarial tests
         run: |
           set -euo pipefail
-          handoff_root="blind-handoff/v5/${GITHUB_RUN_ID}/${INPUT_KEY_SHA}"
-          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${handoff_root}/payload.json?ref=${GITHUB_REF_NAME}"
-          found=0
-          for _ in $(seq 1 180); do
-            if ! code="$(curl --silent --show-error \
-                --output /tmp/b2h/payload.candidate \
-                --write-out '%{http_code}' \
-                --header "Authorization: Bearer ${GH_READ_TOKEN}" \
-                --header 'Accept: application/vnd.github.raw+json' \
-                --header 'X-GitHub-Api-Version: 2022-11-28' \
-                "$api")"; then
-              rm -f /tmp/b2h/payload.candidate
-              sleep 5
-              continue
-            fi
-            if [ "$code" = 200 ]; then
-              mv /tmp/b2h/payload.candidate /tmp/b2h/payload.json
-              found=1
-              break
-            fi
-            rm -f /tmp/b2h/payload.candidate
-            if [ "$code" != 404 ]; then
-              echo "Unexpected GitHub contents status while waiting for payload: $code" >&2
-              exit 70
-            fi
-            sleep 5
-          done
-          if [ "$found" -ne 1 ]; then
-            echo "Exact run-scoped encrypted payload did not arrive in time." >&2
-            exit 70
-          fi
-          echo "HANDOFF_ROOT=$handoff_root" >> "$GITHUB_ENV"
+          python -m unittest tests.test_b2_blind_eval tests.test_b2_blind_handoff -v
 
-      - name: Decrypt and verify frozen inputs and return key
+      - name: Exercise synthetic encrypted return loop and cleanup
         run: |
           set -euo pipefail
-          python -m b2.blind_handoff accept-input \
-            --input-private-key /tmp/b2h/input-private.pem \
-            --payload /tmp/b2h/payload.json \
-            --state-dir /tmp/b2h/runner \
+          smoke_root="${RUNNER_TEMP}/b2-handoff-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          now_unix="$(date +%s)"
+          python -m b2.blind_handoff deterministic-smoke \
+            --work-root "$smoke_root" \
             --workflow-run-id "$GITHUB_RUN_ID" \
-            --execution-head-sha "$GITHUB_SHA" \
-            --bridge-main-sha "$B2_MAIN_COMMIT" \
-            --input-public-key-sha256 "$INPUT_KEY_SHA" \
-            --context-sha256 "$EXPECTED_CONTEXT_SHA256" \
-            --context-bytes "$EXPECTED_CONTEXT_BYTES" \
-            --prompt-sha256 "$EXPECTED_PROMPT_SHA256" \
-            --prompt-bytes "$EXPECTED_PROMPT_BYTES" \
-            --mode "$HANDOFF_MODE" \
-            --evaluation-run-id "$EVALUATION_RUN_ID" \
-            > /tmp/b2h/input-accept-receipt.json
+            --execution-head-sha "$EXECUTION_HEAD_SHA" \
+            --bridge-main-sha "$ACCEPTED_BRIDGE_MAIN_SHA" \
+            --now-unix "$now_unix" \
+            > "${RUNNER_TEMP}/b2-handoff-smoke-receipt.json"
+          python - "${RUNNER_TEMP}/b2-handoff-smoke-receipt.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
 
-      - name: Encrypt return-key challenge response
-        run: |
-          set -euo pipefail
-          python -m b2.blind_handoff encrypt-challenge \
-            --state-dir /tmp/b2h/runner \
-            --output /tmp/b2h/challenge.enc.json \
-            > /tmp/b2h/challenge-receipt.json
-
-      - name: Publish encrypted return-key challenge
-        uses: actions/upload-artifact@v4
-        with:
-          name: b2-blind-v5-smoke-challenge-${{ github.run_id }}
-          path: /tmp/b2h/challenge.enc.json
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Wait for exact authenticated challenge acknowledgement
-        env:
-          GH_READ_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${HANDOFF_ROOT}/challenge-ack.json?ref=${GITHUB_REF_NAME}"
-          found=0
-          for _ in $(seq 1 180); do
-            if ! code="$(curl --silent --show-error \
-                --output /tmp/b2h/ack.candidate \
-                --write-out '%{http_code}' \
-                --header "Authorization: Bearer ${GH_READ_TOKEN}" \
-                --header 'Accept: application/vnd.github.raw+json' \
-                --header 'X-GitHub-Api-Version: 2022-11-28' \
-                "$api")"; then
-              rm -f /tmp/b2h/ack.candidate
-              sleep 5
-              continue
-            fi
-            if [ "$code" = 200 ]; then
-              mv /tmp/b2h/ack.candidate /tmp/b2h/challenge-ack.json
-              found=1
-              break
-            fi
-            rm -f /tmp/b2h/ack.candidate
-            if [ "$code" != 404 ]; then
-              echo "Unexpected GitHub contents status while waiting for acknowledgement: $code" >&2
-              exit 71
-            fi
-            sleep 5
-          done
-          if [ "$found" -ne 1 ]; then
-            echo "Exact challenge acknowledgement did not arrive in time." >&2
-            exit 71
-          fi
-
-      - name: Verify return decryptability before execution gate
-        run: |
-          set -euo pipefail
-          python -m b2.blind_handoff verify-ack \
-            --state-dir /tmp/b2h/runner \
-            --challenge-envelope /tmp/b2h/challenge.enc.json \
-            --acknowledgement /tmp/b2h/challenge-ack.json \
-            > /tmp/b2h/ack-receipt.json
-
-      - name: Provider attempts stay zero
-        run: |
-          set -euo pipefail
-          test "$HANDOFF_MODE" = smoke
-          test ! -e /tmp/b2h/run.receipt.json
-          test ! -e /tmp/b2h/run.raw.txt
-
-      - name: Encrypt deterministic synthetic result
-        run: |
-          set -euo pipefail
-          python -m b2.blind_handoff make-smoke-result \
-            --state-dir /tmp/b2h/runner \
-            --output /tmp/b2h/result.enc.json \
-            > /tmp/b2h/result-encryption-receipt.json
-
-      - name: Publish encrypted synthetic result
-        uses: actions/upload-artifact@v4
-        with:
-          name: b2-blind-v5-smoke-encrypted-result-${{ github.run_id }}
-          path: /tmp/b2h/result.enc.json
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Remove plaintext private working files
-        if: always()
-        run: |
-          find /tmp/b2h -type f -delete 2>/dev/null || true
-          find /tmp/b2h -depth -type d -empty -delete 2>/dev/null || true
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["terminal_status"] == "HANDOFF_SMOKE_PASS"
+          assert receipt["provider_attempts"] == 0
+          assert receipt["credential_lookups"] == 0
+          assert receipt["automatic_retries"] == 0
+          assert receipt["return_decryptability_proven"] is True
+          assert receipt["cleanup_completed"] is True
+          PY
+          test ! -e "$smoke_root"

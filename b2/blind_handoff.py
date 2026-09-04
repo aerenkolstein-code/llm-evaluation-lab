@@ -22,6 +22,7 @@ import json
 import os
 import re
 import tempfile
+import time
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -32,15 +33,18 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
-PROTOCOL_VERSION = "b2-blind-handoff/v5"
+PROTOCOL_VERSION = "b2-blind-handoff/v5.1"
 ENCRYPTION_ALGORITHM = "RSA-OAEP-SHA256+AES-256-GCM/v1"
 MIN_RSA_BITS = 3072
 MAX_ENVELOPE_BYTES = 4 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 3 * 1024 * 1024
+MAX_HANDOFF_TTL_SECONDS = 6 * 60 * 60
+MAX_CLOCK_SKEW_SECONDS = 5 * 60
 SMOKE_RAW = b"B2-HANDOFF-V5-SYNTHETIC-RAW\n"
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_HANDOFF_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$")
 
 
 class HandoffError(ValueError):
@@ -129,8 +133,159 @@ def _atomic_write(path: str | Path, value: bytes, *, mode: int = 0o600) -> None:
             pass
 
 
+def _assert_no_symlink(path: str | Path, label: str) -> None:
+    candidate = Path(path)
+    for item in (candidate, *candidate.parents):
+        if item.is_symlink():
+            raise HandoffError(f"{label} must not traverse a symbolic link")
+        if item == item.parent:
+            break
+
+
+def _resolved(path: str | Path) -> Path:
+    return Path(path).expanduser().resolve(strict=False)
+
+
+def _require_distinct_paths(paths: Mapping[str, str | Path]) -> None:
+    resolved: dict[str, Path] = {}
+    for label, path in paths.items():
+        _assert_no_symlink(path, label)
+        candidate = _resolved(path)
+        for other_label, other in resolved.items():
+            if candidate == other or candidate in other.parents or other in candidate.parents:
+                raise HandoffError(f"{label} aliases {other_label}")
+            if candidate.exists() and other.exists():
+                try:
+                    if os.path.samefile(candidate, other):
+                        raise HandoffError(f"{label} aliases {other_label}")
+                except OSError:
+                    pass
+        resolved[label] = candidate
+
+
+def _atomic_create(path: str | Path, value: bytes, *, mode: int = 0o600) -> None:
+    """Create one publication marker without overwriting prior evidence."""
+
+    target = Path(path)
+    _assert_no_symlink(target, "publication path")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(target, flags, mode)
+    except FileExistsError as exc:
+        raise HandoffError(f"replayed or colliding publication: {target.name}") from exc
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        try:
+            target.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def cleanup_ephemeral_tree(
+    root: str | Path,
+    *,
+    unlink_fn=os.unlink,
+    rmdir_fn=os.rmdir,
+) -> None:
+    """Remove one explicit ephemeral tree without following symlinks.
+
+    Cleanup is fail-closed: any failure is surfaced, and success means the
+    requested root no longer exists. Broad or ambiguous roots are rejected.
+    """
+
+    raw_target = Path(root).expanduser()
+    if raw_target.is_symlink():
+        raise HandoffError("cleanup root must not be a symbolic link")
+    target = _resolved(raw_target)
+    forbidden = {Path(target.anchor), Path.home().resolve(), Path.cwd().resolve()}
+    if target in forbidden or len(target.parts) < 3:
+        raise HandoffError("cleanup root is too broad")
+    if not target.exists() and not target.is_symlink():
+        return
+    if target.is_symlink() or not target.is_dir():
+        raise HandoffError("cleanup root must be a real directory")
+    try:
+        for current, directories, files in os.walk(target, topdown=False, followlinks=False):
+            current_path = Path(current)
+            for name in files:
+                unlink_fn(current_path / name)
+            for name in directories:
+                child = current_path / name
+                if child.is_symlink():
+                    unlink_fn(child)
+                else:
+                    rmdir_fn(child)
+        rmdir_fn(target)
+    except OSError as exc:
+        raise HandoffError("ephemeral cleanup failed") from exc
+    if target.exists() or target.is_symlink():
+        raise HandoffError("ephemeral cleanup did not remove the root")
+
+
+def _commit_new_directory(path: str | Path, files: Mapping[str, bytes]) -> None:
+    """Publish a complete new state directory or publish nothing."""
+
+    _assert_no_symlink(path, "state directory")
+    target = _resolved(path)
+    if target.exists() or target.is_symlink():
+        raise HandoffError("state directory already exists (replay or partial state)")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent))
+    try:
+        for name, value in files.items():
+            if Path(name).name != name or name in {"", ".", ".."}:
+                raise HandoffError("state file names must be flat and safe")
+            _atomic_write(temp_path / name, value)
+        os.replace(temp_path, target)
+    finally:
+        if temp_path.exists():
+            cleanup_ephemeral_tree(temp_path)
+
+
+def _claim_once(
+    state_dir: str | Path,
+    claim_name: str,
+    *,
+    binding: "HandoffBinding",
+    artifact: bytes,
+) -> None:
+    if re.fullmatch(r"[a-z][a-z0-9-]{1,47}", claim_name) is None:
+        raise HandoffError("claim name is invalid")
+    marker = {
+        "protocol": PROTOCOL_VERSION,
+        "claim": claim_name,
+        "binding_sha256": sha256_hex(_canonical_json(binding.as_dict())),
+        "artifact_sha256": sha256_hex(artifact),
+    }
+    _atomic_create(Path(state_dir) / f"{claim_name}.json", _json_bytes(marker))
+
+
+def _require_claim(state_dir: str | Path, claim_name: str, binding: "HandoffBinding") -> None:
+    marker_path = Path(state_dir) / f"{claim_name}.json"
+    marker = _load_json_bytes(marker_path.read_bytes(), f"{claim_name} marker")
+    _strict_keys(
+        marker,
+        {"protocol", "claim", "binding_sha256", "artifact_sha256"},
+        f"{claim_name} marker",
+    )
+    if (
+        marker["protocol"] != PROTOCOL_VERSION
+        or marker["claim"] != claim_name
+        or marker["binding_sha256"] != sha256_hex(_canonical_json(binding.as_dict()))
+    ):
+        raise HandoffError(f"{claim_name} marker does not match the handoff")
+    _require_hex64(marker["artifact_sha256"], "artifact_sha256")
+
+
 @dataclass(frozen=True)
 class HandoffBinding:
+    handoff_id: str
     workflow_run_id: str
     execution_head_sha: str
     bridge_main_sha: str
@@ -142,13 +297,15 @@ class HandoffBinding:
     prompt_bytes: int
     mode: str
     evaluation_run_id: str
+    issued_at_unix: int
+    expires_at_unix: int
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
 
     def validate(self) -> "HandoffBinding":
         string_fields = (
-            "workflow_run_id", "execution_head_sha", "bridge_main_sha",
+            "handoff_id", "workflow_run_id", "execution_head_sha", "bridge_main_sha",
             "input_public_key_sha256", "return_public_key_sha256",
             "context_sha256", "prompt_sha256", "mode", "evaluation_run_id",
         )
@@ -156,6 +313,8 @@ class HandoffBinding:
             raise HandoffError("binding string fields must contain strings")
         if not self.workflow_run_id.isdigit() or int(self.workflow_run_id) <= 0:
             raise HandoffError("workflow_run_id must be a positive decimal identifier")
+        if _HANDOFF_ID_RE.fullmatch(self.handoff_id) is None:
+            raise HandoffError("handoff_id is not a safe run-unique identifier")
         for label, value in (
             ("execution_head_sha", self.execution_head_sha),
             ("bridge_main_sha", self.bridge_main_sha),
@@ -175,6 +334,21 @@ class HandoffBinding:
             raise HandoffError("mode must be 'smoke' or 'live'")
         if _RUN_ID_RE.fullmatch(self.evaluation_run_id) is None:
             raise HandoffError("evaluation_run_id is not a safe identifier")
+        _require_positive_int(self.issued_at_unix, "issued_at_unix")
+        _require_positive_int(self.expires_at_unix, "expires_at_unix")
+        lifetime = self.expires_at_unix - self.issued_at_unix
+        if lifetime <= 0 or lifetime > MAX_HANDOFF_TTL_SECONDS:
+            raise HandoffError("handoff lifetime is invalid or exceeds the maximum")
+        return self
+
+    def validate_fresh(self, now_unix: int | None = None) -> "HandoffBinding":
+        self.validate()
+        now = int(time.time()) if now_unix is None else now_unix
+        _require_positive_int(now, "now_unix")
+        if self.issued_at_unix > now + MAX_CLOCK_SKEW_SECONDS:
+            raise HandoffError("handoff is not yet valid")
+        if self.expires_at_unix <= now:
+            raise HandoffError("handoff artifact is stale")
         return self
 
     @classmethod
@@ -378,8 +552,9 @@ def create_input_payload(
     challenge: bytes,
     ack_key: bytes,
     binding: HandoffBinding,
+    now_unix: int | None = None,
 ) -> bytes:
-    binding.validate()
+    binding.validate_fresh(now_unix)
     _load_public_key(input_public_pem)
     _load_public_key(return_public_pem)
     checks = {
@@ -416,7 +591,9 @@ def decrypt_input_payload(
     input_private_pem: bytes,
     payload: bytes,
     expected_binding: HandoffBinding,
+    now_unix: int | None = None,
 ) -> dict[str, bytes]:
+    expected_binding.validate_fresh(now_unix)
     envelope = _load_json_bytes(payload, "input envelope")
     expected_keys = {
         "protocol", "kind", "algorithm", "binding",
@@ -473,9 +650,14 @@ def _return_header(
 
 
 def encrypt_return_envelope(
-    *, return_public_pem: bytes, kind: str, binding: HandoffBinding, plaintext: bytes,
+    *,
+    return_public_pem: bytes,
+    kind: str,
+    binding: HandoffBinding,
+    plaintext: bytes,
+    now_unix: int | None = None,
 ) -> bytes:
-    binding.validate()
+    binding.validate_fresh(now_unix)
     if sha256_hex(return_public_pem) != binding.return_public_key_sha256:
         raise HandoffError("return public key does not match binding")
     header = _return_header(kind=kind, binding=binding, plaintext=plaintext)
@@ -491,7 +673,9 @@ def decrypt_return_envelope(
     envelope_bytes: bytes,
     expected_kind: str,
     expected_binding: HandoffBinding,
+    now_unix: int | None = None,
 ) -> bytes:
+    expected_binding.validate_fresh(now_unix)
     envelope = _load_json_bytes(envelope_bytes, "return envelope")
     expected_keys = {
         "protocol", "kind", "algorithm", "binding", "plaintext_sha256",
@@ -532,7 +716,9 @@ def create_challenge_ack(
     challenge_envelope: bytes,
     challenge: bytes,
     ack_key: bytes,
+    now_unix: int | None = None,
 ) -> bytes:
+    binding.validate_fresh(now_unix)
     if len(challenge) != 32 or len(ack_key) != 32:
         raise HandoffError("challenge acknowledgement material has invalid length")
     body: dict[str, object] = {
@@ -554,7 +740,9 @@ def verify_challenge_ack(
     challenge: bytes,
     ack_key: bytes,
     acknowledgement: bytes,
+    now_unix: int | None = None,
 ) -> None:
+    binding.validate_fresh(now_unix)
     document = _load_json_bytes(acknowledgement, "challenge acknowledgement")
     expected_keys = {
         "protocol", "kind", "status", "binding", "challenge_envelope_sha256",
@@ -585,7 +773,13 @@ def _validate_live_receipt(
     required = {
         "run_id", "terminal_status", "context_sha256", "prompt_sha256",
         "context_bytes", "prompt_bytes", "automatic_retries", "git_commit",
-        "raw_output_sha256", "raw_output_bytes",
+        "raw_output_sha256", "raw_output_bytes", "provider_attempts",
+        "http_status", "requested_model_id", "resolved_model_id",
+        "provider_response_id", "finish_reason", "response_json_parsed",
+        "response_schema_parsed", "message_schema_parsed",
+        "reasoning_field_present", "reasoning_bytes", "reasoning_sha256",
+        "final_content_field_present", "final_content_bytes",
+        "final_content_sha256", "usage", "quality_score", "error_code",
     }
     if not required.issubset(receipt):
         raise HandoffError("blind-eval receipt is missing required evidence fields")
@@ -595,10 +789,40 @@ def _validate_live_receipt(
         or receipt["prompt_sha256"] != f"sha256:{binding.prompt_sha256}"
         or receipt["context_bytes"] != binding.context_bytes
         or receipt["prompt_bytes"] != binding.prompt_bytes
+        or receipt["provider_attempts"] != 1
         or receipt["automatic_retries"] != 0
         or receipt["git_commit"] != binding.bridge_main_sha
+        or receipt["quality_score"] is not None
     ):
         raise HandoffError("blind-eval receipt does not match handoff binding")
+    forbidden_body_keys = {
+        "reasoning", "reasoning_content", "analysis", "content", "raw_answer",
+        "authorization", "api_key", "endpoint", "signed_locator",
+    }
+    if forbidden_body_keys.intersection(receipt):
+        raise HandoffError("blind-eval receipt contains a private-body or secret-bearing field")
+    token_patterns = {
+        "requested_model_id": re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,127}$"),
+        "resolved_model_id": re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,127}$"),
+        "provider_response_id": re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$"),
+        "finish_reason": re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,63}$"),
+    }
+    for field, pattern in token_patterns.items():
+        value = receipt[field]
+        if value is not None and (not isinstance(value, str) or pattern.fullmatch(value) is None):
+            raise HandoffError(f"blind-eval receipt {field} is not strictly sanitized")
+    for field in ("reasoning_sha256", "final_content_sha256"):
+        value = receipt[field]
+        if value is not None:
+            if not isinstance(value, str) or not value.startswith("sha256:"):
+                raise HandoffError(f"blind-eval receipt {field} is invalid")
+            _require_hex64(value.removeprefix("sha256:"), field)
+    for field in ("reasoning_bytes", "final_content_bytes"):
+        value = receipt[field]
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+        ):
+            raise HandoffError(f"blind-eval receipt {field} is invalid")
     status = receipt["terminal_status"]
     if status == "PASS":
         if raw_answer is None:
@@ -606,6 +830,8 @@ def _validate_live_receipt(
         if (
             receipt["raw_output_sha256"] != f"sha256:{sha256_hex(raw_answer)}"
             or receipt["raw_output_bytes"] != len(raw_answer)
+            or receipt["final_content_sha256"] != receipt["raw_output_sha256"]
+            or receipt["final_content_bytes"] != receipt["raw_output_bytes"]
         ):
             raise HandoffError("raw answer does not match PASS receipt")
     elif status in {"NOT_EVALUABLE", "ERROR"}:
@@ -613,12 +839,18 @@ def _validate_live_receipt(
             raise HandoffError("non-PASS receipt must not include a raw answer")
         if receipt["raw_output_sha256"] is not None or receipt["raw_output_bytes"] is not None:
             raise HandoffError("non-PASS receipt carries raw-output evidence")
+        if receipt["error_code"] == "EMPTY_FINAL_CONTENT":
+            if receipt["final_content_sha256"] is not None:
+                raise HandoffError("empty-final receipt carries a final-content hash")
     else:
         raise HandoffError("blind-eval receipt has invalid terminal status")
     return receipt
 
 
-def build_smoke_result_bundle(binding: HandoffBinding) -> bytes:
+def build_smoke_result_bundle(
+    binding: HandoffBinding, *, now_unix: int | None = None,
+) -> bytes:
+    binding.validate_fresh(now_unix)
     if binding.mode != "smoke":
         raise HandoffError("smoke result requires a smoke binding")
     receipt = {
@@ -652,7 +884,9 @@ def build_live_result_bundle(
     raw_answer: bytes | None,
     bridge_stdout: bytes,
     bridge_exit_code: bytes,
+    now_unix: int | None = None,
 ) -> bytes:
+    binding.validate_fresh(now_unix)
     if binding.mode != "live":
         raise HandoffError("live result requires a live binding")
     receipt = _validate_live_receipt(receipt_bytes, raw_answer, binding)
@@ -681,8 +915,9 @@ def build_live_result_bundle(
 
 
 def verify_result_bundle(
-    *, binding: HandoffBinding, bundle: bytes,
+    *, binding: HandoffBinding, bundle: bytes, now_unix: int | None = None,
 ) -> tuple[dict[str, bytes], dict[str, object]]:
+    binding.validate_fresh(now_unix)
     expected_names = {"bridge-exit-code.txt", "bridge-stdout.json", "receipt.json"}
     if binding.mode == "smoke":
         expected_names = {"bridge-exit-code.txt", "raw-answer.txt", "receipt.json"}
@@ -740,6 +975,7 @@ def _state_binding(state_dir: str | Path) -> HandoffBinding:
 
 def _expected_binding_from_args(args: argparse.Namespace, return_key_hash: str) -> HandoffBinding:
     return HandoffBinding(
+        handoff_id=args.handoff_id,
         workflow_run_id=args.workflow_run_id,
         execution_head_sha=args.execution_head_sha,
         bridge_main_sha=args.bridge_main_sha,
@@ -751,10 +987,13 @@ def _expected_binding_from_args(args: argparse.Namespace, return_key_hash: str) 
         prompt_bytes=args.prompt_bytes,
         mode=args.mode,
         evaluation_run_id=args.evaluation_run_id,
+        issued_at_unix=args.issued_at_unix,
+        expires_at_unix=args.expires_at_unix,
     ).validate()
 
 
 def _add_binding_args(parser: argparse.ArgumentParser, *, include_input_key_hash: bool) -> None:
+    parser.add_argument("--handoff-id", required=True)
     parser.add_argument("--workflow-run-id", required=True)
     parser.add_argument("--execution-head-sha", required=True)
     parser.add_argument("--bridge-main-sha", required=True)
@@ -766,19 +1005,51 @@ def _add_binding_args(parser: argparse.ArgumentParser, *, include_input_key_hash
     parser.add_argument("--prompt-bytes", required=True, type=int)
     parser.add_argument("--mode", required=True, choices=("smoke", "live"))
     parser.add_argument("--evaluation-run-id", required=True)
+    parser.add_argument("--issued-at-unix", required=True, type=int)
+    parser.add_argument("--expires-at-unix", required=True, type=int)
 
 
 def _cmd_generate_input_key(args: argparse.Namespace) -> dict[str, object]:
+    outputs = {
+        "input private key": Path(args.private_key),
+        "input public key": Path(args.public_key),
+        "input fingerprint": Path(args.fingerprint_output),
+    }
+    _require_distinct_paths(outputs)
     private_pem, public_pem = generate_rsa_keypair()
-    _atomic_write(args.private_key, private_pem)
-    _atomic_write(args.public_key, public_pem, mode=0o644)
     fingerprint = sha256_hex(public_pem)
-    _atomic_write(args.fingerprint_output, f"{fingerprint}\n".encode("ascii"), mode=0o644)
+    created: list[Path] = []
+    try:
+        for path, value, mode in (
+            (Path(args.private_key), private_pem, 0o600),
+            (Path(args.public_key), public_pem, 0o644),
+            (
+                Path(args.fingerprint_output),
+                f"{fingerprint}\n".encode("ascii"),
+                0o644,
+            ),
+        ):
+            _atomic_create(path, value, mode=mode)
+            created.append(path)
+    except Exception:
+        for path in created:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        raise
     return {"status": "INPUT_KEY_READY", "input_public_key_sha256": fingerprint}
 
 
 def _cmd_prepare_input(args: argparse.Namespace) -> dict[str, object]:
     state = Path(args.state_dir)
+    _require_distinct_paths({
+        "state directory": state,
+        "payload output": args.payload_output,
+        "input public key": args.input_public_key,
+        "context input": args.context_file,
+        "prompt input": args.prompt_file,
+    })
     input_public = Path(args.input_public_key).read_bytes()
     context = Path(args.context_file).read_bytes()
     prompt = Path(args.prompt_file).read_bytes()
@@ -803,15 +1074,25 @@ def _cmd_prepare_input(args: argparse.Namespace) -> dict[str, object]:
         ack_key=ack_key,
         binding=binding,
     )
-    for name, value in {
+    state_files = {
         "binding.json": _json_bytes(binding.as_dict()),
         "return-private.pem": return_private,
         "return-public.pem": return_public,
         "challenge.bin": challenge,
         "ack-key.bin": ack_key,
-    }.items():
-        _atomic_write(state / name, value)
-    _atomic_write(args.payload_output, payload, mode=0o644)
+        "payload-prepared.json": _json_bytes({
+            "protocol": PROTOCOL_VERSION,
+            "claim": "payload-prepared",
+            "binding_sha256": sha256_hex(_canonical_json(binding.as_dict())),
+            "artifact_sha256": sha256_hex(payload),
+        }),
+    }
+    _commit_new_directory(state, state_files)
+    try:
+        _atomic_create(args.payload_output, payload, mode=0o644)
+    except Exception:
+        cleanup_ephemeral_tree(state)
+        raise
     return {
         "status": "ENCRYPTED_INPUT_READY",
         "binding_sha256": sha256_hex(_canonical_json(binding.as_dict())),
@@ -820,6 +1101,11 @@ def _cmd_prepare_input(args: argparse.Namespace) -> dict[str, object]:
 
 
 def _cmd_accept_input(args: argparse.Namespace) -> dict[str, object]:
+    _require_distinct_paths({
+        "state directory": args.state_dir,
+        "input private key": args.input_private_key,
+        "payload input": args.payload,
+    })
     private_pem = Path(args.input_private_key).read_bytes()
     input_public_hash = sha256_hex(public_pem_from_private(private_pem))
     payload_document = _load_json_bytes(Path(args.payload).read_bytes(), "input envelope")
@@ -833,15 +1119,21 @@ def _cmd_accept_input(args: argparse.Namespace) -> dict[str, object]:
         expected_binding=expected,
     )
     state = Path(args.state_dir)
-    for name, value in {
+    state_files = {
         "binding.json": _json_bytes(expected.as_dict()),
         "context.txt": files["context.txt"],
         "prompt.txt": files["prompt.txt"],
         "return-public.pem": files["return-public.pem"],
         "challenge.bin": files["challenge.bin"],
         "ack-key.bin": files["ack-key.bin"],
-    }.items():
-        _atomic_write(state / name, value)
+        "payload-accepted.json": _json_bytes({
+            "protocol": PROTOCOL_VERSION,
+            "claim": "payload-accepted",
+            "binding_sha256": sha256_hex(_canonical_json(expected.as_dict())),
+            "artifact_sha256": sha256_hex(Path(args.payload).read_bytes()),
+        }),
+    }
+    _commit_new_directory(state, state_files)
     return {
         "status": "FROZEN_INPUT_ACCEPTED",
         "context_sha256": expected.context_sha256,
@@ -854,6 +1146,8 @@ def _cmd_accept_input(args: argparse.Namespace) -> dict[str, object]:
 def _cmd_encrypt_challenge(args: argparse.Namespace) -> dict[str, object]:
     state = Path(args.state_dir)
     binding = _state_binding(state)
+    _require_claim(state, "payload-accepted", binding)
+    _require_distinct_paths({"state directory": state, "challenge output": args.output})
     challenge = state.joinpath("challenge.bin").read_bytes()
     envelope = encrypt_return_envelope(
         return_public_pem=state.joinpath("return-public.pem").read_bytes(),
@@ -861,13 +1155,24 @@ def _cmd_encrypt_challenge(args: argparse.Namespace) -> dict[str, object]:
         binding=binding,
         plaintext=challenge,
     )
-    _atomic_write(args.output, envelope, mode=0o644)
+    _atomic_create(args.output, envelope, mode=0o644)
+    try:
+        _claim_once(state, "challenge-published", binding=binding, artifact=envelope)
+    except Exception:
+        Path(args.output).unlink(missing_ok=True)
+        raise
     return {"status": "CHALLENGE_ENCRYPTED", "envelope_sha256": sha256_hex(envelope)}
 
 
 def _cmd_verify_challenge(args: argparse.Namespace) -> dict[str, object]:
     state = Path(args.state_dir)
     binding = _state_binding(state)
+    _require_claim(state, "payload-prepared", binding)
+    _require_distinct_paths({
+        "state directory": state,
+        "challenge input": args.challenge_envelope,
+        "ack output": args.ack_output,
+    })
     envelope = Path(args.challenge_envelope).read_bytes()
     challenge = state.joinpath("challenge.bin").read_bytes()
     actual = decrypt_return_envelope(
@@ -884,18 +1189,31 @@ def _cmd_verify_challenge(args: argparse.Namespace) -> dict[str, object]:
         challenge=challenge,
         ack_key=state.joinpath("ack-key.bin").read_bytes(),
     )
-    _atomic_write(args.ack_output, ack, mode=0o644)
+    _atomic_create(args.ack_output, ack, mode=0o644)
+    try:
+        _claim_once(state, "challenge-verified", binding=binding, artifact=envelope)
+    except Exception:
+        Path(args.ack_output).unlink(missing_ok=True)
+        raise
     return {"status": "RETURN_KEY_PROVEN", "ack_sha256": sha256_hex(ack)}
 
 
 def _cmd_verify_ack(args: argparse.Namespace) -> dict[str, object]:
     state = Path(args.state_dir)
+    binding = _state_binding(state)
+    _require_claim(state, "challenge-published", binding)
     verify_challenge_ack(
-        binding=_state_binding(state),
+        binding=binding,
         challenge_envelope=Path(args.challenge_envelope).read_bytes(),
         challenge=state.joinpath("challenge.bin").read_bytes(),
         ack_key=state.joinpath("ack-key.bin").read_bytes(),
         acknowledgement=Path(args.acknowledgement).read_bytes(),
+    )
+    _claim_once(
+        state,
+        "ack-accepted",
+        binding=binding,
+        artifact=Path(args.acknowledgement).read_bytes(),
     )
     return {"status": "PROVIDER_GATE_OPEN"}
 
@@ -903,6 +1221,8 @@ def _cmd_verify_ack(args: argparse.Namespace) -> dict[str, object]:
 def _cmd_make_smoke_result(args: argparse.Namespace) -> dict[str, object]:
     state = Path(args.state_dir)
     binding = _state_binding(state)
+    _require_claim(state, "ack-accepted", binding)
+    _require_distinct_paths({"state directory": state, "result output": args.output})
     bundle = build_smoke_result_bundle(binding)
     envelope = encrypt_return_envelope(
         return_public_pem=state.joinpath("return-public.pem").read_bytes(),
@@ -910,7 +1230,8 @@ def _cmd_make_smoke_result(args: argparse.Namespace) -> dict[str, object]:
         binding=binding,
         plaintext=bundle,
     )
-    _atomic_write(args.output, envelope, mode=0o644)
+    _claim_once(state, "result-started", binding=binding, artifact=bundle)
+    _atomic_create(args.output, envelope, mode=0o644)
     return {
         "status": "SMOKE_RESULT_ENCRYPTED",
         "provider_attempts": 0,
@@ -921,6 +1242,15 @@ def _cmd_make_smoke_result(args: argparse.Namespace) -> dict[str, object]:
 def _cmd_make_live_result(args: argparse.Namespace) -> dict[str, object]:
     state = Path(args.state_dir)
     binding = _state_binding(state)
+    _require_claim(state, "ack-accepted", binding)
+    _require_distinct_paths({
+        "state directory": state,
+        "receipt input": args.receipt,
+        "raw answer input": args.raw_answer,
+        "bridge stdout input": args.bridge_stdout,
+        "bridge exit-code input": args.bridge_exit_code,
+        "result output": args.output,
+    })
     raw_path = Path(args.raw_answer)
     raw = raw_path.read_bytes() if raw_path.exists() else None
     bundle = build_live_result_bundle(
@@ -936,13 +1266,20 @@ def _cmd_make_live_result(args: argparse.Namespace) -> dict[str, object]:
         binding=binding,
         plaintext=bundle,
     )
-    _atomic_write(args.output, envelope, mode=0o644)
+    _claim_once(state, "result-started", binding=binding, artifact=bundle)
+    _atomic_create(args.output, envelope, mode=0o644)
     return {"status": "LIVE_RESULT_ENCRYPTED", "result_sha256": sha256_hex(envelope)}
 
 
 def _cmd_verify_result(args: argparse.Namespace) -> dict[str, object]:
     state = Path(args.state_dir)
     binding = _state_binding(state)
+    _require_claim(state, "payload-prepared", binding)
+    _require_distinct_paths({
+        "state directory": state,
+        "result input": args.result_envelope,
+        "result output directory": args.output_dir,
+    })
     envelope = Path(args.result_envelope).read_bytes()
     bundle = decrypt_return_envelope(
         return_private_pem=state.joinpath("return-private.pem").read_bytes(),
@@ -952,8 +1289,12 @@ def _cmd_verify_result(args: argparse.Namespace) -> dict[str, object]:
     )
     files, receipt = verify_result_bundle(binding=binding, bundle=bundle)
     output = Path(args.output_dir)
-    for name, value in files.items():
-        _atomic_write(output / name, value)
+    _commit_new_directory(output, files)
+    try:
+        _claim_once(state, "result-accepted", binding=binding, artifact=envelope)
+    except Exception:
+        cleanup_ephemeral_tree(output)
+        raise
     return {
         "status": "RESULT_VERIFIED",
         "mode": binding.mode,
@@ -961,6 +1302,156 @@ def _cmd_verify_result(args: argparse.Namespace) -> dict[str, object]:
         "provider_attempts": receipt.get("provider_attempts"),
         "result_envelope_sha256": sha256_hex(envelope),
     }
+
+
+def deterministic_smoke_receipt(
+    *,
+    work_root: str | Path,
+    workflow_run_id: str,
+    execution_head_sha: str,
+    bridge_main_sha: str,
+    now_unix: int,
+) -> dict[str, object]:
+    """Exercise the complete encrypted return loop with synthetic bytes only."""
+
+    _assert_no_symlink(work_root, "deterministic smoke root")
+    root = _resolved(work_root)
+    if root.exists() or root.is_symlink():
+        raise HandoffError("deterministic smoke root already exists")
+    root.mkdir(parents=True)
+    report: dict[str, object] | None = None
+    try:
+        input_private, input_public = generate_rsa_keypair()
+        return_private, return_public = generate_rsa_keypair()
+        context = b"B2-HANDOFF-V5-SYNTHETIC-CONTEXT\n"
+        prompt = b"B2-HANDOFF-V5-SYNTHETIC-PROMPT\n"
+        challenge = hashlib.sha256(b"synthetic-return-challenge").digest()
+        ack_key = hashlib.sha256(b"synthetic-ack-key").digest()
+        binding = HandoffBinding(
+            handoff_id=f"synthetic-smoke-{workflow_run_id}-{execution_head_sha[:12]}",
+            workflow_run_id=workflow_run_id,
+            execution_head_sha=execution_head_sha,
+            bridge_main_sha=bridge_main_sha,
+            input_public_key_sha256=sha256_hex(input_public),
+            return_public_key_sha256=sha256_hex(return_public),
+            context_sha256=sha256_hex(context),
+            context_bytes=len(context),
+            prompt_sha256=sha256_hex(prompt),
+            prompt_bytes=len(prompt),
+            mode="smoke",
+            evaluation_run_id=f"B2-HANDOFF-V5-OFFLINE-{workflow_run_id}",
+            issued_at_unix=now_unix,
+            expires_at_unix=now_unix + 3600,
+        ).validate_fresh(now_unix)
+        payload = create_input_payload(
+            input_public_pem=input_public,
+            return_public_pem=return_public,
+            context=context,
+            prompt=prompt,
+            challenge=challenge,
+            ack_key=ack_key,
+            binding=binding,
+            now_unix=now_unix,
+        )
+        accepted = decrypt_input_payload(
+            input_private_pem=input_private,
+            payload=payload,
+            expected_binding=binding,
+            now_unix=now_unix,
+        )
+        if accepted["context.txt"] != context or accepted["prompt.txt"] != prompt:
+            raise HandoffError("synthetic input round trip changed frozen bytes")
+        challenge_envelope = encrypt_return_envelope(
+            return_public_pem=return_public,
+            kind="challenge-response",
+            binding=binding,
+            plaintext=challenge,
+            now_unix=now_unix,
+        )
+        recovered_challenge = decrypt_return_envelope(
+            return_private_pem=return_private,
+            envelope_bytes=challenge_envelope,
+            expected_kind="challenge-response",
+            expected_binding=binding,
+            now_unix=now_unix,
+        )
+        if not hmac.compare_digest(recovered_challenge, challenge):
+            raise HandoffError("synthetic return-key proof changed challenge bytes")
+        ack = create_challenge_ack(
+            binding=binding,
+            challenge_envelope=challenge_envelope,
+            challenge=challenge,
+            ack_key=ack_key,
+            now_unix=now_unix,
+        )
+        verify_challenge_ack(
+            binding=binding,
+            challenge_envelope=challenge_envelope,
+            challenge=challenge,
+            ack_key=ack_key,
+            acknowledgement=ack,
+            now_unix=now_unix,
+        )
+        bundle = build_smoke_result_bundle(binding, now_unix=now_unix)
+        result_envelope = encrypt_return_envelope(
+            return_public_pem=return_public,
+            kind="encrypted-result",
+            binding=binding,
+            plaintext=bundle,
+            now_unix=now_unix,
+        )
+        recovered_bundle = decrypt_return_envelope(
+            return_private_pem=return_private,
+            envelope_bytes=result_envelope,
+            expected_kind="encrypted-result",
+            expected_binding=binding,
+            now_unix=now_unix,
+        )
+        _, smoke = verify_result_bundle(
+            binding=binding, bundle=recovered_bundle, now_unix=now_unix
+        )
+        _atomic_write(root / "synthetic-state.marker", b"synthetic/non-private\n")
+        report = {
+            "schema_version": "b2-blind-handoff-offline-smoke/v1",
+            "terminal_status": smoke["terminal_status"],
+            "protocol": PROTOCOL_VERSION,
+            "workflow_run_id": workflow_run_id,
+            "execution_head_sha": execution_head_sha,
+            "bridge_main_sha": bridge_main_sha,
+            "handoff_id": binding.handoff_id,
+            "binding_sha256": sha256_hex(_canonical_json(binding.as_dict())),
+            "input_public_key_sha256": binding.input_public_key_sha256,
+            "return_public_key_sha256": binding.return_public_key_sha256,
+            "context_sha256": binding.context_sha256,
+            "context_bytes": binding.context_bytes,
+            "prompt_sha256": binding.prompt_sha256,
+            "prompt_bytes": binding.prompt_bytes,
+            "return_decryptability_proven": True,
+            "provider_attempts": 0,
+            "credential_lookups": 0,
+            "automatic_retries": 0,
+        }
+    finally:
+        cleanup_ephemeral_tree(root)
+    if report is None:
+        raise HandoffError("deterministic smoke did not produce a receipt")
+    report["cleanup_completed"] = True
+    return report
+
+
+def _cmd_deterministic_smoke(args: argparse.Namespace) -> dict[str, object]:
+    return deterministic_smoke_receipt(
+        work_root=args.work_root,
+        workflow_run_id=args.workflow_run_id,
+        execution_head_sha=args.execution_head_sha,
+        bridge_main_sha=args.bridge_main_sha,
+        now_unix=args.now_unix,
+    )
+
+
+def _cmd_cleanup(args: argparse.Namespace) -> dict[str, object]:
+    cleanup_ephemeral_tree(args.ephemeral_root)
+    return {"status": "EPHEMERAL_CLEANUP_COMPLETE"}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1025,6 +1516,18 @@ def _build_parser() -> argparse.ArgumentParser:
     result.add_argument("--result-envelope", required=True)
     result.add_argument("--output-dir", required=True)
     result.set_defaults(handler=_cmd_verify_result)
+
+    deterministic = commands.add_parser("deterministic-smoke")
+    deterministic.add_argument("--work-root", required=True)
+    deterministic.add_argument("--workflow-run-id", required=True)
+    deterministic.add_argument("--execution-head-sha", required=True)
+    deterministic.add_argument("--bridge-main-sha", required=True)
+    deterministic.add_argument("--now-unix", required=True, type=int)
+    deterministic.set_defaults(handler=_cmd_deterministic_smoke)
+
+    cleanup = commands.add_parser("cleanup")
+    cleanup.add_argument("--ephemeral-root", required=True)
+    cleanup.set_defaults(handler=_cmd_cleanup)
     return parser
 
 

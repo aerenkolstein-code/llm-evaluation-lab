@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/bm0-measurement-contract.schema.json",
+  "title": "B2 BM0 Offline Measurement Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "work_order_id",
+    "work_order_revision",
+    "stage",
+    "implementation_base_sha",
+    "authority",
+    "provider_roster_status",
+    "artifact_bindings",
+    "target_contract",
+    "terminal_semantics",
+    "model_failure_denominator",
+    "sap",
+    "adjudication_contract",
+    "claim_ceiling",
+    "execution_boundaries",
+    "bm0_green_gate",
+    "limitations",
+    "contract_fingerprint"
+  ],
+  "properties": {
+    "schema_version": {"const": "b2-bm0-measurement-contract/v1"},
+    "work_order_id": {"const": "WO-B2-BM0"},
+    "work_order_revision": {"const": "v0.2"},
+    "stage": {"const": "BOUNDED_OFFLINE_MEASUREMENT_CONTRACT"},
+    "implementation_base_sha": {"const": "901ba05b99c413d45415c474c71b5969c155dea1"},
+    "authority": {"const": "MEASUREMENT_CONTRACT_NOT_BENCHMARK_RESULT"},
+    "provider_roster_status": {"const": "NOT_SELECTED"},
+    "artifact_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "b2/bm0.py",
+        "tests/test_b2_bm0.py",
+        "cases/b2/public-safe/benchmark/bm0-target-applicability.json",
+        "cases/b2/public-safe/benchmark/bm0-metric-registry.json",
+        "cases/b2/public-safe/benchmark/bm0-corpus-policy.json",
+        "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json",
+        "schemas/bm0_trial_identity.schema.json",
+        "schemas/bm0_observation.schema.json",
+        "schemas/bm0_adjudication_record.schema.json",
+        "schemas/bm0_benchmark_manifest.schema.json",
+        "schemas/bm0_measurement_contract.schema.json"
+      ],
+      "properties": {
+        "b2/bm0.py": {"$ref": "#/$defs/sha256"},
+        "tests/test_b2_bm0.py": {"$ref": "#/$defs/sha256"},
+        "cases/b2/public-safe/benchmark/bm0-target-applicability.json": {"$ref": "#/$defs/sha256"},
+        "cases/b2/public-safe/benchmark/bm0-metric-registry.json": {"$ref": "#/$defs/sha256"},
+        "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": {"$ref": "#/$defs/sha256"},
+        "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": {"$ref": "#/$defs/sha256"},
+        "schemas/bm0_trial_identity.schema.json": {"$ref": "#/$defs/sha256"},
+        "schemas/bm0_observation.schema.json": {"$ref": "#/$defs/sha256"},
+        "schemas/bm0_adjudication_record.schema.json": {"$ref": "#/$defs/sha256"},
+        "schemas/bm0_benchmark_manifest.schema.json": {"$ref": "#/$defs/sha256"},
+        "schemas/bm0_measurement_contract.schema.json": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "target_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_count", "class_counts", "default_comparable_classes", "sandbox_equivalence_status"],
+      "properties": {
+        "target_count": {"const": 16},
+        "class_counts": {
+          "const": {
+            "MODEL_DIRECT": 3,
+            "MODEL_CONTEXT_GROUNDED": 5,
+            "AGENT_STANDARDIZED": 4,
+            "SYSTEM_EVAL_ONLY": 4
+          }
+        },
+        "default_comparable_classes": {"const": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"]},
+        "sandbox_equivalence_status": {"const": "NOT_ESTABLISHED"}
+      }
+    },
+    "terminal_semantics": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["terminal_status", "category", "model_failure_denominator", "model_failure_numerator"],
+        "properties": {
+          "terminal_status": {"enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]},
+          "category": {"enum": ["MODEL_SCORABLE", "NON_EVALUABLE", "GOVERNANCE_BLOCK", "INFRASTRUCTURE_ERROR", "INSUFFICIENT_EVIDENCE"]},
+          "model_failure_denominator": {"type": "boolean"},
+          "model_failure_numerator": {"type": "boolean"}
+        }
+      }
+    },
+    "model_failure_denominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "corpus_pool", "eligible_classes", "included_statuses", "failure_status", "excluded_statuses", "zero_denominator", "partial_grid", "retry_semantics"],
+      "properties": {
+        "unit": {"const": "UNIQUE_PREDECLARED_ATTEMPT"},
+        "corpus_pool": {"const": "PRIVATE_HIDDEN_HOLDOUT"},
+        "eligible_classes": {"const": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"]},
+        "included_statuses": {"const": ["PASS", "FAIL"]},
+        "failure_status": {"const": "FAIL"},
+        "excluded_statuses": {"const": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]},
+        "zero_denominator": {"const": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR"},
+        "partial_grid": {"const": "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS"},
+        "retry_semantics": {"const": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"}
+      }
+    },
+    "sap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sap_id", "frozen_before_hidden_access", "methods"],
+      "properties": {
+        "sap_id": {"type": "string", "minLength": 1},
+        "frozen_before_hidden_access": {"const": true},
+        "methods": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["method_id", "implementation", "purpose", "frozen_parameters"],
+            "properties": {
+              "method_id": {"type": "string", "pattern": "^BM0-SAP-0[1-8]-[A-Z0-9-]+-V1$"},
+              "implementation": {"type": "string", "minLength": 1},
+              "purpose": {"type": "string", "minLength": 1},
+              "frozen_parameters": {"type": "object"}
+            }
+          }
+        }
+      }
+    },
+    "adjudication_contract": {
+      "const": {
+        "schema_path": "schemas/bm0_adjudication_record.schema.json",
+        "plan_location": "FROZEN_MANIFEST",
+        "mode_status": "NOT_SELECTED",
+        "minimum_primary_records": 2,
+        "distinct_adjudicators_required": true,
+        "adjudicator_configuration_bound": true,
+        "predeclared_tiebreaker_required": true,
+        "tiebreak_rule": "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ON_DISAGREEMENT",
+        "model_identity_blinded": true,
+        "provider_identity_blinded": true,
+        "peer_decisions_blinded": true
+      }
+    },
+    "claim_ceiling": {
+      "const": {
+        "allowed_claim_codes": [
+          "BM0_OFFLINE_CONTRACT_VALIDATED",
+          "BM0_READY_FOR_EXACT_HEAD_CI_AND_INDEPENDENT_QA"
+        ],
+        "forbidden_claim_codes": [
+          "BM0_GREEN",
+          "MODEL_RANKING",
+          "MODEL_WINNER",
+          "LIVE_PROVIDER_PERFORMANCE",
+          "POPULATION_FAILURE_RATE",
+          "CAUSAL_IMPROVEMENT",
+          "FAIRNESS_VALIDATED",
+          "LQE_VALIDATED",
+          "PRODUCTION_READY",
+          "INDEPENDENT_QA_PASS"
+        ]
+      }
+    },
+    "execution_boundaries": {
+      "const": {
+        "live_model_calls": 0,
+        "credential_lookup": false,
+        "spend": 0,
+        "provider_roster_selection": false,
+        "benchmark_results": false,
+        "b2_blind_reuse_by_assumption": false,
+        "b1_pr17_mutation": false,
+        "qa_receipt_history_rewrite": false,
+        "fairness_lqe_promotion": false,
+        "dependency_workflow_docker_version_change": false,
+        "merge_release": false
+      }
+    },
+    "bm0_green_gate": {
+      "const": {
+        "developer_regressions": "REQUIRED",
+        "exact_head_ci": "REQUIRED",
+        "independent_qa": "DISTINCT_PASS_REQUIRED",
+        "current_state": "NOT_EVALUATED"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "contract_fingerprint": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

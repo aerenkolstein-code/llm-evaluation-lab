@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/bm0-observation.schema.json",
+  "title": "B2 BM0 Typed Benchmark Observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "attempt_id",
+    "trial_id",
+    "model_subject_id",
+    "target_id",
+    "target_class",
+    "corpus_item_alias",
+    "replicate_index",
+    "terminal_status",
+    "model_failure_value",
+    "system_invariant_failure_value",
+    "evidence_complete",
+    "hard_invariant_pass",
+    "adjudication_status",
+    "observation_fingerprint"
+  ],
+  "properties": {
+    "schema_version": {"const": "b2-bm0-observation/v1"},
+    "attempt_id": {"$ref": "#/$defs/identifier"},
+    "trial_id": {"$ref": "#/$defs/identifier"},
+    "model_subject_id": {"$ref": "#/$defs/identifier"},
+    "target_id": {"$ref": "#/$defs/identifier"},
+    "target_class": {
+      "enum": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED", "AGENT_STANDARDIZED", "SYSTEM_EVAL_ONLY"]
+    },
+    "corpus_item_alias": {"$ref": "#/$defs/identifier"},
+    "replicate_index": {"type": "integer", "minimum": 0},
+    "terminal_status": {
+      "enum": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]
+    },
+    "model_failure_value": {
+      "oneOf": [{"enum": [0, 1]}, {"type": "null"}]
+    },
+    "system_invariant_failure_value": {
+      "oneOf": [{"enum": [0, 1]}, {"type": "null"}]
+    },
+    "evidence_complete": {"type": "boolean"},
+    "hard_invariant_pass": {
+      "oneOf": [{"type": "boolean"}, {"type": "null"}]
+    },
+    "adjudication_status": {
+      "enum": ["NOT_REQUIRED", "RESOLVED", "UNRESOLVED", "ERROR"]
+    },
+    "observation_fingerprint": {"$ref": "#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"terminal_status": {"const": "PASS"}}, "required": ["terminal_status"]},
+      "then": {
+        "properties": {
+          "evidence_complete": {"const": true},
+          "hard_invariant_pass": {"const": true},
+          "adjudication_status": {"enum": ["NOT_REQUIRED", "RESOLVED"]}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"terminal_status": {"const": "FAIL"}}, "required": ["terminal_status"]},
+      "then": {
+        "properties": {
+          "evidence_complete": {"const": true},
+          "hard_invariant_pass": {"const": false},
+          "adjudication_status": {"enum": ["NOT_REQUIRED", "RESOLVED"]}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "terminal_status": {"enum": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"]}
+        },
+        "required": ["terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"type": "null"},
+          "system_invariant_failure_value": {"type": "null"},
+          "hard_invariant_pass": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"terminal_status": {"const": "UNKNOWN"}}, "required": ["terminal_status"]},
+      "then": {"properties": {"evidence_complete": {"const": false}}}
+    },
+    {
+      "if": {
+        "properties": {"target_class": {"const": "SYSTEM_EVAL_ONLY"}},
+        "required": ["target_class"]
+      },
+      "then": {"properties": {"model_subject_id": {"const": "SYSTEM_SCOPE"}}},
+      "else": {"properties": {"model_subject_id": {"not": {"const": "SYSTEM_SCOPE"}}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {"const": "SYSTEM_EVAL_ONLY"},
+          "terminal_status": {"const": "PASS"}
+        },
+        "required": ["target_class", "terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"type": "null"},
+          "system_invariant_failure_value": {"const": 0}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {"const": "SYSTEM_EVAL_ONLY"},
+          "terminal_status": {"const": "FAIL"}
+        },
+        "required": ["target_class", "terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"type": "null"},
+          "system_invariant_failure_value": {"const": 1}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {"not": {"const": "SYSTEM_EVAL_ONLY"}},
+          "terminal_status": {"const": "PASS"}
+        },
+        "required": ["target_class", "terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"const": 0},
+          "system_invariant_failure_value": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {"not": {"const": "SYSTEM_EVAL_ONLY"}},
+          "terminal_status": {"const": "FAIL"}
+        },
+        "required": ["target_class", "terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"const": 1},
+          "system_invariant_failure_value": {"type": "null"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 192,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]*$"
+    },
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

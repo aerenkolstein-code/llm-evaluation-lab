@@ -1,0 +1,254 @@
+{
+  "schema_version": "b2-bm0-measurement-contract/v1",
+  "work_order_id": "WO-B2-BM0",
+  "work_order_revision": "v0.2",
+  "stage": "BOUNDED_OFFLINE_MEASUREMENT_CONTRACT",
+  "implementation_base_sha": "901ba05b99c413d45415c474c71b5969c155dea1",
+  "authority": "MEASUREMENT_CONTRACT_NOT_BENCHMARK_RESULT",
+  "provider_roster_status": "NOT_SELECTED",
+  "artifact_bindings": {
+    "b2/bm0.py": "sha256:3061789a823f5363b241501f2695e4e48f6f3a4543cfdffd002e1fefe59300aa",
+    "tests/test_b2_bm0.py": "sha256:57a7e91382832c59f2e3bb8f6f1ca55f666443fa5a821f52230666443b13c4bd",
+    "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:f7977d941237210d6cec8261c0b9e60ce1e0d62f63bce6dd948b189a82280a30",
+    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:7aa69e5871e499d41a52b8259e7e3e7c7828f6467bcf957edec470b4a6d9d130",
+    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:095a7740b1dde0dcc8ba023f5976419fdffe87d2851dc7a235e7717521f901f5",
+    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:765950f0ef31d7ef941c50aa10c7b2425086f327535c92ff5f43bc51f4db219d",
+    "schemas/bm0_trial_identity.schema.json": "sha256:f09cedda3863ca021ed11f5d1feb38fea5f3858179ed8918eb435b35e24f89f4",
+    "schemas/bm0_observation.schema.json": "sha256:be4725f6b40f462882185b0bd7af5950e81f9181a873b5fa6af698ecf90b127a",
+    "schemas/bm0_adjudication_record.schema.json": "sha256:81c57f199c00e96fcb18b9bfb119a143b373ca0216e0d838c3b750d12305d4da",
+    "schemas/bm0_benchmark_manifest.schema.json": "sha256:53f86eb62d4b8e3f11170510e4948b3a3131d852bbb22597d9c4caf4a30f37b5",
+    "schemas/bm0_measurement_contract.schema.json": "sha256:7f045c92abb38e71eb2d87e0a6057af4e536a72575ea12dc9f292c16b0b5b357"
+  },
+  "target_contract": {
+    "target_count": 16,
+    "class_counts": {
+      "MODEL_DIRECT": 3,
+      "MODEL_CONTEXT_GROUNDED": 5,
+      "AGENT_STANDARDIZED": 4,
+      "SYSTEM_EVAL_ONLY": 4
+    },
+    "default_comparable_classes": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
+    "sandbox_equivalence_status": "NOT_ESTABLISHED"
+  },
+  "terminal_semantics": [
+    {
+      "terminal_status": "PASS",
+      "category": "MODEL_SCORABLE",
+      "model_failure_denominator": true,
+      "model_failure_numerator": false
+    },
+    {
+      "terminal_status": "FAIL",
+      "category": "MODEL_SCORABLE",
+      "model_failure_denominator": true,
+      "model_failure_numerator": true
+    },
+    {
+      "terminal_status": "NOT_EVALUABLE",
+      "category": "NON_EVALUABLE",
+      "model_failure_denominator": false,
+      "model_failure_numerator": false
+    },
+    {
+      "terminal_status": "BLOCKED",
+      "category": "GOVERNANCE_BLOCK",
+      "model_failure_denominator": false,
+      "model_failure_numerator": false
+    },
+    {
+      "terminal_status": "ERROR",
+      "category": "INFRASTRUCTURE_ERROR",
+      "model_failure_denominator": false,
+      "model_failure_numerator": false
+    },
+    {
+      "terminal_status": "UNKNOWN",
+      "category": "INSUFFICIENT_EVIDENCE",
+      "model_failure_denominator": false,
+      "model_failure_numerator": false
+    }
+  ],
+  "model_failure_denominator": {
+    "unit": "UNIQUE_PREDECLARED_ATTEMPT",
+    "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
+    "eligible_classes": ["MODEL_DIRECT", "MODEL_CONTEXT_GROUNDED"],
+    "included_statuses": ["PASS", "FAIL"],
+    "failure_status": "FAIL",
+    "excluded_statuses": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+    "zero_denominator": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR",
+    "partial_grid": "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS",
+    "retry_semantics": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"
+  },
+  "sap": {
+    "sap_id": "B2-BM0-EXECUTABLE-SAP-001",
+    "frozen_before_hidden_access": true,
+    "methods": [
+      {
+        "method_id": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1",
+        "implementation": "fixed_attempt_stop_v1",
+        "purpose": "Stop only when every predeclared attempt identity has a recorded collection receipt, without receiving outcomes or scores.",
+        "frozen_parameters": {
+          "required_event_fields": ["attempt_id", "recorded"],
+          "forbidden_event_fields": ["terminal_status", "model_failure_value", "score", "output", "adjudication_decision"],
+          "decision_rule": "STOP_IFF_ALL_PREDECLARED_ATTEMPTS_RECORDED"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-02-IDENTITY-GRID-V1",
+        "implementation": "validate_observation_grid_v1",
+        "purpose": "Require one identity-consistent observation for every planned attempt and reject duplicates, substitutions, and unplanned rows.",
+        "frozen_parameters": {
+          "duplicate_policy": "ERROR",
+          "unplanned_policy": "ERROR",
+          "missing_policy": "NOT_EVALUABLE"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1",
+        "implementation": "typed_terminal_partition_v1",
+        "purpose": "Count all six terminal states without coercing infrastructure, governance, or missing-evidence states into model quality.",
+        "frozen_parameters": {
+          "terminal_statuses": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "coercion": "FORBIDDEN",
+          "diagnostic_numerator": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "diagnostic_denominator": ["PASS", "FAIL", "NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "zero_scheduled_attempts": "NOT_EVALUABLE",
+          "corpus_pool": "ALL_DECLARED_POOLS"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1",
+        "implementation": "model_failure_denominator_v1",
+        "purpose": "Compute each model subject's descriptive failure rate as FAIL divided only by PASS plus FAIL on the complete predeclared comparable grid.",
+        "frozen_parameters": {
+          "numerator": ["FAIL"],
+          "denominator": ["PASS", "FAIL"],
+          "excluded": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "zero_denominator": "NOT_EVALUABLE",
+          "ranking": "FORBIDDEN_AT_BM0",
+          "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+        "implementation": "wilson_interval_v1",
+        "purpose": "Compute a deterministic two-sided 95 percent Wilson score interval for a non-zero binary model-failure denominator.",
+        "frozen_parameters": {
+          "confidence_level": 0.95,
+          "z": 1.959963984540054,
+          "zero_denominator": "NOT_EVALUABLE"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-06-PAIRED-COMPLETE-CASE-V1",
+        "implementation": "paired_complete_case_v1",
+        "purpose": "Compare two predeclared model subjects only on the same target, corpus alias, replicate, and derived retry ordinal identities that are model-scorable for both.",
+        "frozen_parameters": {
+          "pair_key": ["target_id", "corpus_item_alias", "replicate_index", "retry_ordinal"],
+          "compatibility_fields": [
+            "target_id",
+            "target_class",
+            "corpus_item_alias",
+            "corpus_item_commitment",
+            "corpus_pool_id",
+            "mutation_parent_commitment",
+            "prompt_template_version",
+            "harness_version",
+            "adapter_version",
+            "replicate_index",
+            "random_seed",
+            "environment_fingerprint"
+          ],
+          "non_scorable_pair_policy": "SYMMETRIC_EXCLUSION",
+          "unpaired_design": "NOT_EVALUABLE",
+          "identity_mismatch": "NOT_EVALUABLE",
+          "ranking": "NOT_EMITTED",
+          "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1",
+        "implementation": "resolve_adjudication_v1",
+        "purpose": "Resolve two independent blind primary records by agreement or exactly one predeclared distinct blind tiebreaker; retain UNKNOWN and ERROR.",
+        "frozen_parameters": {
+          "primary_records": 2,
+          "distinct_adjudicators": true,
+          "tiebreakers_on_disagreement": 1,
+          "identity_blinding": true,
+          "peer_decision_blinding": true
+        }
+      },
+      {
+        "method_id": "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1",
+        "implementation": "system_invariant_failure_rate_v1",
+        "purpose": "Compute FAIL divided by PASS plus FAIL for predeclared SYSTEM_EVAL_ONLY attempts while forbidding model attribution and rankings.",
+        "frozen_parameters": {
+          "target_class": "SYSTEM_EVAL_ONLY",
+          "subject_identity": "SYSTEM_SCOPE",
+          "numerator": ["FAIL"],
+          "denominator": ["PASS", "FAIL"],
+          "excluded": ["NOT_EVALUABLE", "BLOCKED", "ERROR", "UNKNOWN"],
+          "model_attribution": "FORBIDDEN",
+          "ranking": "FORBIDDEN",
+          "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
+        }
+      }
+    ]
+  },
+  "adjudication_contract": {
+    "schema_path": "schemas/bm0_adjudication_record.schema.json",
+    "plan_location": "FROZEN_MANIFEST",
+    "mode_status": "NOT_SELECTED",
+    "minimum_primary_records": 2,
+    "distinct_adjudicators_required": true,
+    "adjudicator_configuration_bound": true,
+    "predeclared_tiebreaker_required": true,
+    "tiebreak_rule": "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ON_DISAGREEMENT",
+    "model_identity_blinded": true,
+    "provider_identity_blinded": true,
+    "peer_decisions_blinded": true
+  },
+  "claim_ceiling": {
+    "allowed_claim_codes": [
+      "BM0_OFFLINE_CONTRACT_VALIDATED",
+      "BM0_READY_FOR_EXACT_HEAD_CI_AND_INDEPENDENT_QA"
+    ],
+    "forbidden_claim_codes": [
+      "BM0_GREEN",
+      "MODEL_RANKING",
+      "MODEL_WINNER",
+      "LIVE_PROVIDER_PERFORMANCE",
+      "POPULATION_FAILURE_RATE",
+      "CAUSAL_IMPROVEMENT",
+      "FAIRNESS_VALIDATED",
+      "LQE_VALIDATED",
+      "PRODUCTION_READY",
+      "INDEPENDENT_QA_PASS"
+    ]
+  },
+  "execution_boundaries": {
+    "live_model_calls": 0,
+    "credential_lookup": false,
+    "spend": 0,
+    "provider_roster_selection": false,
+    "benchmark_results": false,
+    "b2_blind_reuse_by_assumption": false,
+    "b1_pr17_mutation": false,
+    "qa_receipt_history_rewrite": false,
+    "fairness_lqe_promotion": false,
+    "dependency_workflow_docker_version_change": false,
+    "merge_release": false
+  },
+  "bm0_green_gate": {
+    "developer_regressions": "REQUIRED",
+    "exact_head_ci": "REQUIRED",
+    "independent_qa": "DISTINCT_PASS_REQUIRED",
+    "current_state": "NOT_EVALUATED"
+  },
+  "limitations": [
+    "BM0 freezes a measurement contract and does not execute a model, provider, agent, hidden corpus, or benchmark.",
+    "The provider/model roster, adjudication mode, and private holdout aggregate commitment remain NOT_SELECTED or NOT_COMMITTED.",
+    "Developer contract PASS is neither exact-head CI nor distinct Independent QA PASS and cannot make BM0 GREEN."
+  ],
+  "contract_fingerprint": "sha256:0bb31ac869f899b2c20433b89417e87ad9ccf08cfc673af0b72281045414ac6d"
+}

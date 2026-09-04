@@ -1,0 +1,85 @@
+{
+  "schema_version": "b2-bm0-contract-validation-receipt/v1",
+  "work_order_id": "WO-B2-BM0",
+  "work_order_revision": "v0.2",
+  "implementation_base_sha": "901ba05b99c413d45415c474c71b5969c155dea1",
+  "validation_scope": "OFFLINE_MEASUREMENT_CONTRACT_ONLY",
+  "artifact_count": 12,
+  "artifact_fingerprints": {
+    "b2/bm0.py": "sha256:3061789a823f5363b241501f2695e4e48f6f3a4543cfdffd002e1fefe59300aa",
+    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:765950f0ef31d7ef941c50aa10c7b2425086f327535c92ff5f43bc51f4db219d",
+    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:095a7740b1dde0dcc8ba023f5976419fdffe87d2851dc7a235e7717521f901f5",
+    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:7aa69e5871e499d41a52b8259e7e3e7c7828f6467bcf957edec470b4a6d9d130",
+    "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:f7977d941237210d6cec8261c0b9e60ce1e0d62f63bce6dd948b189a82280a30",
+    "schemas/bm0_adjudication_record.schema.json": "sha256:81c57f199c00e96fcb18b9bfb119a143b373ca0216e0d838c3b750d12305d4da",
+    "schemas/bm0_benchmark_manifest.schema.json": "sha256:53f86eb62d4b8e3f11170510e4948b3a3131d852bbb22597d9c4caf4a30f37b5",
+    "schemas/bm0_measurement_contract.schema.json": "sha256:7f045c92abb38e71eb2d87e0a6057af4e536a72575ea12dc9f292c16b0b5b357",
+    "schemas/bm0_observation.schema.json": "sha256:be4725f6b40f462882185b0bd7af5950e81f9181a873b5fa6af698ecf90b127a",
+    "schemas/bm0_trial_identity.schema.json": "sha256:f09cedda3863ca021ed11f5d1feb38fea5f3858179ed8918eb435b35e24f89f4",
+    "tests/test_b2_bm0.py": "sha256:57a7e91382832c59f2e3bb8f6f1ca55f666443fa5a821f52230666443b13c4bd",
+    "cases/b2/public-safe/benchmark/bm0-measurement-contract.json": "sha256:0bb31ac869f899b2c20433b89417e87ad9ccf08cfc673af0b72281045414ac6d"
+  },
+  "target_count": 16,
+  "target_class_counts": {
+    "MODEL_DIRECT": 3,
+    "MODEL_CONTEXT_GROUNDED": 5,
+    "AGENT_STANDARDIZED": 4,
+    "SYSTEM_EVAL_ONLY": 4
+  },
+  "default_comparable_classes": [
+    "MODEL_DIRECT",
+    "MODEL_CONTEXT_GROUNDED"
+  ],
+  "primary_estimate_pool": "PRIVATE_HIDDEN_HOLDOUT",
+  "sandbox_equivalence_status": "NOT_ESTABLISHED",
+  "terminal_statuses": [
+    "PASS",
+    "FAIL",
+    "NOT_EVALUABLE",
+    "BLOCKED",
+    "ERROR",
+    "UNKNOWN"
+  ],
+  "model_failure_denominator_statuses": [
+    "PASS",
+    "FAIL"
+  ],
+  "non_model_failure_statuses": [
+    "NOT_EVALUABLE",
+    "BLOCKED",
+    "ERROR",
+    "UNKNOWN"
+  ],
+  "sap_method_ids": [
+    "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1",
+    "BM0-SAP-02-IDENTITY-GRID-V1",
+    "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1",
+    "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1",
+    "BM0-SAP-05-WILSON-INTERVAL-V1",
+    "BM0-SAP-06-PAIRED-COMPLETE-CASE-V1",
+    "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1",
+    "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1"
+  ],
+  "manifest_template_state": "DESIGN_ONLY",
+  "provider_roster_status": "NOT_SELECTED",
+  "corpus_commitment_status": "NOT_COMMITTED",
+  "corpus_aggregate_commitment": null,
+  "adjudication_mode": "NOT_SELECTED",
+  "planned_attempt_count": 0,
+  "hidden_exact_content_in_public_repository": false,
+  "live_model_calls": 0,
+  "credential_lookups": 0,
+  "spend": 0,
+  "benchmark_results_emitted": false,
+  "developer_contract_gate": "PASS",
+  "exact_head_ci_status": "NOT_RUN",
+  "independent_qa_status": "NOT_RUN",
+  "bm0_green": false,
+  "bm0_status": "READY_FOR_EXACT_HEAD_CI_AND_INDEPENDENT_QA",
+  "limitations": [
+    "This receipt validates an offline measurement contract; it is not a benchmark result.",
+    "No provider/model roster, hidden corpus, live call, ranking, or population estimate is selected or executed.",
+    "Developer validation cannot satisfy the distinct BM0 Independent QA gate."
+  ],
+  "receipt_fingerprint": "sha256:dce85baffe2fe4d51442fb1f94d60cc1a1a88c97c05a38274f99cad4be9d57e8"
+}

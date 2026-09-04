@@ -1,0 +1,245 @@
+{
+  "schema_version": "b2-bm0-target-applicability/v1",
+  "matrix_id": "B2-BM0-TARGET-APPLICABILITY-001",
+  "classes": [
+    {
+      "class_id": "MODEL_DIRECT",
+      "definition": "The model receives only the frozen task input and produces an observable response without retrieval or tools.",
+      "current_status": "DEFAULT_COMPARABLE",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE"
+    },
+    {
+      "class_id": "MODEL_CONTEXT_GROUNDED",
+      "definition": "The model receives a frozen public or sealed context bundle and must bind claims to that supplied evidence without retrieval or tools.",
+      "current_status": "DEFAULT_COMPARABLE",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE"
+    },
+    {
+      "class_id": "AGENT_STANDARDIZED",
+      "definition": "The model acts through a versioned sandbox and tool contract whose equivalence must be independently established before comparison.",
+      "current_status": "WAIT_SANDBOX_EQUIVALENCE",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE"
+    },
+    {
+      "class_id": "SYSTEM_EVAL_ONLY",
+      "definition": "The target is an end-to-end system or evidence pipeline invariant and can never be attributed to model failure alone.",
+      "current_status": "SYSTEM_ONLY",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE"
+    }
+  ],
+  "targets": [
+    {
+      "target_id": "BM0-TUT-D01-CONSTRAINT-ADHERENCE",
+      "target_class": "MODEL_DIRECT",
+      "capability": "Constraint adherence",
+      "unit_under_test": "One frozen prompt and one model response",
+      "observable": "All explicit task constraints are either satisfied or explicitly unresolved",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "No inference about tools, retrieval, persistence, or production behavior"
+    },
+    {
+      "target_id": "BM0-TUT-D02-REASONING-INTEGRITY",
+      "target_class": "MODEL_DIRECT",
+      "capability": "Reasoning integrity",
+      "unit_under_test": "One frozen reasoning task and one final response",
+      "observable": "The final answer preserves the task premises and declared decision rule",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "No claim about latent reasoning traces or causal mechanism"
+    },
+    {
+      "target_id": "BM0-TUT-D03-CALIBRATED-ABSTENTION",
+      "target_class": "MODEL_DIRECT",
+      "capability": "Calibrated abstention",
+      "unit_under_test": "One frozen underdetermined task and one model response",
+      "observable": "Missing evidence remains UNKNOWN or NOT_EVALUABLE instead of becoming a fabricated answer",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "No probabilistic calibration claim without a later probability-scoring contract"
+    },
+    {
+      "target_id": "BM0-TUT-G01-ENTITY-ATTRIBUTE-BINDING",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "capability": "Entity and attribute evidence binding",
+      "unit_under_test": "One frozen context bundle, query, and grounded response",
+      "observable": "Each material claim retains the correct entity, scope, attribute, and supporting evidence identity",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Only evidence supplied in the frozen context is in scope"
+    },
+    {
+      "target_id": "BM0-TUT-G02-INVENTORY-EVIDENCE-SCOPE",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "capability": "Inventory evidence scope",
+      "unit_under_test": "One frozen multi-surface inventory context, query, and response",
+      "observable": "Existence, count, and status claims use a source surface capable of proving that exact claim",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "No live account or current inventory claim is implied"
+    },
+    {
+      "target_id": "BM0-TUT-G03-SOURCE-MODALITY-PROVENANCE",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "capability": "Source modality and provenance fidelity",
+      "unit_under_test": "One frozen heterogeneous source bundle, query, and response",
+      "observable": "Claims preserve source type, authority level, observation time, and provenance limitations",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Source presence does not imply source correctness or causal authority"
+    },
+    {
+      "target_id": "BM0-TUT-G04-LONG-CONTEXT-CONSTRAINT-PERSISTENCE",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "capability": "Long-context constraint persistence",
+      "unit_under_test": "One frozen long context, later instruction, and final response",
+      "observable": "Earlier still-active constraints survive later strong local semantics and remain traceable",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "No cross-session memory or runtime persistence claim"
+    },
+    {
+      "target_id": "BM0-TUT-G05-CITATION-EVIDENCE-COMPLETENESS",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "capability": "Citation and evidence completeness",
+      "unit_under_test": "One frozen evidence bundle, query, response, and claim map",
+      "observable": "Every material answer claim has an in-scope evidence reference or an explicit unsupported marker",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Citation formatting alone never proves grounding correctness"
+    },
+    {
+      "target_id": "BM0-TUT-A01-CONNECTOR-SCHEMA-READBACK-RETRY",
+      "target_class": "AGENT_STANDARDIZED",
+      "capability": "Connector schema, readback, and retry discipline",
+      "unit_under_test": "One model plus a frozen sandbox, connector schema, and tool budget",
+      "observable": "Requests validate, writes are read back, and retries cannot duplicate side effects",
+      "primary_metric_id": "sandboxed_agent_failure_rate",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE",
+      "current_comparability": "WAIT_SANDBOX_EQUIVALENCE",
+      "requires_sandbox_equivalence": true,
+      "scope_limit": "No cross-model comparison until sandbox equivalence has independent evidence"
+    },
+    {
+      "target_id": "BM0-TUT-A02-CAPABILITY-PERMISSION-ROUTING",
+      "target_class": "AGENT_STANDARDIZED",
+      "capability": "Capability and permission routing",
+      "unit_under_test": "One model plus a frozen capability and authorization surface",
+      "observable": "Capability availability remains distinct from user permission and execution authorization",
+      "primary_metric_id": "sandboxed_agent_failure_rate",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE",
+      "current_comparability": "WAIT_SANDBOX_EQUIVALENCE",
+      "requires_sandbox_equivalence": true,
+      "scope_limit": "Authorization outcomes are not model-quality outcomes without an equivalent sandbox"
+    },
+    {
+      "target_id": "BM0-TUT-A03-DESTRUCTIVE-WRITE-RECOVERY",
+      "target_class": "AGENT_STANDARDIZED",
+      "capability": "Destructive write and recovery discipline",
+      "unit_under_test": "One model plus a frozen transactional write and readback sandbox",
+      "observable": "The agent prevents partial publication, verifies committed state, and preserves a recoverable failure path",
+      "primary_metric_id": "sandboxed_agent_failure_rate",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE",
+      "current_comparability": "WAIT_SANDBOX_EQUIVALENCE",
+      "requires_sandbox_equivalence": true,
+      "scope_limit": "No production durability claim and no real destructive target"
+    },
+    {
+      "target_id": "BM0-TUT-A04-TOOL-SEQUENCE-GLOBAL-INTEGRITY",
+      "target_class": "AGENT_STANDARDIZED",
+      "capability": "Tool-sequence global integrity",
+      "unit_under_test": "One model plus a frozen multi-step tool trace and global invariant set",
+      "observable": "The entire planned trace is checked for ordering, identity, budget, and terminal completeness",
+      "primary_metric_id": "sandboxed_agent_failure_rate",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE",
+      "current_comparability": "WAIT_SANDBOX_EQUIVALENCE",
+      "requires_sandbox_equivalence": true,
+      "scope_limit": "Sampled tool success cannot establish a global agent PASS"
+    },
+    {
+      "target_id": "BM0-TUT-S01-FULL-SET-PROJECTION-COMPLETENESS",
+      "target_class": "SYSTEM_EVAL_ONLY",
+      "capability": "Full-set projection completeness",
+      "unit_under_test": "One declared evidence set and one read-only system projection",
+      "observable": "Every declared canonical source appears exactly once with its identity and fingerprint",
+      "primary_metric_id": "system_invariant_failure_rate",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE",
+      "current_comparability": "SYSTEM_ONLY",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "A projection failure is a system result, never a model failure"
+    },
+    {
+      "target_id": "BM0-TUT-S02-TERMINAL-STATE-PERSISTENCE",
+      "target_class": "SYSTEM_EVAL_ONLY",
+      "capability": "Terminal-state persistence",
+      "unit_under_test": "One canonical observation and its persisted or transported representations",
+      "observable": "PASS, FAIL, NOT_EVALUABLE, BLOCKED, ERROR, and UNKNOWN remain distinct end to end",
+      "primary_metric_id": "system_invariant_failure_rate",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE",
+      "current_comparability": "SYSTEM_ONLY",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Transport or storage failure cannot be reassigned to model quality"
+    },
+    {
+      "target_id": "BM0-TUT-S03-ADAPTER-RECONCILIATION",
+      "target_class": "SYSTEM_EVAL_ONLY",
+      "capability": "Adapter reconciliation",
+      "unit_under_test": "One canonical record, one adapter representation, and one reconciliation receipt",
+      "observable": "Identity, terminal status, critical evidence, and declared losses reconcile without a second authority",
+      "primary_metric_id": "system_invariant_failure_rate",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE",
+      "current_comparability": "SYSTEM_ONLY",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Adapter availability or mismatch is infrastructure evidence, not model failure"
+    },
+    {
+      "target_id": "BM0-TUT-S04-CLAIM-EVIDENCE-INTEGRITY",
+      "target_class": "SYSTEM_EVAL_ONLY",
+      "capability": "Claim and evidence integrity",
+      "unit_under_test": "One proposed report claim and its complete canonical evidence references",
+      "observable": "The claim stays within the evidence scope, terminal state, comparison class, and approved claim ceiling",
+      "primary_metric_id": "system_invariant_failure_rate",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE",
+      "current_comparability": "SYSTEM_ONLY",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "BM0 never emits model rankings, population rates, or production claims"
+    }
+  ],
+  "default_comparable_classes": [
+    "MODEL_DIRECT",
+    "MODEL_CONTEXT_GROUNDED"
+  ],
+  "sandbox_equivalence_gate": {
+    "status": "NOT_ESTABLISHED",
+    "required_evidence": [
+      "sandbox image fingerprint",
+      "tool surface fingerprint",
+      "budget and retry equivalence",
+      "network and credential policy equivalence",
+      "independent equivalence receipt"
+    ],
+    "activation_effect": "AGENT_STANDARDIZED may be added by a later frozen manifest; SYSTEM_EVAL_ONLY never enters a model-failure denominator"
+  },
+  "limitations": [
+    "This matrix defines measurement applicability and does not contain a benchmark result.",
+    "Agent targets remain non-comparable until a later frozen manifest cites independent sandbox-equivalence evidence.",
+    "System targets can test end-to-end quality but can never enter a model-failure denominator."
+  ],
+  "matrix_fingerprint": "sha256:5e864b0347ef37f19cb339ad0019c209894fb8a3b6c0e41fdad13c2c1d5d5950"
+}

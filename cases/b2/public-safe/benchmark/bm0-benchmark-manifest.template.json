@@ -1,0 +1,48 @@
+{
+  "schema_version": "b2-bm0-benchmark-manifest/v1",
+  "manifest_id": "B2-BM0-BENCHMARK-MANIFEST-TEMPLATE-001",
+  "contract_id": "WO-B2-BM0",
+  "contract_revision": "v0.2",
+  "implementation_base_sha": "901ba05b99c413d45415c474c71b5969c155dea1",
+  "study_state": "DESIGN_ONLY",
+  "provider_roster_status": "NOT_SELECTED",
+  "corpus_commitment_status": "NOT_COMMITTED",
+  "corpus_aggregate_commitment": null,
+  "adjudication_mode": "NOT_SELECTED",
+  "adjudication_plan": null,
+  "frozen_before_hidden_access": true,
+  "comparison_classes": [
+    "MODEL_DIRECT",
+    "MODEL_CONTEXT_GROUNDED"
+  ],
+  "sandbox_equivalence": {
+    "status": "NOT_ESTABLISHED",
+    "evidence_refs": []
+  },
+  "artifact_fingerprints": {
+    "target_matrix": "sha256:5e864b0347ef37f19cb339ad0019c209894fb8a3b6c0e41fdad13c2c1d5d5950",
+    "metric_registry": "sha256:3273d2ab9cae0a3dd12bfa64288ad35741847ab7c9d46b65da67eb5647358eb1",
+    "corpus_policy": "sha256:28b4e69d66424b7bc7aa31dd3f4f6170a56fcd932dd46774469edb8872673103",
+    "analysis_plan": "sha256:8a2b8cfdd4d85cccb8b81bac909ee0221306f6107322d31aa85657e36a05f405",
+    "analysis_implementation": "sha256:3061789a823f5363b241501f2695e4e48f6f3a4543cfdffd002e1fefe59300aa"
+  },
+  "planned_attempts": [],
+  "planned_attempt_count": 0,
+  "stop_rule": {
+    "method_id": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1",
+    "outcome_blind": true,
+    "required_event_fields": [
+      "attempt_id",
+      "recorded"
+    ],
+    "forbidden_event_fields": [
+      "terminal_status",
+      "model_failure_value",
+      "score",
+      "output",
+      "adjudication_decision"
+    ],
+    "planned_attempt_count": 0
+  },
+  "manifest_fingerprint": "sha256:d416d408eefca506b841ee3f22e24459f4bbde40ad73f890d2c0d1817c2d9281"
+}

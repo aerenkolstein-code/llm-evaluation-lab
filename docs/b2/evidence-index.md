@@ -85,3 +85,23 @@ performance, and quality delta as `NOT_EVALUABLE` where the canonical snapshot
 does not contain the required series or baseline. No brand-specific adapter or
 brand-specific claim is selected. Developer PASS remains distinct from the
 Independent QA verdict.
+
+## B2 BM0 measurement-contract evidence
+
+| Contract surface | Canonical artifact | Developer evidence |
+|---|---|---|
+| 16-entry target/applicability partition | `cases/b2/public-safe/benchmark/bm0-target-applicability.json` | exact ordered counts: 3 direct, 5 context-grounded, 4 agent-standardized, 4 system-only |
+| Metric and denominator registry | `cases/b2/public-safe/benchmark/bm0-metric-registry.json` | `FAIL / (PASS + FAIL)` only; four non-model terminal states excluded |
+| Public/hidden corpus separation | `cases/b2/public-safe/benchmark/bm0-corpus-policy.json` | private exact content, IDs, locator, and per-case commitments absent from the public repository |
+| Manifest and no-peeking stop rule | `cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json` | design-only, roster not selected, zero attempts, sandbox equivalence not established |
+| Central contract and executable SAP | `cases/b2/public-safe/benchmark/bm0-measurement-contract.json` | eight named deterministic methods, artifact fingerprints, model/system attribution boundary, claim ceiling, BM0 gate boundary |
+| Strict record shapes | `schemas/bm0_*.schema.json` | contract, manifest, trial identity, observation, and blind-adjudication schemas |
+| Adversarial validation | `tests/test_b2_bm0.py` | semantic tamper, identity substitution, duplicate/unplanned rows, stop-rule peeking, zero denominator, paired compatibility/exclusion, and adjudication conflict tests |
+| Checked developer receipt | `results/b2/bm0-contract-validation.json` | offline contract PASS only; exact-head CI and Independent QA remain `NOT_RUN`; `bm0_green` remains false |
+
+BM0 is based on fresh `main@901ba05b99c413d45415c474c71b5969c155dea1`.
+It does not reuse the B2-BLIND-01 / PR #30 repair head, mutate B1 / PR #17,
+rewrite QA0–QA3 receipts, call a live provider, select a model roster, expose a
+hidden corpus, emit a ranking, or promote Fairness/LQE. Its developer receipt
+is ready for exact-head CI and a distinct BM0 Independent QA review, but it is
+not itself a BM0 GREEN verdict.

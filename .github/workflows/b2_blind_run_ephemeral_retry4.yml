@@ -1,0 +1,159 @@
+name: B2 Blind Run Ephemeral Q1 R1 Retry4
+
+on:
+  push:
+    branches:
+      - agent/b2-blind-run-q1-20260904-r1
+    paths:
+      - .github/workflows/b2_blind_run_ephemeral_retry4.yml
+
+permissions:
+  contents: read
+
+jobs:
+  blind-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_CONTEXT_SHA256: a595fb210b225e201e6b9a191a2559880ebd118946f770b440e5326955d58e58
+      EXPECTED_PROMPT_SHA256: c27eeeab07789ed2ac49c3c5a6034093659c35cdf8b76b1c78b2b670872c5d4c
+      EXPECTED_CONTEXT_BYTES: '108230'
+      EXPECTED_PROMPT_BYTES: '2308'
+      B2_MAIN_COMMIT: 901ba05b99c413d45415c474c71b5969c155dea1
+      RUN_ID: B2-DITING-Q1-R1-DEEPSEEK-V4-PRO-20260904
+
+    steps:
+      - name: Checkout execution branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install bridge and crypto dependency
+        run: python -m pip install -e . cryptography
+
+      - name: Generate ephemeral input-decryption key
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/b2h
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out /tmp/b2h/priv.pem >/dev/null 2>&1
+          openssl rsa -pubout -in /tmp/b2h/priv.pem -out /tmp/b2h/pub.pem >/dev/null 2>&1
+          chmod 600 /tmp/b2h/priv.pem
+
+      - name: Publish ephemeral input public key
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-blind-q1-r1-input-public-key-v4
+          path: /tmp/b2h/pub.pem
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Wait for encrypted payload pointer
+        env:
+          GH_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/blind-input-r4/payload_pointer.json?ref=${GITHUB_REF_NAME}"
+          ok=0
+          for _ in $(seq 1 144); do
+            if curl -fsSL -H "Authorization: Bearer ${GH_READ_TOKEN}" -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api" -o /tmp/b2h/pointer.json; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "Encrypted payload pointer did not arrive within bounded wait window." >&2
+            exit 70
+          fi
+          python - <<'PY'
+          import hashlib,json,pathlib,urllib.request
+          p=json.loads(pathlib.Path('/tmp/b2h/pointer.json').read_text())
+          url=p['url']; want=p['sha256']
+          data=urllib.request.urlopen(url, timeout=90).read()
+          got=hashlib.sha256(data).hexdigest()
+          if got != want: raise SystemExit('encrypted payload sha256 mismatch')
+          pathlib.Path('/tmp/b2h/payload.json').write_bytes(data)
+          PY
+
+      - name: Decrypt and verify byte-frozen inputs
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,hashlib,io,json,os,pathlib,zipfile
+          from cryptography.hazmat.primitives import hashes,serialization
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          p=json.loads(pathlib.Path('/tmp/b2h/payload.json').read_text())
+          if p.get('alg')!='RSA-OAEP-SHA256+AES-256-GCM/v1': raise SystemExit('unsupported payload alg')
+          priv=serialization.load_pem_private_key(pathlib.Path('/tmp/b2h/priv.pem').read_bytes(),password=None)
+          key=priv.decrypt(base64.b64decode(p['wrapped_key_b64']),padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))
+          archive=AESGCM(key).decrypt(base64.b64decode(p['nonce_b64']),base64.b64decode(p['ciphertext_b64']),b'B2-DITING-Q1-R1')
+          with zipfile.ZipFile(io.BytesIO(archive)) as z:
+              context=z.read('context.txt'); prompt=z.read('prompt.txt')
+          if len(context)!=int(os.environ['EXPECTED_CONTEXT_BYTES']) or hashlib.sha256(context).hexdigest()!=os.environ['EXPECTED_CONTEXT_SHA256']: raise SystemExit('context mismatch')
+          if len(prompt)!=int(os.environ['EXPECTED_PROMPT_BYTES']) or hashlib.sha256(prompt).hexdigest()!=os.environ['EXPECTED_PROMPT_SHA256']: raise SystemExit('prompt mismatch')
+          pathlib.Path('/tmp/context.txt').write_bytes(context)
+          pathlib.Path('/tmp/prompt.txt').write_bytes(prompt)
+          PY
+
+      - name: Execute exactly one authorized blind provider attempt
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          set +e
+          python -m b2.blind_eval \
+            --context-file /tmp/context.txt \
+            --prompt-file /tmp/prompt.txt \
+            --provider deepseek \
+            --protocol openai-compatible-chat-completions/v1 \
+            --model deepseek-v4-pro \
+            --endpoint https://api.deepseek.com/chat/completions \
+            --api-key-env DEEPSEEK_API_KEY \
+            --run-id "$RUN_ID" \
+            --git-commit "$B2_MAIN_COMMIT" \
+            --timeout 180 \
+            --temperature 0 \
+            --max-tokens 8192 \
+            --raw-output /tmp/run.raw.txt \
+            --receipt-output /tmp/run.receipt.json \
+            --authorize-live-call > /tmp/bridge.stdout.json
+          code=$?
+          set -e
+          echo "$code" > /tmp/bridge.exit.txt
+          test -f /tmp/run.receipt.json
+
+      - name: Encrypt private result bundle for return
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,io,json,pathlib,secrets,zipfile
+          from cryptography.hazmat.primitives import hashes,serialization
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          b=io.BytesIO()
+          with zipfile.ZipFile(b,'w',zipfile.ZIP_DEFLATED) as z:
+              for src,arc in [('/tmp/run.receipt.json','receipt.json'),('/tmp/bridge.stdout.json','bridge_stdout.json'),('/tmp/bridge.exit.txt','bridge_exit_code.txt')]:
+                  if pathlib.Path(src).exists(): z.writestr(arc,pathlib.Path(src).read_bytes())
+              if pathlib.Path('/tmp/run.raw.txt').exists(): z.writestr('raw_answer.txt',pathlib.Path('/tmp/run.raw.txt').read_bytes())
+          pub=serialization.load_pem_public_key(pathlib.Path('blind-handshake/return_public.pem').read_bytes())
+          key=secrets.token_bytes(32); nonce=secrets.token_bytes(12)
+          ct=AESGCM(key).encrypt(nonce,b.getvalue(),b'B2-DITING-Q1-R1-RESULT')
+          wrapped=pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))
+          out={'wrapped_key_b64':base64.b64encode(wrapped).decode(),'nonce_b64':base64.b64encode(nonce).decode(),'ciphertext_b64':base64.b64encode(ct).decode()}
+          pathlib.Path('/tmp/result.enc.json').write_text(json.dumps(out,separators=(',',':')))
+          PY
+
+      - name: Upload encrypted private result
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-blind-q1-r1-encrypted-result-v4
+          path: /tmp/result.enc.json
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove plaintext private working files
+        if: always()
+        run: rm -f /tmp/context.txt /tmp/prompt.txt /tmp/run.raw.txt /tmp/run.receipt.json /tmp/bridge.stdout.json /tmp/b2h/priv.pem /tmp/b2h/payload.json /tmp/b2h/pointer.json

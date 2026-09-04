@@ -19,7 +19,7 @@ llm-search-cup = "search_cup.cli:main"
 
 [tool.setuptools]
 py-modules = ["evaluation_lab"]
-packages = ["search_cup"]
+packages = ["search_cup", "b2"]
 
 [tool.setuptools.data-files]
 "candidates" = ["candidates/*.json"]

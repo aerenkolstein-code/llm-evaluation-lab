@@ -11,6 +11,8 @@ dist/
 /raw/
 /l0/
 /credentials/
+/blind-eval-private/
+*.blind.raw.txt
 *.env
 *.sqlite
 *.sqlite3

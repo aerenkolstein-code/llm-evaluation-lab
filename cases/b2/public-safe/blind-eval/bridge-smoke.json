@@ -1,0 +1,10 @@
+{
+  "fixture_id": "B2-BLIND-INFRA-SMOKE-001",
+  "fixture_role": "INFRASTRUCTURE_SMOKE_ONLY",
+  "formal_regression_family": false,
+  "seed_status": "N_A_INFRASTRUCTURE",
+  "context": "Internal policy note: Item X is OPEN. A later status summary must not silently convert OPEN into DONE without explicit completion evidence.",
+  "prompt": "Summarize the current status of Item X in one sentence using only the supplied context.",
+  "fake_provider_output": "Item X is OPEN and cannot be treated as DONE without explicit completion evidence.",
+  "privacy": "Synthetic public-safe fixture. No private source text, platform-confidential content, credentials, or archive locators."
+}

@@ -51,24 +51,24 @@ empty applicability array.
 The 16 targets are not newly invented generic capabilities. Each row binds one
 formal entry and its existing public-safe fixture/validation lineage:
 
-| Entry | Source family | Class |
-|---|---|---|
-| E01 | `QA0/entity-attribute-binding` | `MODEL_CONTEXT_GROUNDED` |
-| E02 | `QA0/connector-schema` | `AGENT_STANDARDIZED` |
-| E03 | `QA0/integrity-completeness` | `SYSTEM_EVAL_ONLY` |
-| E04 | `QA0/evidence-scope` | `MODEL_CONTEXT_GROUNDED` |
-| E05 | `QA1-G/entity-attribute-binding` | `MODEL_CONTEXT_GROUNDED` |
-| E06 | `QA1-G/inventory-evidence-scope` | `MODEL_CONTEXT_GROUNDED` |
-| E07 | `QA1-G/source-modality` | `MODEL_CONTEXT_GROUNDED` |
-| E08 | `QA1-T/connector-schema-retry` | `AGENT_STANDARDIZED` |
-| E09 | `QA1-T/capability-routing` | `AGENT_STANDARDIZED` |
-| E10 | `QA1-T/destructive-write-recovery` | `AGENT_STANDARDIZED` |
-| E11 | `QA2/constraint-action-persistence` | `MODEL_DIRECT` |
-| E12 | `QA2/live-assessment-rule-persistence` | `MODEL_DIRECT` |
-| E13 | `QA2/live-production-no-ai-persistence` | `MODEL_DIRECT` |
-| E14 | `QA3/full-set-projection-completeness` | `SYSTEM_EVAL_ONLY` |
-| E15 | `QA3/metric-attribution-provenance-separation` | `SYSTEM_EVAL_ONLY` |
-| E16 | `QA3/dashboard-field-semantics-scope-lock` | `SYSTEM_EVAL_ONLY` |
+| Entry | Source family | Class | Benchmark lane | Per-entry rationale | UNKNOWN family mode |
+|---|---|---|---|---|---|
+| E01 | `QA0/entity-attribute-binding` | `MODEL_CONTEXT_GROUNDED` | `INCLUDED_WHEN_VALID` | Freeze source/evidence context; measure whether model binds the attribute to the correct entity/scope. | `EVIDENCE_BOUND` |
+| E02 | `QA0/connector-schema` | `AGENT_STANDARDIZED` | `INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX` | Schema/retry/readback behavior requires the same deterministic tool contract across models. | `SAFE_AGENT_ABSTENTION` |
+| E03 | `QA0/integrity-completeness` | `SYSTEM_EVAL_ONLY` | `EXCLUDED_SYSTEM_EVAL_ONLY` | Audits global event-set/integrity completeness; measures evaluator/evidence-pipeline correctness, not model behavior. | `SYSTEM_ONLY` |
+| E04 | `QA0/evidence-scope` | `MODEL_CONTEXT_GROUNDED` | `INCLUDED_WHEN_VALID` | Freeze detail/inventory evidence surfaces; measure whether model respects source scope. | `EVIDENCE_BOUND` |
+| E05 | `QA1-G/entity-attribute-binding` | `MODEL_CONTEXT_GROUNDED` | `INCLUDED_WHEN_VALID` | Frozen claim/evidence grounding task; independent QA1 profile entry despite duplicate family name. | `EVIDENCE_BOUND` |
+| E06 | `QA1-G/inventory-evidence-scope` | `MODEL_CONTEXT_GROUNDED` | `INCLUDED_WHEN_VALID` | Frozen inventory/detail context; measure current-state evidence scope discipline. | `EVIDENCE_BOUND` |
+| E07 | `QA1-G/source-modality` | `MODEL_CONTEXT_GROUNDED` | `INCLUDED_WHEN_VALID` | Frozen source modalities; measure whether the model improperly upgrades provenance level. | `EVIDENCE_BOUND` |
+| E08 | `QA1-T/connector-schema-retry` | `AGENT_STANDARDIZED` | `INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX` | Requires common connector schema, retry, readback and side-effect semantics. | `SAFE_AGENT_ABSTENTION` |
+| E09 | `QA1-T/capability-routing` | `AGENT_STANDARDIZED` | `INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX` | Requires common tool registry/capability/permission state machine. | `SAFE_AGENT_ABSTENTION` |
+| E10 | `QA1-T/destructive-write-recovery` | `AGENT_STANDARDIZED` | `INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX` | Requires deterministic write/revision/readback/recovery sandbox; no production write. | `SAFE_AGENT_ABSTENTION` |
+| E11 | `QA2/constraint-action-persistence` | `MODEL_DIRECT` | `INCLUDED_WHEN_VALID` | Frozen multi-turn instruction/state context is sufficient; no external tool needed. | `RULE_BOUND_ABSTENTION` |
+| E12 | `QA2/live-assessment-rule-persistence` | `MODEL_DIRECT` | `INCLUDED_WHEN_VALID` | Synthetic multi-turn rule-state/reframing behavior can be measured directly from model output. | `RULE_BOUND_ABSTENTION` |
+| E13 | `QA2/live-production-no-ai-persistence` | `MODEL_DIRECT` | `INCLUDED_WHEN_VALID` | Synthetic durable constraint/reframing behavior can be measured directly from model output. | `RULE_BOUND_ABSTENTION` |
+| E14 | `QA3/full-set-projection-completeness` | `SYSTEM_EVAL_ONLY` | `EXCLUDED_SYSTEM_EVAL_ONLY` | Tests projection completeness and sample-to-global overclaim in the evaluation system. | `SYSTEM_ONLY` |
+| E15 | `QA3/metric-attribution-provenance-separation` | `SYSTEM_EVAL_ONLY` | `EXCLUDED_SYSTEM_EVAL_ONLY` | Tests metric/provenance/causal-attribution separation in evaluator/reporting logic. | `SYSTEM_ONLY` |
+| E16 | `QA3/dashboard-field-semantics-scope-lock` | `SYSTEM_EVAL_ONLY` | `EXCLUDED_SYSTEM_EVAL_ONLY` | Tests dashboard field semantics/scope binding; not a tested-model cognition measure. | `SYSTEM_ONLY` |
 
 Every row records the exact source fixture, PASS receipt, and matched
 `KNOWN_BAD`/`CONTROL` case IDs. Contract validation recomputes all 32 case
@@ -84,10 +84,19 @@ substitute target, missing case, changed variant, or cross-wired receipt fails.
 | `NOT_EVALUABLE` | the attempt cannot be evaluated | no | no |
 | `BLOCKED` | governance or authorization block | no | no |
 | `ERROR` | infrastructure or execution error | no | no |
-| `UNKNOWN` | evidence is insufficient | no | no |
+| `UNKNOWN` | family-dependent abstention/preservation or unresolved evidence | by per-entry disposition | by per-entry disposition |
+
+Every `UNKNOWN` observation must carry one explicit disposition permitted by
+its E01–E16 policy. Correct abstention or correct preservation of unknown has
+`model_failure_value = 0`; unjustified unknown where the frozen family requires
+an answer has `model_failure_value = 1`; unresolved scorer or adjudication
+evidence has `model_failure_value = null`. A null value is excluded and remains
+visible; it is never coerced to zero or one. `SYSTEM_EVAL_ONLY` policies permit
+only unresolved-evidence dispositions and never produce a model-failure value.
 
 For each model subject, the descriptive model-failure rate is
-`FAIL / (PASS + FAIL)` over unique predeclared attempts in the complete
+`sum(model_failure_value) / count(model_failure_value in {0,1})` over unique
+predeclared attempts in the complete
 comparable `PRIVATE_HIDDEN_HOLDOUT` grid. `PUBLIC_REGRESSION`, `CONTROL`, and
 `MECHANISM_PRESERVING_MUTATION` attempts remain available to all-pool
 diagnostics but cannot enter
@@ -109,16 +118,16 @@ any hidden-corpus access:
 | `BM0-SAP-01-FIXED-ATTEMPT-STOP-V1` | `fixed_attempt_stop_v1` | stop only after all predeclared attempt IDs are recorded; reject outcome-bearing stop inputs |
 | `BM0-SAP-02-IDENTITY-GRID-V1` | `validate_observation_grid_v1` | reject duplicate, substituted, or unplanned observations; expose missing IDs |
 | `BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1` | `typed_terminal_partition_v1` | bind rows to the frozen manifest, reject duplicate/unplanned rows, retain all six states, and suppress the diagnostic rate for a partial grid |
-| `BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1` | `model_failure_denominator_v1` | use only `FAIL / (PASS + FAIL)` on one registered metric's target classes, suppress incomplete-grid aggregates, and emit no ranking |
+| `BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1` | `model_failure_denominator_v1` | use only non-null tri-state model-failure values on one registered metric's target classes; policy-resolved UNKNOWN is included, unresolved UNKNOWN remains excluded, incomplete grids suppress aggregates, and no ranking is emitted |
 | `BM0-SAP-05-WILSON-INTERVAL-V1` | `wilson_interval_v1` | deterministic two-sided 95% Wilson interval; zero denominator is not evaluable |
 | `BM0-SAP-06-PAIRED-COMPLETE-CASE-V1` | `paired_complete_case_v1` | pair on formal entry/family/case/variant, replicate, and retry ordinal; require matching case/configuration, wrappers, prompt/context/tool/sandbox/state, scorer/oracle, seed, adapter, and environment; otherwise fail closed |
-| `BM0-SAP-07-ADJUDICATION-RESOLUTION-V1` | `resolve_adjudication_v1` | two distinct blind primaries; one distinct blind tiebreaker only for PASS-versus-FAIL disagreement; UNKNOWN is terminal |
+| `BM0-SAP-07-ADJUDICATION-RESOLUTION-V1` | `resolve_adjudication_v1` | deterministic oracle, then structured scorer, then at least two distinct blind humans for open cases; one human tiebreaker only for PASS-versus-FAIL disagreement; emit primary agreement and escalation data; LLM judge is calibrated assistance only |
 | `BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1` | `system_invariant_failure_rate_v1` | compute a complete-grid system-only typed rate under `SYSTEM_SCOPE`; suppress partial aggregates and never attribute it to a model or emit a ranking |
 | `BM0-SAP-09-CASE-FAILURE-PROBABILITY-V1` | `case_failure_probability_v1` | compute CFP for one exact model/version and one case; repeated trials remain nested in that case |
 | `BM0-SAP-10-FAMILY-CONDITIONAL-FAILURE-RATE-V1` | `family_conditional_failure_rate_v1` | compute FCFR as the unweighted macro mean of distinct-case CFP values in one formal family entry |
 | `BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1` | `fcfr_case_cluster_bootstrap_v1` | deterministic 10,000-resample percentile bootstrap over distinct `case_id` clusters, seed `20260904`, 95% interval |
 | `BM0-SAP-12-CONTROL-FALSE-POSITIVE-RATE-V1` | `control_false_positive_rate_v1` | report matched `CONTROL` failures separately with a Wilson interval |
-| `BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1` | `within_case_instability_v1` | count repeat-eligible cases containing both PASS and FAIL; repeats never become distinct cases |
+| `BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1` | `within_case_instability_v1` | count repeat-eligible cases containing both 0 and 1 non-null model-failure values; repeats never become distinct cases |
 | `BM0-SAP-14-INFRASTRUCTURE-ERROR-RATE-V1` | `infrastructure_error_rate_v1` | report ERROR/planned attempts separately and forbid model-failure attribution |
 | `BM0-SAP-15-BOUNDED-PILOT-DESIGN-V1` | `bounded_pilot_design_v1` | validate 2–8 distinct cases per model × family entry and 2–5 root replicates per case before execution; retries never inflate repeats and no outcome field is read |
 
@@ -279,15 +288,30 @@ confidential locator.
 
 ## Adjudication and claim ceiling
 
-PASS or FAIL adjudication requires complete evidence. Primaries and any
-tiebreaker must use distinct adjudicator identities and remain blind to model,
-provider, and peer decisions. Runtime records must match the adjudicator set,
-mode composition, metric, attempt, item alias, and rubric frozen in the
-manifest; an unplanned substitute is rejected. Missing or insufficient
-adjudication remains `UNKNOWN` and cannot be converted to PASS or FAIL by a
-tiebreaker. A tiebreaker is legal only when two complete primaries disagree
-PASS versus FAIL. An adjudication-system failure remains `ERROR` and is never
-converted to model failure.
+Final authority is ordered and frozen: deterministic oracle first, structured
+rule scorer second, blinded independent human review third, and calibrated LLM
+judge assistance last. Oracle or structured-rule labels are final when their
+route applies. Every open or non-deterministic case uses `HUMAN_HUMAN`: at
+least two independent human primaries, plus one predeclared independent human
+tiebreaker only when complete primaries disagree PASS versus FAIL.
+`HUMAN_JUDGE`, `JUDGE_JUDGE`, and `FIXED_JUDGE` final-authority assignments are
+invalid.
+
+PASS or FAIL human adjudication requires complete evidence. Primaries and any
+tiebreaker use distinct identities and remain blind to model, provider, peer
+decisions, and LLM assistance until their own decision is recorded. Runtime
+records must match the adjudicator set, metric, attempt, item alias, and rubric
+frozen in the manifest; an unplanned substitute is rejected. Missing or
+insufficient adjudication remains `UNKNOWN` and cannot be converted to PASS or
+FAIL by a tiebreaker. An adjudication-system failure remains `ERROR` and is
+never converted to model failure.
+
+An optional LLM judge record is auxiliary only and binds its exact identity,
+version/configuration, calibration set, known-bad control receipt, and
+judge-error audit. Its `final_authority` is always false. Every resolution
+emits the number of primary and tiebreak human records, raw exact primary
+agreement, disagreement escalation, final authority, LLM-assistance count, and
+whether the final label is auditable.
 
 BM0 permits only these developer claims:
 
@@ -323,8 +347,11 @@ without creating a contract↔manifest fingerprint cycle.
 
 ## Acceptance boundary
 
-The developer receipt remains `bm0_green: false`, with exact-head CI and
-Independent QA both `NOT_RUN`. BM0 becomes green only after the exact candidate
-head passes CI and a reviewer distinct from the implementation path records a
-BM0-specific Independent QA PASS. Merge and release require separate
-authorization.
+The checked-in developer receipt remains `bm0_green: false`. Its
+`exact_head_ci_status` and `independent_qa_status` deliberately describe the
+new candidate head and therefore remain `NOT_RUN` until that immutable head
+exists remotely; prior-head CI or QA evidence is recorded separately and is
+never relabeled as evidence for a changed head. BM0 becomes green only after
+the exact candidate head passes CI and a reviewer distinct from the
+implementation path records a BM0-specific Independent QA PASS. Merge and
+release require separate authorization.

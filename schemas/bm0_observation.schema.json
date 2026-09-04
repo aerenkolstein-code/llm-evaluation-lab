@@ -57,6 +57,7 @@
     "provider_terminal_status",
     "provider_http_status",
     "terminal_status",
+    "unknown_disposition",
     "model_failure_value",
     "system_invariant_failure_value",
     "evidence_complete",
@@ -500,6 +501,20 @@
         "UNKNOWN"
       ]
     },
+    "unknown_disposition": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "enum": [
+            "CORRECT_ABSTENTION",
+            "CORRECT_UNKNOWN_PRESERVATION",
+            "UNJUSTIFIED_UNKNOWN",
+            "UNRESOLVED_SCORER_EVIDENCE",
+            "UNRESOLVED_ADJUDICATION_EVIDENCE"
+          ]
+        }
+      ]
+    },
     "model_failure_value": {
       "anyOf": [
         {
@@ -736,8 +751,7 @@
             "enum": [
               "NOT_EVALUABLE",
               "BLOCKED",
-              "ERROR",
-              "UNKNOWN"
+              "ERROR"
             ]
           }
         },
@@ -772,9 +786,30 @@
       },
       "then": {
         "properties": {
-          "evidence_complete": {
-            "const": false
+          "unknown_disposition": {
+            "enum": [
+              "CORRECT_ABSTENTION",
+              "CORRECT_UNKNOWN_PRESERVATION",
+              "UNJUSTIFIED_UNKNOWN",
+              "UNRESOLVED_SCORER_EVIDENCE",
+              "UNRESOLVED_ADJUDICATION_EVIDENCE"
+            ]
           }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "terminal_status": {
+            "not": {"const": "UNKNOWN"}
+          }
+        },
+        "required": ["terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "unknown_disposition": {"type": "null"}
         }
       }
     },
@@ -797,6 +832,150 @@
               "UNRESOLVED",
               "ERROR"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {"const": "MODEL_CONTEXT_GROUNDED"},
+          "terminal_status": {"const": "UNKNOWN"}
+        },
+        "required": ["target_class", "terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "unknown_disposition": {
+            "enum": [
+              "CORRECT_UNKNOWN_PRESERVATION",
+              "UNJUSTIFIED_UNKNOWN",
+              "UNRESOLVED_SCORER_EVIDENCE",
+              "UNRESOLVED_ADJUDICATION_EVIDENCE"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {"enum": ["MODEL_DIRECT", "AGENT_STANDARDIZED"]},
+          "terminal_status": {"const": "UNKNOWN"}
+        },
+        "required": ["target_class", "terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "unknown_disposition": {
+            "enum": [
+              "CORRECT_ABSTENTION",
+              "UNJUSTIFIED_UNKNOWN",
+              "UNRESOLVED_SCORER_EVIDENCE",
+              "UNRESOLVED_ADJUDICATION_EVIDENCE"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {"const": "SYSTEM_EVAL_ONLY"},
+          "terminal_status": {"const": "UNKNOWN"}
+        },
+        "required": ["target_class", "terminal_status"]
+      },
+      "then": {
+        "properties": {
+          "unknown_disposition": {
+            "enum": [
+              "UNRESOLVED_SCORER_EVIDENCE",
+              "UNRESOLVED_ADJUDICATION_EVIDENCE"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "unknown_disposition": {
+            "enum": ["CORRECT_ABSTENTION", "CORRECT_UNKNOWN_PRESERVATION"]
+          }
+        },
+        "required": ["unknown_disposition"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"const": 0},
+          "system_invariant_failure_value": {"type": "null"},
+          "evidence_complete": {"const": true},
+          "hard_invariant_pass": {"const": true},
+          "adjudication_status": {"enum": ["NOT_REQUIRED", "RESOLVED"]},
+          "evidence_receipt_fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "unknown_disposition": {"const": "UNJUSTIFIED_UNKNOWN"}
+        },
+        "required": ["unknown_disposition"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"const": 1},
+          "system_invariant_failure_value": {"type": "null"},
+          "evidence_complete": {"const": true},
+          "hard_invariant_pass": {"const": false},
+          "adjudication_status": {"enum": ["NOT_REQUIRED", "RESOLVED"]},
+          "evidence_receipt_fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "unknown_disposition": {"const": "UNRESOLVED_SCORER_EVIDENCE"}
+        },
+        "required": ["unknown_disposition"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"type": "null"},
+          "system_invariant_failure_value": {"type": "null"},
+          "evidence_complete": {"const": false},
+          "hard_invariant_pass": {"type": "null"},
+          "adjudication_status": {"const": "UNRESOLVED"},
+          "evidence_receipt_fingerprint": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "unknown_disposition": {"const": "UNRESOLVED_ADJUDICATION_EVIDENCE"}
+        },
+        "required": ["unknown_disposition"]
+      },
+      "then": {
+        "properties": {
+          "model_failure_value": {"type": "null"},
+          "system_invariant_failure_value": {"type": "null"},
+          "evidence_complete": {"const": false},
+          "hard_invariant_pass": {"type": "null"},
+          "adjudication_status": {"const": "UNRESOLVED"},
+          "evidence_receipt_fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
           }
         }
       }
@@ -936,7 +1115,8 @@
           "terminal_status": {
             "enum": [
               "PASS",
-              "FAIL"
+              "FAIL",
+              "UNKNOWN"
             ]
           }
         },
@@ -964,6 +1144,10 @@
             "type": "integer",
             "minimum": 200,
             "maximum": 299
+          },
+          "raw_response_fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
           },
           "usage": {
             "properties": {

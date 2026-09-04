@@ -13,17 +13,18 @@
         "AGENT_STANDARDIZED"
       ],
       "numerator_statuses": [
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "denominator_statuses": [
         "PASS",
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "excluded_terminal_statuses": [
         "NOT_EVALUABLE",
         "BLOCKED",
-        "ERROR",
-        "UNKNOWN"
+        "ERROR"
       ],
       "corpus_pool": "ALL_DECLARED_POOLS",
       "activation_gate": "AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
@@ -40,7 +41,8 @@
         "across_families": "NOT_APPLICABLE_CASE_SCOPED",
         "across_models": "SEPARATE_MODEL_SUBJECTS",
         "cross_family_micro_pooling": "FORBIDDEN"
-      }
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
     },
     {
       "metric_id": "family_conditional_failure_rate",
@@ -53,17 +55,18 @@
         "AGENT_STANDARDIZED"
       ],
       "numerator_statuses": [
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "denominator_statuses": [
         "PASS",
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "excluded_terminal_statuses": [
         "NOT_EVALUABLE",
         "BLOCKED",
-        "ERROR",
-        "UNKNOWN"
+        "ERROR"
       ],
       "corpus_pool": "ALL_DECLARED_POOLS",
       "activation_gate": "AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
@@ -80,7 +83,8 @@
         "across_families": "MODEL_X_FAMILY_PROFILE_NO_SCALAR_POOL",
         "across_models": "SEPARATE_MODEL_SUBJECTS",
         "cross_family_micro_pooling": "FORBIDDEN"
-      }
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
     },
     {
       "metric_id": "control_false_positive_rate",
@@ -93,17 +97,18 @@
         "AGENT_STANDARDIZED"
       ],
       "numerator_statuses": [
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "denominator_statuses": [
         "PASS",
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "excluded_terminal_statuses": [
         "NOT_EVALUABLE",
         "BLOCKED",
-        "ERROR",
-        "UNKNOWN"
+        "ERROR"
       ],
       "corpus_pool": "ALL_DECLARED_POOLS",
       "activation_gate": "CONTROL_VARIANT_ONLY_AND_AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
@@ -120,7 +125,8 @@
         "across_families": "CONTROL_DIAGNOSTIC_ONLY",
         "across_models": "SEPARATE_MODEL_SUBJECTS",
         "cross_family_micro_pooling": "FORBIDDEN"
-      }
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
     },
     {
       "metric_id": "within_case_instability",
@@ -134,17 +140,18 @@
       ],
       "numerator_statuses": [
         "PASS",
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "denominator_statuses": [
         "PASS",
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "excluded_terminal_statuses": [
         "NOT_EVALUABLE",
         "BLOCKED",
-        "ERROR",
-        "UNKNOWN"
+        "ERROR"
       ],
       "corpus_pool": "ALL_DECLARED_POOLS",
       "activation_gate": "AT_LEAST_TWO_SCORABLE_REPLICATES_PER_CASE",
@@ -161,7 +168,8 @@
         "across_families": "SEPARATE_FAMILY_PROFILE",
         "across_models": "SEPARATE_MODEL_SUBJECTS",
         "cross_family_micro_pooling": "FORBIDDEN"
-      }
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
     },
     {
       "metric_id": "model_failure_rate",
@@ -173,17 +181,18 @@
         "MODEL_CONTEXT_GROUNDED"
       ],
       "numerator_statuses": [
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "denominator_statuses": [
         "PASS",
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "excluded_terminal_statuses": [
         "NOT_EVALUABLE",
         "BLOCKED",
-        "ERROR",
-        "UNKNOWN"
+        "ERROR"
       ],
       "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
       "activation_gate": "NONE",
@@ -200,7 +209,8 @@
         "across_families": "NO_BROAD_AGGREGATE_CLAIM",
         "across_models": "SEPARATE_MODEL_SUBJECTS",
         "cross_family_micro_pooling": "FORBIDDEN_AS_PRIMARY_SUMMARY"
-      }
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
     },
     {
       "metric_id": "sandboxed_agent_failure_rate",
@@ -211,17 +221,18 @@
         "AGENT_STANDARDIZED"
       ],
       "numerator_statuses": [
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "denominator_statuses": [
         "PASS",
-        "FAIL"
+        "FAIL",
+        "UNKNOWN"
       ],
       "excluded_terminal_statuses": [
         "NOT_EVALUABLE",
         "BLOCKED",
-        "ERROR",
-        "UNKNOWN"
+        "ERROR"
       ],
       "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
       "activation_gate": "SANDBOX_EQUIVALENCE_ESTABLISHED",
@@ -238,7 +249,8 @@
         "across_families": "NO_BROAD_AGGREGATE_CLAIM",
         "across_models": "SEPARATE_MODEL_SUBJECTS",
         "cross_family_micro_pooling": "FORBIDDEN_AS_PRIMARY_SUMMARY"
-      }
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
     },
     {
       "metric_id": "system_invariant_failure_rate",
@@ -276,7 +288,8 @@
         "across_families": "SYSTEM_PROFILE_ONLY",
         "across_models": "NOT_APPLICABLE_SYSTEM_SCOPE",
         "cross_family_micro_pooling": "FORBIDDEN_AS_MODEL_QUALITY"
-      }
+      },
+      "model_failure_value_rule": "SYSTEM_INVARIANT_FAILURE_VALUE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
     },
     {
       "metric_id": "infrastructure_error_rate",
@@ -316,7 +329,8 @@
         "across_families": "DIAGNOSTIC_ONLY",
         "across_models": "REPORT_PROVIDER_MODEL_AND_TOTAL_SEPARATELY",
         "cross_family_micro_pooling": "DIAGNOSTIC_ONLY"
-      }
+      },
+      "model_failure_value_rule": "TERMINAL_STATUS_ONLY"
     },
     {
       "metric_id": "terminal_distribution",
@@ -361,7 +375,8 @@
         "across_families": "REPORT_STRATIFIED_COUNTS",
         "across_models": "REPORT_STRATIFIED_COUNTS",
         "cross_family_micro_pooling": "COUNTS_ONLY_NO_QUALITY_CLAIM"
-      }
+      },
+      "model_failure_value_rule": "TERMINAL_STATUS_ONLY"
     },
     {
       "metric_id": "non_scorable_attempt_rate",
@@ -404,8 +419,9 @@
         "across_families": "REPORT_STRATIFIED_COUNTS",
         "across_models": "REPORT_PROVIDER_MODEL_AND_TOTAL_SEPARATELY",
         "cross_family_micro_pooling": "DIAGNOSTIC_ONLY"
-      }
+      },
+      "model_failure_value_rule": "UNKNOWN_COUNTS_NONSCORABLE_ONLY_WHEN_FAILURE_VALUE_NULL"
     }
   ],
-  "registry_fingerprint": "sha256:f6ace6950fb56470136e9424a86e366bb489b845246493b24ff7efb8feaa4f35"
+  "registry_fingerprint": "sha256:9fc5d7a4ac96b5514d3e9e1f634158f04c7fd2be0a362c69756e9e51bb225934"
 }

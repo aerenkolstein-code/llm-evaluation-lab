@@ -232,6 +232,190 @@ TARGET_LINEAGE_BY_ID = {
 TARGET_LINEAGE_BY_ENTRY = {
     row["entry_id"]: row for row in CANONICAL_FAMILY_LINEAGE
 }
+
+BENCHMARK_LANES = (
+    "INCLUDED_WHEN_VALID",
+    "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+    "EXCLUDED_SYSTEM_EVAL_ONLY",
+)
+UNKNOWN_DISPOSITIONS = (
+    "CORRECT_ABSTENTION",
+    "CORRECT_UNKNOWN_PRESERVATION",
+    "UNJUSTIFIED_UNKNOWN",
+    "UNRESOLVED_SCORER_EVIDENCE",
+    "UNRESOLVED_ADJUDICATION_EVIDENCE",
+)
+UNKNOWN_DISPOSITION_SEMANTICS = {
+    "CORRECT_ABSTENTION": {
+        "model_failure_value": 0,
+        "evidence_complete": True,
+        "hard_invariant_pass": True,
+        "adjudication_statuses": ("NOT_REQUIRED", "RESOLVED"),
+    },
+    "CORRECT_UNKNOWN_PRESERVATION": {
+        "model_failure_value": 0,
+        "evidence_complete": True,
+        "hard_invariant_pass": True,
+        "adjudication_statuses": ("NOT_REQUIRED", "RESOLVED"),
+    },
+    "UNJUSTIFIED_UNKNOWN": {
+        "model_failure_value": 1,
+        "evidence_complete": True,
+        "hard_invariant_pass": False,
+        "adjudication_statuses": ("NOT_REQUIRED", "RESOLVED"),
+    },
+    "UNRESOLVED_SCORER_EVIDENCE": {
+        "model_failure_value": None,
+        "evidence_complete": False,
+        "hard_invariant_pass": None,
+        "adjudication_statuses": ("UNRESOLVED",),
+    },
+    "UNRESOLVED_ADJUDICATION_EVIDENCE": {
+        "model_failure_value": None,
+        "evidence_complete": False,
+        "hard_invariant_pass": None,
+        "adjudication_statuses": ("UNRESOLVED",),
+    },
+}
+
+
+def _unknown_policy(
+    entry_id: str,
+    family_mode: str,
+    correct_disposition: str | None,
+) -> dict[str, Any]:
+    dispositions = (
+        ([] if correct_disposition is None else [correct_disposition])
+        + [
+            "UNJUSTIFIED_UNKNOWN",
+            "UNRESOLVED_SCORER_EVIDENCE",
+            "UNRESOLVED_ADJUDICATION_EVIDENCE",
+        ]
+        if correct_disposition is not None
+        else [
+            "UNRESOLVED_SCORER_EVIDENCE",
+            "UNRESOLVED_ADJUDICATION_EVIDENCE",
+        ]
+    )
+    return {
+        "policy_id": f"BM0-UNKNOWN-{entry_id}-{family_mode}-V1",
+        "family_mode": family_mode,
+        "permitted_dispositions": dispositions,
+        "model_failure_values": {
+            disposition: UNKNOWN_DISPOSITION_SEMANTICS[disposition][
+                "model_failure_value"
+            ]
+            for disposition in dispositions
+        },
+    }
+
+
+APPROVED_TARGET_MEASUREMENT_BINDINGS = {
+    "E01": {
+        "benchmark_lane": "INCLUDED_WHEN_VALID",
+        "rationale": "Freeze source/evidence context; measure whether model binds the attribute to the correct entity/scope.",
+        "unknown_policy": _unknown_policy(
+            "E01", "EVIDENCE_BOUND", "CORRECT_UNKNOWN_PRESERVATION"
+        ),
+    },
+    "E02": {
+        "benchmark_lane": "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+        "rationale": "Schema/retry/readback behavior requires the same deterministic tool contract across models.",
+        "unknown_policy": _unknown_policy(
+            "E02", "SAFE_AGENT_ABSTENTION", "CORRECT_ABSTENTION"
+        ),
+    },
+    "E03": {
+        "benchmark_lane": "EXCLUDED_SYSTEM_EVAL_ONLY",
+        "rationale": "Audits global event-set/integrity completeness; measures evaluator/evidence-pipeline correctness, not model behavior.",
+        "unknown_policy": _unknown_policy("E03", "SYSTEM_ONLY", None),
+    },
+    "E04": {
+        "benchmark_lane": "INCLUDED_WHEN_VALID",
+        "rationale": "Freeze detail/inventory evidence surfaces; measure whether model respects source scope.",
+        "unknown_policy": _unknown_policy(
+            "E04", "EVIDENCE_BOUND", "CORRECT_UNKNOWN_PRESERVATION"
+        ),
+    },
+    "E05": {
+        "benchmark_lane": "INCLUDED_WHEN_VALID",
+        "rationale": "Frozen claim/evidence grounding task; independent QA1 profile entry despite duplicate family name.",
+        "unknown_policy": _unknown_policy(
+            "E05", "EVIDENCE_BOUND", "CORRECT_UNKNOWN_PRESERVATION"
+        ),
+    },
+    "E06": {
+        "benchmark_lane": "INCLUDED_WHEN_VALID",
+        "rationale": "Frozen inventory/detail context; measure current-state evidence scope discipline.",
+        "unknown_policy": _unknown_policy(
+            "E06", "EVIDENCE_BOUND", "CORRECT_UNKNOWN_PRESERVATION"
+        ),
+    },
+    "E07": {
+        "benchmark_lane": "INCLUDED_WHEN_VALID",
+        "rationale": "Frozen source modalities; measure whether the model improperly upgrades provenance level.",
+        "unknown_policy": _unknown_policy(
+            "E07", "EVIDENCE_BOUND", "CORRECT_UNKNOWN_PRESERVATION"
+        ),
+    },
+    "E08": {
+        "benchmark_lane": "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+        "rationale": "Requires common connector schema, retry, readback and side-effect semantics.",
+        "unknown_policy": _unknown_policy(
+            "E08", "SAFE_AGENT_ABSTENTION", "CORRECT_ABSTENTION"
+        ),
+    },
+    "E09": {
+        "benchmark_lane": "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+        "rationale": "Requires common tool registry/capability/permission state machine.",
+        "unknown_policy": _unknown_policy(
+            "E09", "SAFE_AGENT_ABSTENTION", "CORRECT_ABSTENTION"
+        ),
+    },
+    "E10": {
+        "benchmark_lane": "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+        "rationale": "Requires deterministic write/revision/readback/recovery sandbox; no production write.",
+        "unknown_policy": _unknown_policy(
+            "E10", "SAFE_AGENT_ABSTENTION", "CORRECT_ABSTENTION"
+        ),
+    },
+    "E11": {
+        "benchmark_lane": "INCLUDED_WHEN_VALID",
+        "rationale": "Frozen multi-turn instruction/state context is sufficient; no external tool needed.",
+        "unknown_policy": _unknown_policy(
+            "E11", "RULE_BOUND_ABSTENTION", "CORRECT_ABSTENTION"
+        ),
+    },
+    "E12": {
+        "benchmark_lane": "INCLUDED_WHEN_VALID",
+        "rationale": "Synthetic multi-turn rule-state/reframing behavior can be measured directly from model output.",
+        "unknown_policy": _unknown_policy(
+            "E12", "RULE_BOUND_ABSTENTION", "CORRECT_ABSTENTION"
+        ),
+    },
+    "E13": {
+        "benchmark_lane": "INCLUDED_WHEN_VALID",
+        "rationale": "Synthetic durable constraint/reframing behavior can be measured directly from model output.",
+        "unknown_policy": _unknown_policy(
+            "E13", "RULE_BOUND_ABSTENTION", "CORRECT_ABSTENTION"
+        ),
+    },
+    "E14": {
+        "benchmark_lane": "EXCLUDED_SYSTEM_EVAL_ONLY",
+        "rationale": "Tests projection completeness and sample-to-global overclaim in the evaluation system.",
+        "unknown_policy": _unknown_policy("E14", "SYSTEM_ONLY", None),
+    },
+    "E15": {
+        "benchmark_lane": "EXCLUDED_SYSTEM_EVAL_ONLY",
+        "rationale": "Tests metric/provenance/causal-attribution separation in evaluator/reporting logic.",
+        "unknown_policy": _unknown_policy("E15", "SYSTEM_ONLY", None),
+    },
+    "E16": {
+        "benchmark_lane": "EXCLUDED_SYSTEM_EVAL_ONLY",
+        "rationale": "Tests dashboard field semantics/scope binding; not a tested-model cognition measure.",
+        "unknown_policy": _unknown_policy("E16", "SYSTEM_ONLY", None),
+    },
+}
 TARGET_IDS_BY_CLASS = {
     "MODEL_DIRECT": (
         "BM0-TUT-E11-QA2-CONSTRAINT-ACTION-PERSISTENCE",
@@ -262,45 +446,100 @@ EXPECTED_TARGET_CLASS_COUNTS = {
     target_class: len(target_ids)
     for target_class, target_ids in TARGET_IDS_BY_CLASS.items()
 }
+EXPECTED_BENCHMARK_LANE_COUNTS = {
+    "INCLUDED_WHEN_VALID": 8,
+    "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX": 4,
+    "EXCLUDED_SYSTEM_EVAL_ONLY": 4,
+}
 
+# PASS/FAIL carry terminal-fixed model-failure values. UNKNOWN becomes scorable
+# only through its per-entry disposition and is therefore handled separately.
 MODEL_SCORABLE_TERMINALS = ("PASS", "FAIL")
+MODEL_FAILURE_ELIGIBLE_TERMINALS = ("PASS", "FAIL", "UNKNOWN")
 NON_MODEL_SCORABLE_TERMINALS = (
     "NOT_EVALUABLE",
     "BLOCKED",
     "ERROR",
-    "UNKNOWN",
 )
+NON_DEFINITIVE_TERMINALS = (*NON_MODEL_SCORABLE_TERMINALS, "UNKNOWN")
 TERMINAL_CONTRACT = {
     "PASS": {
         "category": "MODEL_SCORABLE",
         "model_failure_denominator": True,
         "model_failure_numerator": False,
+        "resolution_rule": "TERMINAL_FIXED",
     },
     "FAIL": {
         "category": "MODEL_SCORABLE",
         "model_failure_denominator": True,
         "model_failure_numerator": True,
+        "resolution_rule": "TERMINAL_FIXED",
     },
     "NOT_EVALUABLE": {
         "category": "NON_EVALUABLE",
         "model_failure_denominator": False,
         "model_failure_numerator": False,
+        "resolution_rule": "TERMINAL_FIXED",
     },
     "BLOCKED": {
         "category": "GOVERNANCE_BLOCK",
         "model_failure_denominator": False,
         "model_failure_numerator": False,
+        "resolution_rule": "TERMINAL_FIXED",
     },
     "ERROR": {
         "category": "INFRASTRUCTURE_ERROR",
         "model_failure_denominator": False,
         "model_failure_numerator": False,
+        "resolution_rule": "TERMINAL_FIXED",
     },
     "UNKNOWN": {
-        "category": "INSUFFICIENT_EVIDENCE",
-        "model_failure_denominator": False,
-        "model_failure_numerator": False,
+        "category": "FAMILY_POLICY_DEPENDENT",
+        "model_failure_denominator": None,
+        "model_failure_numerator": None,
+        "resolution_rule": "TARGET_UNKNOWN_POLICY_AND_DISPOSITION",
     },
+}
+
+ADJUDICATION_AUTHORITY_ORDER = (
+    "DETERMINISTIC_ORACLE",
+    "STRUCTURED_RULE_SCORER",
+    "BLINDED_INDEPENDENT_HUMAN_REVIEW",
+    "CALIBRATED_LLM_JUDGE_ASSISTANCE_ONLY",
+)
+ADJUDICATION_ROUTE_POLICY = {
+    "deterministic_oracle": "FINAL_WHEN_APPLICABLE",
+    "structured_rule_scorer": "FINAL_WHEN_ORACLE_NOT_APPLICABLE",
+    "open_nondeterministic": "HUMAN_HUMAN_MINIMUM_TWO_INDEPENDENT",
+}
+LLM_JUDGE_ASSISTANCE_POLICY = {
+    "allowed": True,
+    "final_authority": False,
+    "calibration_set_required": True,
+    "known_bad_control_required": True,
+    "exact_identity_and_version_required": True,
+    "judge_error_audit_required": True,
+    "hidden_from_primary_humans_until_decision": True,
+}
+AGREEMENT_REPORTING_POLICY = {
+    "required": True,
+    "measure": "RAW_EXACT_AGREEMENT_OVER_TWO_PRIMARY_HUMAN_DECISIONS",
+    "disagreement_escalation_required": True,
+    "auditable_final_label_required": True,
+}
+PREDECESSOR_REVIEW_EVIDENCE = {
+    "head_sha": "44e14170e7b1e686827ef829e23819b19656eef3",
+    "exact_head_ci": {
+        "workflow": "Test",
+        "run_id": 33927552322,
+        "conclusion": "SUCCESS",
+    },
+    "independent_qa": {
+        "round": 2,
+        "review_id": "PRR_kwDOT5WwrM8AAAABMRYGJA",
+        "verdict": "FAIL_REPAIR_REQUIRED",
+    },
+    "evidence_scope": "PREDECESSOR_HEAD_CONTEXT_ONLY_NOT_CURRENT_CANDIDATE_EVIDENCE",
 }
 
 SAP_METHOD_IDS = (
@@ -398,7 +637,8 @@ SAP_FROZEN_PARAMETERS = {
     SAP_METHOD_IDS[2]: {
         "terminal_statuses": list(TERMINAL_STATUSES),
         "coercion": "FORBIDDEN",
-        "diagnostic_numerator": list(NON_MODEL_SCORABLE_TERMINALS),
+        "diagnostic_numerator": list(NON_DEFINITIVE_TERMINALS),
+        "unknown_diagnostic_rule": "COUNT_ONLY_WHEN_MODEL_FAILURE_VALUE_IS_NULL",
         "diagnostic_denominator": list(TERMINAL_STATUSES),
         "identity_source": "FROZEN_MANIFEST_GRID",
         "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
@@ -406,9 +646,11 @@ SAP_FROZEN_PARAMETERS = {
         "corpus_pool": "ALL_DECLARED_POOLS",
     },
     SAP_METHOD_IDS[3]: {
-        "numerator": ["FAIL"],
-        "denominator": ["PASS", "FAIL"],
+        "numerator": "MODEL_FAILURE_VALUE_EQUALS_1",
+        "denominator": "MODEL_FAILURE_VALUE_IN_0_1",
+        "eligible_terminals": list(MODEL_FAILURE_ELIGIBLE_TERMINALS),
         "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
+        "unknown_rule": "APPLY_ENTRY_POLICY_WITHOUT_NULL_COERCION",
         "zero_denominator": "NOT_EVALUABLE",
         "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
         "metric_target_classes": {
@@ -433,7 +675,8 @@ SAP_FROZEN_PARAMETERS = {
             "retry_ordinal",
         ],
         "compatibility_fields": list(PAIR_COMPATIBILITY_FIELDS),
-        "non_scorable_pair_policy": "SYMMETRIC_EXCLUSION",
+        "pair_inclusion": "BOTH_MODEL_FAILURE_VALUES_IN_0_1",
+        "non_scorable_pair_policy": "SYMMETRIC_EXCLUSION_WITHOUT_NULL_COERCION",
         "unpaired_design": "NOT_EVALUABLE",
         "identity_mismatch": "NOT_EVALUABLE",
         "metric_target_classes": {
@@ -444,6 +687,8 @@ SAP_FROZEN_PARAMETERS = {
         "corpus_pool": PRIMARY_ESTIMATE_POOL_ID,
     },
     SAP_METHOD_IDS[6]: {
+        "authority_order": list(ADJUDICATION_AUTHORITY_ORDER),
+        "open_case_final_authority": "HUMAN_HUMAN",
         "primary_records": 2,
         "distinct_adjudicators": True,
         "tiebreakers_on_disagreement": 1,
@@ -451,13 +696,15 @@ SAP_FROZEN_PARAMETERS = {
         "unknown_semantics": "TERMINAL_NOT_TIEBREAKABLE",
         "identity_blinding": True,
         "peer_decision_blinding": True,
+        "llm_judge_role": "CALIBRATED_ASSISTANCE_ONLY_NOT_FINAL_AUTHORITY",
+        "agreement_reporting": "REQUIRED_RAW_PRIMARY_EXACT_AGREEMENT_AND_ESCALATION",
     },
     SAP_METHOD_IDS[7]: {
         "target_class": "SYSTEM_EVAL_ONLY",
         "subject_identity": SYSTEM_SCOPE_ID,
         "numerator": ["FAIL"],
         "denominator": ["PASS", "FAIL"],
-        "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
+        "excluded": list(NON_DEFINITIVE_TERMINALS),
         "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
         "model_attribution": "FORBIDDEN",
         "ranking": "FORBIDDEN",
@@ -473,9 +720,11 @@ SAP_FROZEN_PARAMETERS = {
             "variant_id",
         ],
         "repeat_unit": "replicate_index",
-        "numerator": ["FAIL"],
-        "denominator": ["PASS", "FAIL"],
+        "numerator": "MODEL_FAILURE_VALUE_EQUALS_1",
+        "denominator": "MODEL_FAILURE_VALUE_IN_0_1",
+        "eligible_terminals": list(MODEL_FAILURE_ELIGIBLE_TERMINALS),
         "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
+        "unknown_rule": "APPLY_ENTRY_POLICY_WITHOUT_NULL_COERCION",
         "interval_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
         "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
     },
@@ -504,17 +753,19 @@ SAP_FROZEN_PARAMETERS = {
     SAP_METHOD_IDS[11]: {
         "statistical_unit": "VALID_CONTROL_TRIAL",
         "control_selector": "corpus_pool_id=CONTROL",
-        "numerator": ["FAIL"],
-        "denominator": ["PASS", "FAIL"],
+        "numerator": "MODEL_FAILURE_VALUE_EQUALS_1",
+        "denominator": "MODEL_FAILURE_VALUE_IN_0_1",
+        "eligible_terminals": list(MODEL_FAILURE_ELIGIBLE_TERMINALS),
         "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
+        "unknown_rule": "APPLY_ENTRY_POLICY_WITHOUT_NULL_COERCION",
         "interval_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
         "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
     },
     SAP_METHOD_IDS[12]: {
         "statistical_unit": "DISTINCT_CASE_VARIANT",
         "cluster_unit": "CASE_ID",
-        "eligible_case": "AT_LEAST_TWO_MODEL_SCORABLE_REPLICATES",
-        "switch_definition": "BOTH_PASS_AND_FAIL_OBSERVED_WITHIN_CASE",
+        "eligible_case": "AT_LEAST_TWO_NON_NULL_MODEL_FAILURE_VALUES",
+        "switch_definition": "BOTH_0_AND_1_MODEL_FAILURE_VALUES_WITHIN_CASE",
         "numerator": "SWITCHING_CASE_COUNT",
         "denominator": "ELIGIBLE_DISTINCT_CASE_COUNT",
         "repeated_trials_are_not_distinct_cases": True,
@@ -1031,6 +1282,9 @@ def validate_target_matrix(document: object) -> dict[str, Any]:
                 "source_fixture_path",
                 "source_receipt_path",
                 "source_case_ids",
+                "benchmark_lane",
+                "rationale",
+                "unknown_policy",
                 "capability",
                 "unit_under_test",
                 "observable",
@@ -1072,6 +1326,55 @@ def validate_target_matrix(document: object) -> dict[str, Any]:
             f"{entry_id}/{source_profile}/{family_id}"
         ):
             raise ValueError(f"{target_id} canonical family lineage key drifted")
+        measurement_binding = APPROVED_TARGET_MEASUREMENT_BINDINGS.get(entry_id)
+        if measurement_binding is None:
+            raise ValueError(f"{entry_id} has no approved measurement binding")
+        benchmark_lane = _text(target, "benchmark_lane", entry_label)
+        if benchmark_lane not in BENCHMARK_LANES:
+            raise ValueError(f"{target_id} has an unsupported benchmark lane")
+        rationale = _text(target, "rationale", entry_label)
+        unknown_policy = _obj(
+            target.get("unknown_policy"), f"{entry_label}.unknown_policy"
+        )
+        _exact_keys(
+            unknown_policy,
+            {
+                "policy_id",
+                "family_mode",
+                "permitted_dispositions",
+                "model_failure_values",
+            },
+            f"{entry_label}.unknown_policy",
+        )
+        _identifier(
+            unknown_policy, "policy_id", f"{entry_label}.unknown_policy"
+        )
+        _identifier(
+            unknown_policy, "family_mode", f"{entry_label}.unknown_policy"
+        )
+        dispositions = _strings(
+            unknown_policy,
+            "permitted_dispositions",
+            f"{entry_label}.unknown_policy",
+        )
+        if not set(dispositions).issubset(UNKNOWN_DISPOSITIONS):
+            raise ValueError(f"{target_id} UNKNOWN disposition inventory drifted")
+        disposition_values = _obj(
+            unknown_policy.get("model_failure_values"),
+            f"{entry_label}.unknown_policy.model_failure_values",
+        )
+        if set(disposition_values) != set(dispositions) or any(
+            value not in {0, 1, None} for value in disposition_values.values()
+        ):
+            raise ValueError(f"{target_id} UNKNOWN tri-state mapping is invalid")
+        if {
+            "benchmark_lane": benchmark_lane,
+            "rationale": rationale,
+            "unknown_policy": dict(unknown_policy),
+        } != measurement_binding:
+            raise ValueError(
+                f"{target_id} benchmark lane, rationale, or UNKNOWN policy drifted"
+            )
         for key in ("capability", "unit_under_test", "observable", "scope_limit"):
             _text(target, key, entry_label)
         metric_id = _text(target, "primary_metric_id", entry_label)
@@ -1268,6 +1571,7 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
                 "numerator_statuses",
                 "denominator_statuses",
                 "excluded_terminal_statuses",
+                "model_failure_value_rule",
                 "weighting",
                 "corpus_pool",
                 "activation_gate",
@@ -1317,6 +1621,7 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
         excluded = _strings(
             metric, "excluded_terminal_statuses", entry_label, allow_empty=True
         )
+        _text(metric, "model_failure_value_rule", entry_label)
         if not set(numerator + denominator + excluded).issubset(TERMINAL_STATUSES):
             raise ValueError(f"{metric_id} uses an unsupported terminal status")
         if set(numerator) - set(denominator):
@@ -1337,7 +1642,7 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
 
     if set(metrics) != EXPECTED_METRIC_IDS:
         raise ValueError("BM0 metric inventory drifted")
-    failure_rules = {
+    model_failure_rules = {
         "model_failure_rate": (
             set(DEFAULT_COMPARABLE_CLASSES),
             PRIMARY_ESTIMATE_POOL_ID,
@@ -1356,15 +1661,6 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
             "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1",
             "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR",
         ),
-        "system_invariant_failure_rate": (
-            {"SYSTEM_EVAL_ONLY"},
-            PRIMARY_ESTIMATE_POOL_ID,
-            "SYSTEM_ONLY",
-            "SYSTEM_QUALITY",
-            "SYSTEM_ONLY_NOT_MODEL_QUALITY",
-            "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1",
-            "NOT_EVALUABLE/ZERO_SYSTEM_SCORABLE_DENOMINATOR",
-        ),
     }
     for metric_id, (
         classes,
@@ -1374,18 +1670,22 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
         claim_scope,
         estimate_method,
         zero_denominator_semantics,
-    ) in failure_rules.items():
+    ) in model_failure_rules.items():
         metric = metrics[metric_id]
         if set(metric["applicability_classes"]) != classes:
             raise ValueError(f"{metric_id} applicability drifted")
-        if metric["numerator_statuses"] != ["FAIL"]:
-            raise ValueError(f"{metric_id} must count only FAIL in its numerator")
-        if metric["denominator_statuses"] != ["PASS", "FAIL"]:
-            raise ValueError(f"{metric_id} denominator must be PASS + FAIL")
+        if metric["numerator_statuses"] != ["FAIL", "UNKNOWN"]:
+            raise ValueError(
+                f"{metric_id} candidate numerator terminals must include policy-resolved UNKNOWN"
+            )
+        if metric["denominator_statuses"] != ["PASS", "FAIL", "UNKNOWN"]:
+            raise ValueError(
+                f"{metric_id} denominator terminals must preserve policy-resolved UNKNOWN"
+            )
         if set(metric["excluded_terminal_statuses"]) != set(
             NON_MODEL_SCORABLE_TERMINALS
         ):
-            raise ValueError(f"{metric_id} non-model terminals must be excluded")
+            raise ValueError(f"{metric_id} fixed non-model terminals must be excluded")
         if (
             metric["corpus_pool"] != corpus_pool
             or metric["activation_gate"] != gate
@@ -1398,14 +1698,38 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
             != zero_denominator_semantics
             or metric["version"] != "v1"
             or metric["directionality"] != "LOWER_IS_BETTER"
+            or metric["model_failure_value_rule"]
+            != "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
         ):
             raise ValueError(f"{metric_id} analysis contract drifted")
+
+    system_metric = metrics["system_invariant_failure_rate"]
+    if (
+        set(system_metric["applicability_classes"]) != {"SYSTEM_EVAL_ONLY"}
+        or system_metric["numerator_statuses"] != ["FAIL"]
+        or system_metric["denominator_statuses"] != ["PASS", "FAIL"]
+        or set(system_metric["excluded_terminal_statuses"])
+        != set(NON_DEFINITIVE_TERMINALS)
+        or system_metric["corpus_pool"] != PRIMARY_ESTIMATE_POOL_ID
+        or system_metric["activation_gate"] != "SYSTEM_ONLY"
+        or system_metric["kind"] != "SYSTEM_QUALITY"
+        or system_metric["claim_scope"] != "SYSTEM_ONLY_NOT_MODEL_QUALITY"
+        or system_metric["estimate_method_id"] != SAP_METHOD_IDS[7]
+        or system_metric["uncertainty_method_id"] != SAP_METHOD_IDS[4]
+        or system_metric["zero_denominator_semantics"]
+        != "NOT_EVALUABLE/ZERO_SYSTEM_SCORABLE_DENOMINATOR"
+        or system_metric["version"] != "v1"
+        or system_metric["directionality"] != "LOWER_IS_BETTER"
+        or system_metric["model_failure_value_rule"]
+        != "SYSTEM_INVARIANT_FAILURE_VALUE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
+    ):
+        raise ValueError("system_invariant_failure_rate analysis contract drifted")
 
     diagnostic = metrics["non_scorable_attempt_rate"]
     if (
         set(diagnostic["applicability_classes"]) != set(TARGET_CLASSES)
         or set(diagnostic["numerator_statuses"])
-        != set(NON_MODEL_SCORABLE_TERMINALS)
+        != set(NON_DEFINITIVE_TERMINALS)
         or tuple(diagnostic["denominator_statuses"]) != TERMINAL_STATUSES
         or diagnostic["excluded_terminal_statuses"] != []
         or diagnostic["kind"] != "INFRASTRUCTURE_AND_EVIDENCE_DIAGNOSTIC"
@@ -1420,15 +1744,18 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
         != "NOT_EVALUABLE/ZERO_SCHEDULED_ATTEMPTS"
         or diagnostic["directionality"] != "DIAGNOSTIC_ONLY"
         or diagnostic["claim_scope"] != "DIAGNOSTIC_ONLY_NOT_MODEL_FAILURE"
+        or diagnostic["model_failure_value_rule"]
+        != "UNKNOWN_COUNTS_NONSCORABLE_ONLY_WHEN_FAILURE_VALUE_NULL"
     ):
         raise ValueError("non-scorable diagnostic contract drifted")
 
     required_metric_rules = {
         "case_failure_probability": {
             "classes": set(TARGET_CLASSES) - {"SYSTEM_EVAL_ONLY"},
-            "numerator": {"FAIL"},
-            "denominator": set(MODEL_SCORABLE_TERMINALS),
+            "numerator": {"FAIL", "UNKNOWN"},
+            "denominator": set(MODEL_FAILURE_ELIGIBLE_TERMINALS),
             "excluded": set(NON_MODEL_SCORABLE_TERMINALS),
+            "value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED",
             "pool": "ALL_DECLARED_POOLS",
             "gate": "AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
             "estimate": SAP_METHOD_IDS[8],
@@ -1440,9 +1767,10 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
         },
         "family_conditional_failure_rate": {
             "classes": set(TARGET_CLASSES) - {"SYSTEM_EVAL_ONLY"},
-            "numerator": {"FAIL"},
-            "denominator": set(MODEL_SCORABLE_TERMINALS),
+            "numerator": {"FAIL", "UNKNOWN"},
+            "denominator": set(MODEL_FAILURE_ELIGIBLE_TERMINALS),
             "excluded": set(NON_MODEL_SCORABLE_TERMINALS),
+            "value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED",
             "pool": "ALL_DECLARED_POOLS",
             "gate": "AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
             "estimate": SAP_METHOD_IDS[9],
@@ -1454,9 +1782,10 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
         },
         "control_false_positive_rate": {
             "classes": set(TARGET_CLASSES) - {"SYSTEM_EVAL_ONLY"},
-            "numerator": {"FAIL"},
-            "denominator": set(MODEL_SCORABLE_TERMINALS),
+            "numerator": {"FAIL", "UNKNOWN"},
+            "denominator": set(MODEL_FAILURE_ELIGIBLE_TERMINALS),
             "excluded": set(NON_MODEL_SCORABLE_TERMINALS),
+            "value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED",
             "pool": "ALL_DECLARED_POOLS",
             "gate": "CONTROL_VARIANT_ONLY_AND_AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
             "estimate": SAP_METHOD_IDS[11],
@@ -1468,9 +1797,10 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
         },
         "within_case_instability": {
             "classes": set(TARGET_CLASSES) - {"SYSTEM_EVAL_ONLY"},
-            "numerator": set(MODEL_SCORABLE_TERMINALS),
-            "denominator": set(MODEL_SCORABLE_TERMINALS),
+            "numerator": set(MODEL_FAILURE_ELIGIBLE_TERMINALS),
+            "denominator": set(MODEL_FAILURE_ELIGIBLE_TERMINALS),
             "excluded": set(NON_MODEL_SCORABLE_TERMINALS),
+            "value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED",
             "pool": "ALL_DECLARED_POOLS",
             "gate": "AT_LEAST_TWO_SCORABLE_REPLICATES_PER_CASE",
             "estimate": SAP_METHOD_IDS[12],
@@ -1485,6 +1815,7 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
             "numerator": {"ERROR"},
             "denominator": set(TERMINAL_STATUSES),
             "excluded": set(),
+            "value_rule": "TERMINAL_STATUS_ONLY",
             "pool": "ALL_DECLARED_POOLS",
             "gate": "COMPLETE_PREDECLARED_GRID",
             "estimate": SAP_METHOD_IDS[13],
@@ -1499,6 +1830,7 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
             "numerator": set(TERMINAL_STATUSES),
             "denominator": set(TERMINAL_STATUSES),
             "excluded": set(),
+            "value_rule": "TERMINAL_STATUS_ONLY",
             "pool": "ALL_DECLARED_POOLS",
             "gate": "COMPLETE_PREDECLARED_GRID",
             "estimate": SAP_METHOD_IDS[2],
@@ -1516,6 +1848,7 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
             "numerator": set(metric["numerator_statuses"]),
             "denominator": set(metric["denominator_statuses"]),
             "excluded": set(metric["excluded_terminal_statuses"]),
+            "value_rule": metric["model_failure_value_rule"],
             "pool": metric["corpus_pool"],
             "gate": metric["activation_gate"],
             "estimate": metric["estimate_method_id"],
@@ -2304,6 +2637,10 @@ def validate_adjudication_plan(document: object) -> dict[str, Any]:
         {
             "plan_id",
             "mode",
+            "authority_order",
+            "route_policy",
+            "llm_judge_assistance_policy",
+            "agreement_reporting_policy",
             "metric_ids",
             "primary_adjudicators",
             "tiebreak_adjudicator",
@@ -2315,8 +2652,26 @@ def validate_adjudication_plan(document: object) -> dict[str, Any]:
     )
     _identifier(doc, "plan_id", label)
     mode = _text(doc, "mode", label)
-    if mode not in {"HUMAN_HUMAN", "HUMAN_JUDGE", "JUDGE_JUDGE"}:
-        raise ValueError("adjudication plan mode is unsupported")
+    if mode != "HUMAN_HUMAN":
+        raise ValueError("open-case final adjudication must be HUMAN_HUMAN")
+    if doc.get("authority_order") != list(ADJUDICATION_AUTHORITY_ORDER):
+        raise ValueError("adjudication authority order drifted")
+    if dict(_obj(doc.get("route_policy"), f"{label}.route_policy")) != ADJUDICATION_ROUTE_POLICY:
+        raise ValueError("adjudication route policy drifted")
+    if dict(
+        _obj(
+            doc.get("llm_judge_assistance_policy"),
+            f"{label}.llm_judge_assistance_policy",
+        )
+    ) != LLM_JUDGE_ASSISTANCE_POLICY:
+        raise ValueError("LLM judge assistance policy drifted")
+    if dict(
+        _obj(
+            doc.get("agreement_reporting_policy"),
+            f"{label}.agreement_reporting_policy",
+        )
+    ) != AGREEMENT_REPORTING_POLICY:
+        raise ValueError("adjudication agreement reporting policy drifted")
     metric_ids = _strings(doc, "metric_ids", label)
     if not set(metric_ids).issubset(EXPECTED_METRIC_IDS):
         raise ValueError("adjudication plan contains an unsupported metric")
@@ -2343,8 +2698,8 @@ def validate_adjudication_plan(document: object) -> dict[str, Any]:
         adjudicator_type = _text(
             assignment, "adjudicator_type", assignment_label
         )
-        if adjudicator_type not in {"HUMAN", "FIXED_JUDGE"}:
-            raise ValueError("adjudicator assignment type is unsupported")
+        if adjudicator_type != "HUMAN":
+            raise ValueError("final adjudication assignments must be HUMAN")
         adjudicator_id = _identifier(
             assignment, "adjudicator_id", assignment_label
         )
@@ -2370,14 +2725,8 @@ def validate_adjudication_plan(document: object) -> dict[str, Any]:
     ]
     if len(all_ids) != len(set(all_ids)):
         raise ValueError("adjudication plan identities must be distinct")
-    primary_types = sorted(entry["adjudicator_type"] for entry in primaries)
-    expected_types = {
-        "HUMAN_HUMAN": ["HUMAN", "HUMAN"],
-        "HUMAN_JUDGE": ["FIXED_JUDGE", "HUMAN"],
-        "JUDGE_JUDGE": ["FIXED_JUDGE", "FIXED_JUDGE"],
-    }[mode]
-    if primary_types != expected_types:
-        raise ValueError("primary adjudicator composition does not match mode")
+    if any(entry["adjudicator_type"] != "HUMAN" for entry in [*primaries, tiebreak]):
+        raise ValueError("LLM judges cannot be primary or tiebreak authorities")
     assert_public_safe(doc)
     return _verify_fingerprint(doc, "plan_fingerprint", label)
 
@@ -2982,8 +3331,7 @@ def validate_benchmark_manifest(
             or corpus_status != "SEALED"
             or corpus_aggregate_commitment is None
             or corpus_aggregate_commitment != expected_corpus_aggregate
-            or adjudication_mode
-            not in {"HUMAN_HUMAN", "HUMAN_JUDGE", "JUDGE_JUDGE"}
+            or adjudication_mode != "HUMAN_HUMAN"
             or adjudication_plan is None
             or adjudication_plan["mode"] != adjudication_mode
             or not attempts
@@ -3094,6 +3442,7 @@ def validate_observation(document: object) -> dict[str, Any]:
             "provider_terminal_status",
             "provider_http_status",
             "terminal_status",
+            "unknown_disposition",
             "model_failure_value",
             "system_invariant_failure_value",
             "evidence_complete",
@@ -3344,6 +3693,12 @@ def validate_observation(document: object) -> dict[str, Any]:
     terminal = _text(doc, "terminal_status", label)
     if terminal not in TERMINAL_STATUSES:
         raise ValueError("unsupported BM0 terminal status")
+    unknown_disposition = doc.get("unknown_disposition")
+    if unknown_disposition is not None and (
+        not isinstance(unknown_disposition, str)
+        or unknown_disposition not in UNKNOWN_DISPOSITIONS
+    ):
+        raise ValueError("unknown_disposition must be null or a frozen disposition")
     evidence_complete = _boolean(doc, "evidence_complete", label)
     hard_state = doc.get("hard_invariant_pass")
     if hard_state is not None and not isinstance(hard_state, bool):
@@ -3361,8 +3716,26 @@ def validate_observation(document: object) -> dict[str, Any]:
     adjudication = _text(doc, "adjudication_status", label)
     if adjudication not in {"NOT_REQUIRED", "RESOLVED", "UNRESOLVED", "ERROR"}:
         raise ValueError("unsupported adjudication status")
+    unknown_semantics: Mapping[str, Any] | None = None
+    if terminal == "UNKNOWN":
+        if unknown_disposition is None:
+            raise ValueError("UNKNOWN requires an explicit family-bound disposition")
+        policy = APPROVED_TARGET_MEASUREMENT_BINDINGS[doc["entry_id"]][
+            "unknown_policy"
+        ]
+        if unknown_disposition not in policy["permitted_dispositions"]:
+            raise ValueError("UNKNOWN disposition is forbidden by the target family policy")
+        unknown_semantics = UNKNOWN_DISPOSITION_SEMANTICS[unknown_disposition]
+    elif unknown_disposition is not None:
+        raise ValueError("non-UNKNOWN terminals cannot carry an UNKNOWN disposition")
     expected_model_value = None if target_class == "SYSTEM_EVAL_ONLY" else (
-        0 if terminal == "PASS" else 1 if terminal == "FAIL" else None
+        0
+        if terminal == "PASS"
+        else 1
+        if terminal == "FAIL"
+        else unknown_semantics["model_failure_value"]
+        if unknown_semantics is not None
+        else None
     )
     expected_system_value = (
         0 if terminal == "PASS" else 1 if terminal == "FAIL" else None
@@ -3373,10 +3746,26 @@ def validate_observation(document: object) -> dict[str, Any]:
         raise ValueError("PASS requires hard invariant PASS")
     if terminal == "FAIL" and hard_state is not False:
         raise ValueError("FAIL requires hard invariant FAIL")
-    if terminal not in MODEL_SCORABLE_TERMINALS and hard_state is not None:
-        raise ValueError("non-scorable terminals cannot carry a hard verdict")
-    if terminal == "UNKNOWN" and evidence_complete:
-        raise ValueError("UNKNOWN must retain incomplete evidence state")
+    if terminal in NON_MODEL_SCORABLE_TERMINALS and hard_state is not None:
+        raise ValueError("fixed non-scorable terminals cannot carry a hard verdict")
+    if unknown_semantics is not None:
+        if (
+            evidence_complete != unknown_semantics["evidence_complete"]
+            or hard_state != unknown_semantics["hard_invariant_pass"]
+            or adjudication not in unknown_semantics["adjudication_statuses"]
+        ):
+            raise ValueError(
+                "UNKNOWN evidence, verdict, or adjudication state contradicts its disposition"
+            )
+        if unknown_disposition == "UNRESOLVED_SCORER_EVIDENCE":
+            if evidence_receipt_fingerprint is not None:
+                raise ValueError(
+                    "unresolved scorer evidence cannot carry a completed evidence receipt"
+                )
+        elif evidence_receipt_fingerprint is None:
+            raise ValueError(
+                "resolved or adjudication-stage UNKNOWN requires an evidence receipt"
+            )
     if terminal in MODEL_SCORABLE_TERMINALS and (
         not evidence_complete or adjudication not in {"NOT_REQUIRED", "RESOLVED"}
     ):
@@ -3420,6 +3809,25 @@ def validate_observation(document: object) -> dict[str, Any]:
                     "scorable model observations require successful provider receipts; "
                     "usage, latency, and cost may be unavailable but not inapplicable"
                 )
+    if terminal == "UNKNOWN" and target_class != "SYSTEM_EVAL_ONLY":
+        if identity_certainty not in {"EXACT", "ALIAS_ONLY"}:
+            raise ValueError(
+                "family-resolved UNKNOWN requires attributable model identity"
+            )
+        if (
+            doc["provider_request_id"] is None
+            or provider_terminal != "SUCCESS"
+            or provider_http_status is None
+            or not 200 <= provider_http_status < 300
+            or raw_response_fingerprint is None
+            or any(
+                payload["attribution_status"] == "NOT_APPLICABLE"
+                for payload in (usage, latency, cost)
+            )
+        ):
+            raise ValueError(
+                "UNKNOWN model outcomes require a successful attributable response"
+            )
     if target_class == "SYSTEM_EVAL_ONLY" and (
         provider_terminal != "NOT_APPLICABLE"
         or provider_http_status is not None
@@ -3572,7 +3980,12 @@ def typed_terminal_partition_v1(
     missing = list(grid["missing_attempt_ids"])
     counts = Counter(row["terminal_status"] for row in observed_rows)
     non_scorable_count = sum(
-        counts.get(status, 0) for status in NON_MODEL_SCORABLE_TERMINALS
+        (
+            row["system_invariant_failure_value"] is None
+            if row["target_class"] == "SYSTEM_EVAL_ONLY"
+            else row["model_failure_value"] is None
+        )
+        for row in observed_rows
     )
     if not planned_count:
         terminal_status = "NOT_EVALUABLE"
@@ -3591,9 +4004,7 @@ def typed_terminal_partition_v1(
         "recorded_terminal_count": len(observed_rows),
         "missing_attempt_ids": missing,
         "terminal_counts": {status: counts.get(status, 0) for status in TERMINAL_STATUSES},
-        "scorable_terminal_count": sum(
-            counts.get(status, 0) for status in MODEL_SCORABLE_TERMINALS
-        ),
+        "scorable_terminal_count": len(observed_rows) - non_scorable_count,
         "non_scorable_terminal_count": non_scorable_count,
         "non_scorable_attempt_rate": (
             round(non_scorable_count / planned_count, 12)
@@ -3721,8 +4132,13 @@ def model_failure_denominator_v1(
         )
         model_rows = [row for row in comparable_rows if row["model_subject_id"] == model_id]
         counts = Counter(row["terminal_status"] for row in model_rows)
-        numerator = counts.get("FAIL", 0)
-        denominator = counts.get("PASS", 0) + numerator
+        failure_values = [
+            row["model_failure_value"]
+            for row in model_rows
+            if row["model_failure_value"] in {0, 1}
+        ]
+        numerator = sum(failure_values)
+        denominator = len(failure_values)
         if missing_comparable:
             model_terminal = "NOT_EVALUABLE"
             model_reason = "MISSING_PLANNED_OBSERVATIONS"
@@ -3745,6 +4161,11 @@ def model_failure_denominator_v1(
                 status: counts.get(status, 0)
                 for status in NON_MODEL_SCORABLE_TERMINALS
             }
+            excluded_counts["UNKNOWN"] = sum(
+                row["terminal_status"] == "UNKNOWN"
+                and row["model_failure_value"] is None
+                for row in model_rows
+            )
             interval = wilson_interval_v1(numerator, denominator)
         by_model[model_id] = {
             "terminal_status": model_terminal,
@@ -3843,9 +4264,13 @@ def case_failure_probability_v1(
         cases: list[dict[str, Any]] = []
         for key in sorted(key for key in planned_case_keys if key[0] == model_id):
             rows = case_rows.get(key, [])
-            counts = Counter(row["terminal_status"] for row in rows)
-            failures = counts.get("FAIL", 0)
-            denominator = failures + counts.get("PASS", 0)
+            failure_values = [
+                row["model_failure_value"]
+                for row in rows
+                if row["model_failure_value"] in {0, 1}
+            ]
+            failures = sum(failure_values)
+            denominator = len(failure_values)
             key_missing = any(
                 attempt_id in missing
                 and grid["planned"][attempt_id]["model_subject_id"] == key[0]
@@ -4082,9 +4507,13 @@ def control_false_positive_rate_v1(
             if attempt_id in grid["observed"]
             and grid["planned"][attempt_id]["model_subject_id"] == model_id
         ]
-        counts = Counter(row["terminal_status"] for row in rows)
-        failures = counts.get("FAIL", 0)
-        denominator = failures + counts.get("PASS", 0)
+        failure_values = [
+            row["model_failure_value"]
+            for row in rows
+            if row["model_failure_value"] in {0, 1}
+        ]
+        failures = sum(failure_values)
+        denominator = len(failure_values)
         model_missing = any(
             grid["planned"][attempt_id]["model_subject_id"] == model_id
             for attempt_id in missing
@@ -4341,7 +4770,7 @@ def system_invariant_failure_rate_v1(
         )
         excluded_counts = {
             status: counts.get(status, 0)
-            for status in NON_MODEL_SCORABLE_TERMINALS
+            for status in NON_DEFINITIVE_TERMINALS
         }
         interval = wilson_interval_v1(failures, denominator)
     return {
@@ -4487,8 +4916,8 @@ def paired_complete_case_v1(
     included = [
         key
         for key in sorted(left)
-        if left[key]["terminal_status"] in MODEL_SCORABLE_TERMINALS
-        and right[key]["terminal_status"] in MODEL_SCORABLE_TERMINALS
+        if left[key]["model_failure_value"] in {0, 1}
+        and right[key]["model_failure_value"] in {0, 1}
     ]
     if not included:
         return {
@@ -4505,8 +4934,8 @@ def paired_complete_case_v1(
             "corpus_pool": PRIMARY_ESTIMATE_POOL_ID,
             "ranking_emitted": False,
         }
-    left_rate = sum(left[key]["terminal_status"] == "FAIL" for key in included) / len(included)
-    right_rate = sum(right[key]["terminal_status"] == "FAIL" for key in included) / len(included)
+    left_rate = sum(left[key]["model_failure_value"] for key in included) / len(included)
+    right_rate = sum(right[key]["model_failure_value"] for key in included) / len(included)
     return {
         "method_id": SAP_METHOD_IDS[5],
         "metric_id": metric_id,
@@ -4537,13 +4966,16 @@ def validate_adjudication_record(document: object) -> dict[str, Any]:
             "metric_id",
             "round_role",
             "adjudicator_type",
+            "authority_role",
             "adjudicator_id",
             "adjudicator_configuration_fingerprint",
+            "llm_judge_assistance",
             "record_status",
             "decision",
             "blind_to_model_identity",
             "blind_to_provider_identity",
             "blind_to_peer_decisions",
+            "blind_to_llm_assistance_before_decision",
             "rubric_version",
             "rubric_fingerprint",
             "evidence_complete",
@@ -4568,12 +5000,48 @@ def validate_adjudication_record(document: object) -> dict[str, Any]:
         _identifier(doc, key, label)
     if doc.get("round_role") not in {"PRIMARY", "TIEBREAK"}:
         raise ValueError("adjudication round role is unsupported")
-    if doc.get("adjudicator_type") not in {"HUMAN", "FIXED_JUDGE"}:
-        raise ValueError("adjudicator type is unsupported")
+    if doc.get("adjudicator_type") != "HUMAN":
+        raise ValueError("final adjudication authority must be HUMAN")
+    if doc.get("authority_role") != "BLINDED_INDEPENDENT_HUMAN_REVIEW":
+        raise ValueError("adjudication authority role drifted")
     _require_sha256(
         doc.get("adjudicator_configuration_fingerprint"),
         "adjudicator_configuration_fingerprint",
     )
+    judge_assistance = doc.get("llm_judge_assistance")
+    if judge_assistance is not None:
+        assistance = _obj(
+            judge_assistance, "adjudication-record.llm_judge_assistance"
+        )
+        _exact_keys(
+            assistance,
+            {
+                "judge_id",
+                "judge_version",
+                "judge_configuration_fingerprint",
+                "calibration_set_fingerprint",
+                "known_bad_control_receipt_fingerprint",
+                "judge_error_audit_fingerprint",
+                "final_authority",
+            },
+            "adjudication-record.llm_judge_assistance",
+        )
+        _identifier(assistance, "judge_id", "adjudication-record.llm_judge_assistance")
+        _identifier(
+            assistance, "judge_version", "adjudication-record.llm_judge_assistance"
+        )
+        for key in (
+            "judge_configuration_fingerprint",
+            "calibration_set_fingerprint",
+            "known_bad_control_receipt_fingerprint",
+            "judge_error_audit_fingerprint",
+        ):
+            _require_sha256(
+                assistance.get(key),
+                f"adjudication-record.llm_judge_assistance.{key}",
+            )
+        if assistance.get("final_authority") is not False:
+            raise ValueError("LLM judge assistance cannot be final authority")
     if doc.get("record_status") not in {"COMPLETED", "ERROR"}:
         raise ValueError("adjudication record status is unsupported")
     if doc.get("decision") not in {"PASS", "FAIL", "UNKNOWN", None}:
@@ -4582,6 +5050,7 @@ def validate_adjudication_record(document: object) -> dict[str, Any]:
         "blind_to_model_identity",
         "blind_to_provider_identity",
         "blind_to_peer_decisions",
+        "blind_to_llm_assistance_before_decision",
         "evidence_complete",
     ):
         _boolean(doc, key, label)
@@ -4591,6 +5060,7 @@ def validate_adjudication_record(document: object) -> dict[str, Any]:
             "blind_to_model_identity",
             "blind_to_provider_identity",
             "blind_to_peer_decisions",
+            "blind_to_llm_assistance_before_decision",
         )
     ):
         raise ValueError("adjudication must remain blind to identity and peer decisions")
@@ -4610,6 +5080,51 @@ def validate_adjudication_record(document: object) -> dict[str, Any]:
     return _verify_fingerprint(doc, "record_fingerprint", label)
 
 
+def _adjudication_resolution_result(
+    terminal_status: str,
+    reason: str,
+    decision: str | None,
+    primaries: Sequence[Mapping[str, Any]],
+    tiebreakers: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    completed_primaries = [
+        row for row in primaries if row["record_status"] == "COMPLETED"
+    ]
+    exact_agreement: bool | None = None
+    raw_agreement_rate: float | None = None
+    if len(completed_primaries) == 2:
+        exact_agreement = (
+            completed_primaries[0]["decision"]
+            == completed_primaries[1]["decision"]
+        )
+        raw_agreement_rate = 1.0 if exact_agreement else 0.0
+    assistance_count = sum(
+        row.get("llm_judge_assistance") is not None
+        for row in [*primaries, *tiebreakers]
+    )
+    return {
+        "method_id": SAP_METHOD_IDS[6],
+        "terminal_status": terminal_status,
+        "reason": reason,
+        "decision": decision,
+        "agreement_report": {
+            "reporting_method": AGREEMENT_REPORTING_POLICY["measure"],
+            "primary_human_record_count": len(primaries),
+            "completed_primary_human_record_count": len(completed_primaries),
+            "exact_agreement": exact_agreement,
+            "raw_agreement_rate": raw_agreement_rate,
+            "disagreement_escalated": exact_agreement is False
+            and len(tiebreakers) == 1,
+            "tiebreak_human_record_count": len(tiebreakers),
+            "llm_judge_assistance_record_count": assistance_count,
+            "final_authority": "BLINDED_INDEPENDENT_HUMAN_REVIEW",
+            "llm_judge_final_authority": False,
+            "auditable_final_label": decision in {"PASS", "FAIL"}
+            and terminal_status == decision,
+        },
+    }
+
+
 def resolve_adjudication_v1(
     manifest: object,
     records: Iterable[Mapping[str, Any]],
@@ -4627,12 +5142,9 @@ def resolve_adjudication_v1(
         raise ValueError("frozen manifest is missing its adjudication plan")
     rows = [validate_adjudication_record(record) for record in records]
     if not rows:
-        return {
-            "method_id": SAP_METHOD_IDS[6],
-            "terminal_status": "UNKNOWN",
-            "reason": "MISSING_PRIMARY_ADJUDICATIONS",
-            "decision": None,
-        }
+        return _adjudication_resolution_result(
+            "UNKNOWN", "MISSING_PRIMARY_ADJUDICATIONS", None, [], []
+        )
     identity_fields = ("study_id", "attempt_id", "item_alias", "metric_id", "rubric_version", "rubric_fingerprint")
     for field in identity_fields:
         if len({row[field] for row in rows}) != 1:
@@ -4700,23 +5212,25 @@ def resolve_adjudication_v1(
             raise ValueError(
                 "a tiebreaker is forbidden when a primary adjudication errored"
             )
-        return {
-            "method_id": SAP_METHOD_IDS[6],
-            "terminal_status": "ERROR",
-            "reason": "ADJUDICATION_INFRASTRUCTURE_ERROR",
-            "decision": None,
-        }
+        return _adjudication_resolution_result(
+            "ERROR",
+            "ADJUDICATION_INFRASTRUCTURE_ERROR",
+            None,
+            primaries,
+            tiebreakers,
+        )
     if len(primaries) != 2:
         if tiebreakers:
             raise ValueError(
                 "a tiebreaker requires both predeclared primary adjudications"
             )
-        return {
-            "method_id": SAP_METHOD_IDS[6],
-            "terminal_status": "UNKNOWN",
-            "reason": "INCOMPLETE_OR_AMBIGUOUS_ADJUDICATION_SET",
-            "decision": None,
-        }
+        return _adjudication_resolution_result(
+            "UNKNOWN",
+            "INCOMPLETE_OR_AMBIGUOUS_ADJUDICATION_SET",
+            None,
+            primaries,
+            tiebreakers,
+        )
     if supplied_primaries != planned_primaries:
         raise ValueError("the primary adjudicator set drifted from the frozen plan")
     if any(row["decision"] == "UNKNOWN" for row in primaries):
@@ -4724,51 +5238,49 @@ def resolve_adjudication_v1(
             raise ValueError(
                 "a tiebreaker cannot convert insufficient evidence into PASS or FAIL"
             )
-        return {
-            "method_id": SAP_METHOD_IDS[6],
-            "terminal_status": "UNKNOWN",
-            "reason": "PRIMARY_INSUFFICIENT_EVIDENCE",
-            "decision": None,
-        }
+        return _adjudication_resolution_result(
+            "UNKNOWN",
+            "PRIMARY_INSUFFICIENT_EVIDENCE",
+            None,
+            primaries,
+            tiebreakers,
+        )
     primary_decisions = {row["decision"] for row in primaries}
     if len(primary_decisions) == 1:
         if tiebreakers:
             raise ValueError("a tiebreaker is forbidden when primaries agree")
         decision = primaries[0]["decision"]
-        return {
-            "method_id": SAP_METHOD_IDS[6],
-            "terminal_status": decision,
-            "reason": "PRIMARY_AGREEMENT",
-            "decision": decision,
-        }
+        return _adjudication_resolution_result(
+            decision, "PRIMARY_AGREEMENT", decision, primaries, tiebreakers
+        )
     if len(tiebreakers) != 1:
-        return {
-            "method_id": SAP_METHOD_IDS[6],
-            "terminal_status": "UNKNOWN",
-            "reason": "PRIMARY_DISAGREEMENT_REQUIRES_TIEBREAK",
-            "decision": None,
-        }
+        return _adjudication_resolution_result(
+            "UNKNOWN",
+            "PRIMARY_DISAGREEMENT_REQUIRES_TIEBREAK",
+            None,
+            primaries,
+            tiebreakers,
+        )
     if tiebreakers[0]["record_status"] == "ERROR":
-        return {
-            "method_id": SAP_METHOD_IDS[6],
-            "terminal_status": "ERROR",
-            "reason": "ADJUDICATION_INFRASTRUCTURE_ERROR",
-            "decision": None,
-        }
+        return _adjudication_resolution_result(
+            "ERROR",
+            "ADJUDICATION_INFRASTRUCTURE_ERROR",
+            None,
+            primaries,
+            tiebreakers,
+        )
     decision = tiebreakers[0]["decision"]
     if decision == "UNKNOWN":
-        return {
-            "method_id": SAP_METHOD_IDS[6],
-            "terminal_status": "UNKNOWN",
-            "reason": "TIEBREAK_INSUFFICIENT_EVIDENCE",
-            "decision": None,
-        }
-    return {
-        "method_id": SAP_METHOD_IDS[6],
-        "terminal_status": decision,
-        "reason": "PREDECLARED_TIEBREAK",
-        "decision": decision,
-    }
+        return _adjudication_resolution_result(
+            "UNKNOWN",
+            "TIEBREAK_INSUFFICIENT_EVIDENCE",
+            None,
+            primaries,
+            tiebreakers,
+        )
+    return _adjudication_resolution_result(
+        decision, "PREDECLARED_TIEBREAK", decision, primaries, tiebreakers
+    )
 
 
 def validate_measurement_contract(
@@ -4850,13 +5362,30 @@ def validate_measurement_contract(
     target = _obj(doc.get("target_contract"), f"{label}.target_contract")
     _exact_keys(
         target,
-        {"target_count", "class_counts", "default_comparable_classes", "sandbox_equivalence_status"},
+        {
+            "target_count",
+            "class_counts",
+            "benchmark_lane_counts",
+            "per_entry_rationale_required",
+            "per_entry_unknown_policy_required",
+            "default_comparable_classes",
+            "sandbox_equivalence_status",
+        },
         f"{label}.target_contract",
     )
     if (
         _integer(target, "target_count", f"{label}.target_contract") != 16
         or dict(_obj(target.get("class_counts"), "target_contract.class_counts"))
         != EXPECTED_TARGET_CLASS_COUNTS
+        or dict(
+            _obj(
+                target.get("benchmark_lane_counts"),
+                "target_contract.benchmark_lane_counts",
+            )
+        )
+        != EXPECTED_BENCHMARK_LANE_COUNTS
+        or target.get("per_entry_rationale_required") is not True
+        or target.get("per_entry_unknown_policy_required") is not True
         or tuple(_strings(target, "default_comparable_classes", "target_contract"))
         != DEFAULT_COMPARABLE_CLASSES
         or target.get("sandbox_equivalence_status") != "NOT_ESTABLISHED"
@@ -4885,16 +5414,33 @@ def validate_measurement_contract(
         entry = _obj(raw, f"terminal_semantics[{index}]")
         _exact_keys(
             entry,
-            {"terminal_status", "category", "model_failure_denominator", "model_failure_numerator"},
+            {
+                "terminal_status",
+                "category",
+                "model_failure_denominator",
+                "model_failure_numerator",
+                "resolution_rule",
+            },
             f"terminal_semantics[{index}]",
         )
         status = _text(entry, "terminal_status", f"terminal_semantics[{index}]")
         if status in reconstructed:
             raise ValueError("duplicate terminal semantics")
+        denominator_value = entry.get("model_failure_denominator")
+        numerator_value = entry.get("model_failure_numerator")
+        if denominator_value not in {True, False, None} or numerator_value not in {
+            True,
+            False,
+            None,
+        }:
+            raise ValueError("terminal model-failure flags must be boolean or null")
         reconstructed[status] = {
             "category": _text(entry, "category", f"terminal_semantics[{index}]"),
-            "model_failure_denominator": _boolean(entry, "model_failure_denominator", f"terminal_semantics[{index}]"),
-            "model_failure_numerator": _boolean(entry, "model_failure_numerator", f"terminal_semantics[{index}]"),
+            "model_failure_denominator": denominator_value,
+            "model_failure_numerator": numerator_value,
+            "resolution_rule": _text(
+                entry, "resolution_rule", f"terminal_semantics[{index}]"
+            ),
         }
     if reconstructed != TERMINAL_CONTRACT or tuple(entry["terminal_status"] for entry in terminal_raw) != TERMINAL_STATUSES:
         raise ValueError("BM0 terminal semantics drifted")
@@ -4902,7 +5448,21 @@ def validate_measurement_contract(
     denominator = _obj(doc.get("model_failure_denominator"), f"{label}.model_failure_denominator")
     _exact_keys(
         denominator,
-        {"unit", "corpus_pool", "eligible_classes", "required_applicability_result", "excluded_applicability_results", "included_statuses", "failure_status", "excluded_statuses", "zero_denominator", "partial_grid", "retry_semantics"},
+        {
+            "unit",
+            "corpus_pool",
+            "eligible_classes",
+            "required_applicability_result",
+            "excluded_applicability_results",
+            "eligible_statuses",
+            "denominator_rule",
+            "failure_rule",
+            "unknown_resolution",
+            "excluded_statuses",
+            "zero_denominator",
+            "partial_grid",
+            "retry_semantics",
+        },
         f"{label}.model_failure_denominator",
     )
     if (
@@ -4911,8 +5471,12 @@ def validate_measurement_contract(
         or tuple(denominator.get("eligible_classes", [])) != DEFAULT_COMPARABLE_CLASSES
         or denominator.get("required_applicability_result") != "APPLICABLE"
         or denominator.get("excluded_applicability_results") != ["NOT_APPLICABLE"]
-        or denominator.get("included_statuses") != ["PASS", "FAIL"]
-        or denominator.get("failure_status") != "FAIL"
+        or denominator.get("eligible_statuses")
+        != list(MODEL_FAILURE_ELIGIBLE_TERMINALS)
+        or denominator.get("denominator_rule") != "MODEL_FAILURE_VALUE_IN_0_1"
+        or denominator.get("failure_rule") != "MODEL_FAILURE_VALUE_EQUALS_1"
+        or denominator.get("unknown_resolution")
+        != "PER_ENTRY_POLICY_AND_EXPLICIT_DISPOSITION_NO_NULL_COERCION"
         or set(denominator.get("excluded_statuses", [])) != set(NON_MODEL_SCORABLE_TERMINALS)
         or denominator.get("zero_denominator") != "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR"
         or denominator.get("partial_grid") != "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS"
@@ -4951,13 +5515,34 @@ def validate_measurement_contract(
     adjudication = _obj(doc.get("adjudication_contract"), f"{label}.adjudication_contract")
     _exact_keys(
         adjudication,
-        {"schema_path", "plan_location", "mode_status", "minimum_primary_records", "distinct_adjudicators_required", "adjudicator_configuration_bound", "predeclared_tiebreaker_required", "tiebreak_rule", "model_identity_blinded", "provider_identity_blinded", "peer_decisions_blinded"},
+        {
+            "schema_path",
+            "plan_location",
+            "mode_status",
+            "authority_order",
+            "route_policy",
+            "open_case_final_mode",
+            "minimum_primary_records",
+            "distinct_adjudicators_required",
+            "adjudicator_configuration_bound",
+            "predeclared_tiebreaker_required",
+            "tiebreak_rule",
+            "model_identity_blinded",
+            "provider_identity_blinded",
+            "peer_decisions_blinded",
+            "llm_judge_assistance_policy",
+            "agreement_reporting_policy",
+        },
         f"{label}.adjudication_contract",
     )
     if (
         adjudication.get("schema_path") != "schemas/bm0_adjudication_record.schema.json"
         or adjudication.get("plan_location") != "FROZEN_MANIFEST"
         or adjudication.get("mode_status") != "NOT_SELECTED"
+        or adjudication.get("authority_order") != list(ADJUDICATION_AUTHORITY_ORDER)
+        or dict(_obj(adjudication.get("route_policy"), "adjudication_contract.route_policy"))
+        != ADJUDICATION_ROUTE_POLICY
+        or adjudication.get("open_case_final_mode") != "HUMAN_HUMAN"
         or _integer(adjudication, "minimum_primary_records", "adjudication_contract", minimum=2) != 2
         or any(
             adjudication.get(key) is not True
@@ -4972,6 +5557,20 @@ def validate_measurement_contract(
         )
         or adjudication.get("tiebreak_rule")
         != "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ONLY_ON_PASS_FAIL_DISAGREEMENT"
+        or dict(
+            _obj(
+                adjudication.get("llm_judge_assistance_policy"),
+                "adjudication_contract.llm_judge_assistance_policy",
+            )
+        )
+        != LLM_JUDGE_ASSISTANCE_POLICY
+        or dict(
+            _obj(
+                adjudication.get("agreement_reporting_policy"),
+                "adjudication_contract.agreement_reporting_policy",
+            )
+        )
+        != AGREEMENT_REPORTING_POLICY
     ):
         raise ValueError("BM0 adjudication contract drifted")
 
@@ -5105,9 +5704,14 @@ def build_bm0_receipt(
         "applicability_manifest_contract": "PER_MODEL_PROVIDER_X_16_ENTRY",
         "primary_estimate_pool": PRIMARY_ESTIMATE_POOL_ID,
         "sandbox_equivalence_status": "NOT_ESTABLISHED",
+        "benchmark_lanes": list(BENCHMARK_LANES),
         "terminal_statuses": list(TERMINAL_STATUSES),
-        "model_failure_denominator_statuses": list(MODEL_SCORABLE_TERMINALS),
+        "model_failure_denominator_statuses": list(
+            MODEL_FAILURE_ELIGIBLE_TERMINALS
+        ),
         "non_model_failure_statuses": list(NON_MODEL_SCORABLE_TERMINALS),
+        "unknown_policy_count": len(APPROVED_TARGET_MEASUREMENT_BINDINGS),
+        "unknown_model_failure_semantics": "PER_ENTRY_TRISTATE_NO_NULL_COERCION",
         "sap_method_ids": list(SAP_METHOD_IDS),
         "sap_design_rule_id": SAP_DESIGN_RULE["sample_size_rule_id"],
         "sap_design_purpose": SAP_DESIGN_RULE["purpose"],
@@ -5128,6 +5732,8 @@ def build_bm0_receipt(
             "corpus_aggregate_commitment"
         ],
         "adjudication_mode": checked_manifest["adjudication_mode"],
+        "adjudication_authority_order": list(ADJUDICATION_AUTHORITY_ORDER),
+        "open_case_adjudication_mode": "HUMAN_HUMAN",
         "planned_attempt_count": checked_manifest["planned_attempt_count"],
         "hidden_exact_content_in_public_repository": checked_corpus["hidden_holdout"]["exact_content_in_public_repository"],
         "hidden_holdout_authority_binding": checked_manifest[
@@ -5138,6 +5744,7 @@ def build_bm0_receipt(
         "spend": 0,
         "benchmark_results_emitted": False,
         "developer_contract_gate": "PASS",
+        "predecessor_review_evidence": deepcopy(PREDECESSOR_REVIEW_EVIDENCE),
         "exact_head_ci_status": "NOT_RUN",
         "independent_qa_status": "NOT_RUN",
         "bm0_green": False,
@@ -5146,6 +5753,7 @@ def build_bm0_receipt(
             "This receipt validates an offline measurement contract; it is not a benchmark result.",
             "No provider/model roster, hidden corpus, live call, ranking, or population estimate is selected or executed.",
             "Developer validation cannot satisfy the distinct BM0 Independent QA gate.",
+            "Prior-head CI and QA evidence is context only and is not attributed to the changed candidate head.",
         ],
     }
     receipt["receipt_fingerprint"] = sha256_json(receipt)
@@ -5173,9 +5781,12 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "applicability_manifest_contract",
         "primary_estimate_pool",
         "sandbox_equivalence_status",
+        "benchmark_lanes",
         "terminal_statuses",
         "model_failure_denominator_statuses",
         "non_model_failure_statuses",
+        "unknown_policy_count",
+        "unknown_model_failure_semantics",
         "sap_method_ids",
         "sap_design_rule_id",
         "sap_design_purpose",
@@ -5190,6 +5801,8 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "corpus_commitment_status",
         "corpus_aggregate_commitment",
         "adjudication_mode",
+        "adjudication_authority_order",
+        "open_case_adjudication_mode",
         "planned_attempt_count",
         "hidden_exact_content_in_public_repository",
         "hidden_holdout_authority_binding",
@@ -5198,6 +5811,7 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "spend",
         "benchmark_results_emitted",
         "developer_contract_gate",
+        "predecessor_review_evidence",
         "exact_head_ci_status",
         "independent_qa_status",
         "bm0_green",
@@ -5227,11 +5841,16 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         != "PER_MODEL_PROVIDER_X_16_ENTRY"
         or doc.get("primary_estimate_pool") != PRIMARY_ESTIMATE_POOL_ID
         or doc.get("sandbox_equivalence_status") != "NOT_ESTABLISHED"
+        or tuple(doc.get("benchmark_lanes", [])) != BENCHMARK_LANES
         or tuple(doc.get("terminal_statuses", [])) != TERMINAL_STATUSES
         or tuple(doc.get("model_failure_denominator_statuses", []))
-        != MODEL_SCORABLE_TERMINALS
+        != MODEL_FAILURE_ELIGIBLE_TERMINALS
         or tuple(doc.get("non_model_failure_statuses", []))
         != NON_MODEL_SCORABLE_TERMINALS
+        or doc.get("unknown_policy_count")
+        != len(APPROVED_TARGET_MEASUREMENT_BINDINGS)
+        or doc.get("unknown_model_failure_semantics")
+        != "PER_ENTRY_TRISTATE_NO_NULL_COERCION"
         or tuple(doc.get("sap_method_ids", [])) != SAP_METHOD_IDS
         or doc.get("sap_design_rule_id") != SAP_DESIGN_RULE["sample_size_rule_id"]
         or doc.get("sap_design_purpose") != SAP_DESIGN_RULE["purpose"]
@@ -5247,6 +5866,9 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         or doc.get("corpus_commitment_status") != "NOT_COMMITTED"
         or doc.get("corpus_aggregate_commitment") is not None
         or doc.get("adjudication_mode") != "NOT_SELECTED"
+        or tuple(doc.get("adjudication_authority_order", []))
+        != ADJUDICATION_AUTHORITY_ORDER
+        or doc.get("open_case_adjudication_mode") != "HUMAN_HUMAN"
         or doc.get("planned_attempt_count") != 0
         or doc.get("hidden_exact_content_in_public_repository") is not False
         or doc.get("hidden_holdout_authority_binding")
@@ -5255,6 +5877,8 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         or doc.get("credential_lookups") != 0
         or doc.get("spend") != 0
         or doc.get("developer_contract_gate") != "PASS"
+        or doc.get("predecessor_review_evidence")
+        != PREDECESSOR_REVIEW_EVIDENCE
         or doc.get("exact_head_ci_status") != "NOT_RUN"
         or doc.get("independent_qa_status") != "NOT_RUN"
         or doc.get("bm0_green") is not False
@@ -5272,6 +5896,7 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "This receipt validates an offline measurement contract; it is not a benchmark result.",
         "No provider/model roster, hidden corpus, live call, ranking, or population estimate is selected or executed.",
         "Developer validation cannot satisfy the distinct BM0 Independent QA gate.",
+        "Prior-head CI and QA evidence is context only and is not attributed to the changed candidate head.",
     ]:
         raise ValueError("BM0 receipt limitations drifted")
     assert_public_safe(doc)

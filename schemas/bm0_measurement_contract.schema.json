@@ -149,35 +149,26 @@
       }
     },
     "target_contract": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "target_count",
-        "class_counts",
-        "default_comparable_classes",
-        "sandbox_equivalence_status"
-      ],
-      "properties": {
-        "target_count": {
-          "const": 16
-        },
+      "const": {
+        "target_count": 16,
         "class_counts": {
-          "const": {
-            "MODEL_DIRECT": 3,
-            "MODEL_CONTEXT_GROUNDED": 5,
-            "AGENT_STANDARDIZED": 4,
-            "SYSTEM_EVAL_ONLY": 4
-          }
+          "MODEL_DIRECT": 3,
+          "MODEL_CONTEXT_GROUNDED": 5,
+          "AGENT_STANDARDIZED": 4,
+          "SYSTEM_EVAL_ONLY": 4
         },
-        "default_comparable_classes": {
-          "const": [
-            "MODEL_DIRECT",
-            "MODEL_CONTEXT_GROUNDED"
-          ]
+        "default_comparable_classes": [
+          "MODEL_DIRECT",
+          "MODEL_CONTEXT_GROUNDED"
+        ],
+        "sandbox_equivalence_status": "NOT_ESTABLISHED",
+        "benchmark_lane_counts": {
+          "INCLUDED_WHEN_VALID": 8,
+          "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX": 4,
+          "EXCLUDED_SYSTEM_EVAL_ONLY": 4
         },
-        "sandbox_equivalence_status": {
-          "const": "NOT_ESTABLISHED"
-        }
+        "per_entry_rationale_required": true,
+        "per_entry_unknown_policy_required": true
       }
     },
     "terminal_semantics": {
@@ -198,6 +189,9 @@
             },
             "model_failure_numerator": {
               "const": false
+            },
+            "resolution_rule": {
+              "const": "TERMINAL_FIXED"
             }
           }
         },
@@ -214,6 +208,9 @@
             },
             "model_failure_numerator": {
               "const": true
+            },
+            "resolution_rule": {
+              "const": "TERMINAL_FIXED"
             }
           }
         },
@@ -230,6 +227,9 @@
             },
             "model_failure_numerator": {
               "const": false
+            },
+            "resolution_rule": {
+              "const": "TERMINAL_FIXED"
             }
           }
         },
@@ -246,6 +246,9 @@
             },
             "model_failure_numerator": {
               "const": false
+            },
+            "resolution_rule": {
+              "const": "TERMINAL_FIXED"
             }
           }
         },
@@ -262,6 +265,9 @@
             },
             "model_failure_numerator": {
               "const": false
+            },
+            "resolution_rule": {
+              "const": "TERMINAL_FIXED"
             }
           }
         },
@@ -271,13 +277,16 @@
               "const": "UNKNOWN"
             },
             "category": {
-              "const": "INSUFFICIENT_EVIDENCE"
+              "const": "FAMILY_POLICY_DEPENDENT"
             },
             "model_failure_denominator": {
-              "const": false
+              "const": null
             },
             "model_failure_numerator": {
-              "const": false
+              "const": null
+            },
+            "resolution_rule": {
+              "const": "TARGET_UNKNOWN_POLICY_AND_DISPOSITION"
             }
           }
         }
@@ -291,7 +300,8 @@
               "terminal_status",
               "category",
               "model_failure_denominator",
-              "model_failure_numerator"
+              "model_failure_numerator",
+              "resolution_rule"
             ],
             "properties": {
               "terminal_status": {
@@ -310,14 +320,26 @@
                   "NON_EVALUABLE",
                   "GOVERNANCE_BLOCK",
                   "INFRASTRUCTURE_ERROR",
-                  "INSUFFICIENT_EVIDENCE"
+                  "FAMILY_POLICY_DEPENDENT"
                 ]
               },
               "model_failure_denominator": {
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               },
               "model_failure_numerator": {
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "resolution_rule": {
+                "enum": [
+                  "TERMINAL_FIXED",
+                  "TARGET_UNKNOWN_POLICY_AND_DISPOSITION"
+                ]
               }
             }
           }
@@ -326,68 +348,33 @@
       "items": false
     },
     "model_failure_denominator": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "unit",
-        "corpus_pool",
-        "eligible_classes",
-        "required_applicability_result",
-        "excluded_applicability_results",
-        "included_statuses",
-        "failure_status",
-        "excluded_statuses",
-        "zero_denominator",
-        "partial_grid",
-        "retry_semantics"
-      ],
-      "properties": {
-        "unit": {
-          "const": "UNIQUE_PREDECLARED_ATTEMPT"
-        },
-        "corpus_pool": {
-          "const": "PRIVATE_HIDDEN_HOLDOUT"
-        },
-        "eligible_classes": {
-          "const": [
-            "MODEL_DIRECT",
-            "MODEL_CONTEXT_GROUNDED"
-          ]
-        },
-        "included_statuses": {
-          "const": [
-            "PASS",
-            "FAIL"
-          ]
-        },
-        "failure_status": {
-          "const": "FAIL"
-        },
-        "excluded_statuses": {
-          "const": [
-            "NOT_EVALUABLE",
-            "BLOCKED",
-            "ERROR",
-            "UNKNOWN"
-          ]
-        },
-        "zero_denominator": {
-          "const": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR"
-        },
-        "partial_grid": {
-          "const": "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS"
-        },
-        "retry_semantics": {
-          "const": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"
-        },
-        "required_applicability_result": {
-          "const": "APPLICABLE"
-        },
-        "excluded_applicability_results": {
-          "const": [
-            "NOT_APPLICABLE"
-          ]
-        }
+      "const": {
+        "unit": "UNIQUE_PREDECLARED_ATTEMPT",
+        "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
+        "eligible_classes": [
+          "MODEL_DIRECT",
+          "MODEL_CONTEXT_GROUNDED"
+        ],
+        "required_applicability_result": "APPLICABLE",
+        "excluded_applicability_results": [
+          "NOT_APPLICABLE"
+        ],
+        "eligible_statuses": [
+          "PASS",
+          "FAIL",
+          "UNKNOWN"
+        ],
+        "denominator_rule": "MODEL_FAILURE_VALUE_IN_0_1",
+        "failure_rule": "MODEL_FAILURE_VALUE_EQUALS_1",
+        "unknown_resolution": "PER_ENTRY_POLICY_AND_EXPLICIT_DISPOSITION_NO_NULL_COERCION",
+        "excluded_statuses": [
+          "NOT_EVALUABLE",
+          "BLOCKED",
+          "ERROR"
+        ],
+        "zero_denominator": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR",
+        "partial_grid": "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS",
+        "retry_semantics": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"
       }
     },
     "sap": {
@@ -659,6 +646,18 @@
         "schema_path": "schemas/bm0_adjudication_record.schema.json",
         "plan_location": "FROZEN_MANIFEST",
         "mode_status": "NOT_SELECTED",
+        "authority_order": [
+          "DETERMINISTIC_ORACLE",
+          "STRUCTURED_RULE_SCORER",
+          "BLINDED_INDEPENDENT_HUMAN_REVIEW",
+          "CALIBRATED_LLM_JUDGE_ASSISTANCE_ONLY"
+        ],
+        "route_policy": {
+          "deterministic_oracle": "FINAL_WHEN_APPLICABLE",
+          "structured_rule_scorer": "FINAL_WHEN_ORACLE_NOT_APPLICABLE",
+          "open_nondeterministic": "HUMAN_HUMAN_MINIMUM_TWO_INDEPENDENT"
+        },
+        "open_case_final_mode": "HUMAN_HUMAN",
         "minimum_primary_records": 2,
         "distinct_adjudicators_required": true,
         "adjudicator_configuration_bound": true,
@@ -666,7 +665,22 @@
         "tiebreak_rule": "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ONLY_ON_PASS_FAIL_DISAGREEMENT",
         "model_identity_blinded": true,
         "provider_identity_blinded": true,
-        "peer_decisions_blinded": true
+        "peer_decisions_blinded": true,
+        "llm_judge_assistance_policy": {
+          "allowed": true,
+          "final_authority": false,
+          "calibration_set_required": true,
+          "known_bad_control_required": true,
+          "exact_identity_and_version_required": true,
+          "judge_error_audit_required": true,
+          "hidden_from_primary_humans_until_decision": true
+        },
+        "agreement_reporting_policy": {
+          "required": true,
+          "measure": "RAW_EXACT_AGREEMENT_OVER_TWO_PRIMARY_HUMAN_DECISIONS",
+          "disagreement_escalation_required": true,
+          "auditable_final_label_required": true
+        }
       }
     },
     "claim_ceiling": {

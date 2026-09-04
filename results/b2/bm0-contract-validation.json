@@ -6,12 +6,12 @@
   "validation_scope": "OFFLINE_MEASUREMENT_CONTRACT_ONLY",
   "artifact_count": 24,
   "artifact_fingerprints": {
-    "b2/bm0.py": "sha256:56a30a435df5f828360d200db8c59069ce5e059edf5da6273e54ba779fece9a7",
-    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:235bcd1953412ab4bc40921ec3582b011694301487d91cf357fd9d7428f35a2b",
+    "b2/bm0.py": "sha256:f802d6e97d41fccba41bc18198f14fc1614bd895d8a8b3393f698b6b77e42f3d",
+    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:b77a22c38e7cbec6173a82687934e99dd433bc23090b848704f39bf54863a4c5",
     "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json": "sha256:8896ef5c9011f37082316ec60a65b05c444dac7451a4883ebc43401a18ec44a9",
     "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:1658ebd5f39aadb72fc5d8321782e03be82218e8b99cfa174f90a702bd9a64be",
-    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:70d5c2051f1248ad0d2fc11597d0d2d0b8b4ddae4bd89300250af8818390679f",
-    "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:5a5b5192e1667b9c67d4a3d8f8c7c9dd2ef1c80ca5b3b4fa7169f8130c782df8",
+    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:31a46cb81bf6c611fececbb802bc001299f3c2a7d5b5689b76a9703af7c0bb60",
+    "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:8d813c2e9d97fe49e8ec16cce3165bd8cd9c93da975614c148b4a8682265f0ee",
     "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json": "sha256:3a14b361bf828cafa8fba8176a576e529cfaac7b7f23247cadbc215a41973e8d",
     "cases/b2/public-safe/projection/qa3-projection-fixtures.json": "sha256:2db519b6f6b6c27798160629dab4965505bfe3c7b81ece47d4700f405c4c43d5",
     "cases/b2/public-safe/qa0-fixtures.json": "sha256:78bd3f2e9232f140c7027ab5488bc41cca4e3531b84bda7c5626292447677854",
@@ -22,14 +22,14 @@
     "results/b2/qa1-tool-workflow-validation.json": "sha256:1aead58eb8fa19befa48d26c9b0c31ef3f58e5c2d7e2f08d3e6654c50b01c494",
     "results/b2/qa2-robustness-validation.json": "sha256:073f986f9952738c9111b4e16d64577e42a9b4e6cad1e86311ea1bdcf250370f",
     "results/b2/qa3-quality-delta-validation.json": "sha256:90d35b2c492a45f8398df56073192bab505d417ba29a2a1f7ffb701c3f6f93d0",
-    "schemas/bm0_adjudication_record.schema.json": "sha256:1871b02631970651502ea6de611e6bdc02875bcbebbf2a8b8fcba83a481a1906",
-    "schemas/bm0_benchmark_manifest.schema.json": "sha256:e6222c8c6a08e5de1acf4eb10f1bf095df5e457e5549c56db7a2ab5b15a0d406",
+    "schemas/bm0_adjudication_record.schema.json": "sha256:f3912eec9cfac90704c0a327e0ec9f6bd676ea8beded1a3833cfd821a656be4f",
+    "schemas/bm0_benchmark_manifest.schema.json": "sha256:7da719eb9f4f6b444b06aaaa995facb20f18d1dc14f1ced7edd874826a63031a",
     "schemas/bm0_candidate_roster_budget.schema.json": "sha256:64e92b119c9d6d04ebbe6af5fabec285c46b22b7d5ad7cc3ccf7a7d0d2c24edb",
-    "schemas/bm0_measurement_contract.schema.json": "sha256:eb8dedd98d720a1a9a656cb21417b514c14ef0de757c3eb3323bb290f0d22eca",
-    "schemas/bm0_observation.schema.json": "sha256:8d46a04504aba164bd7c603e1d6e0dda369a560396ce7e2c51035936e36ee984",
+    "schemas/bm0_measurement_contract.schema.json": "sha256:d5308c86c9844a30db93a806ac145f2adda76ef13070fbab63e0448936ca4fdd",
+    "schemas/bm0_observation.schema.json": "sha256:b00ebe34794fa83ac7f2e19b213f5e56c7d967bf187f8482c823e39f0dc3a4e2",
     "schemas/bm0_trial_identity.schema.json": "sha256:e96afed97ef41575789bb62d483d1e521e2c22ed1555e4906d1f560172975a52",
-    "tests/test_b2_bm0.py": "sha256:07fef93cdcb2eed2aee5002ba9e82b60aaaca5206e792bc93f6dabd0d28db889",
-    "cases/b2/public-safe/benchmark/bm0-measurement-contract.json": "sha256:2073273b3eaaec9637acf4b280b4f293f5c0885b3e513c153e7d9025c0555de8"
+    "tests/test_b2_bm0.py": "sha256:4e16b857621b6f1511a8e7c4662172d6429500ff18937e79ac2a419faa88ea19",
+    "cases/b2/public-safe/benchmark/bm0-measurement-contract.json": "sha256:dd3a0eb9f08c8adc8cf7ddd531690b2c69dfdde9b0b76ca2de53edfe4ed1f2aa"
   },
   "target_count": 16,
   "canonical_entry_count": 16,
@@ -49,6 +49,11 @@
   "applicability_manifest_contract": "PER_MODEL_PROVIDER_X_16_ENTRY",
   "primary_estimate_pool": "PRIVATE_HIDDEN_HOLDOUT",
   "sandbox_equivalence_status": "NOT_ESTABLISHED",
+  "benchmark_lanes": [
+    "INCLUDED_WHEN_VALID",
+    "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+    "EXCLUDED_SYSTEM_EVAL_ONLY"
+  ],
   "terminal_statuses": [
     "PASS",
     "FAIL",
@@ -59,14 +64,16 @@
   ],
   "model_failure_denominator_statuses": [
     "PASS",
-    "FAIL"
+    "FAIL",
+    "UNKNOWN"
   ],
   "non_model_failure_statuses": [
     "NOT_EVALUABLE",
     "BLOCKED",
-    "ERROR",
-    "UNKNOWN"
+    "ERROR"
   ],
+  "unknown_policy_count": 16,
+  "unknown_model_failure_semantics": "PER_ENTRY_TRISTATE_NO_NULL_COERCION",
   "sap_method_ids": [
     "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1",
     "BM0-SAP-02-IDENTITY-GRID-V1",
@@ -97,6 +104,13 @@
   "corpus_commitment_status": "NOT_COMMITTED",
   "corpus_aggregate_commitment": null,
   "adjudication_mode": "NOT_SELECTED",
+  "adjudication_authority_order": [
+    "DETERMINISTIC_ORACLE",
+    "STRUCTURED_RULE_SCORER",
+    "BLINDED_INDEPENDENT_HUMAN_REVIEW",
+    "CALIBRATED_LLM_JUDGE_ASSISTANCE_ONLY"
+  ],
+  "open_case_adjudication_mode": "HUMAN_HUMAN",
   "planned_attempt_count": 0,
   "hidden_exact_content_in_public_repository": false,
   "hidden_holdout_authority_binding": "NOT_IN_PUBLIC_REPO_DECLARATION",
@@ -105,6 +119,20 @@
   "spend": 0,
   "benchmark_results_emitted": false,
   "developer_contract_gate": "PASS",
+  "predecessor_review_evidence": {
+    "head_sha": "44e14170e7b1e686827ef829e23819b19656eef3",
+    "exact_head_ci": {
+      "workflow": "Test",
+      "run_id": 33927552322,
+      "conclusion": "SUCCESS"
+    },
+    "independent_qa": {
+      "round": 2,
+      "review_id": "PRR_kwDOT5WwrM8AAAABMRYGJA",
+      "verdict": "FAIL_REPAIR_REQUIRED"
+    },
+    "evidence_scope": "PREDECESSOR_HEAD_CONTEXT_ONLY_NOT_CURRENT_CANDIDATE_EVIDENCE"
+  },
   "exact_head_ci_status": "NOT_RUN",
   "independent_qa_status": "NOT_RUN",
   "bm0_green": false,
@@ -112,7 +140,8 @@
   "limitations": [
     "This receipt validates an offline measurement contract; it is not a benchmark result.",
     "No provider/model roster, hidden corpus, live call, ranking, or population estimate is selected or executed.",
-    "Developer validation cannot satisfy the distinct BM0 Independent QA gate."
+    "Developer validation cannot satisfy the distinct BM0 Independent QA gate.",
+    "Prior-head CI and QA evidence is context only and is not attributed to the changed candidate head."
   ],
-  "receipt_fingerprint": "sha256:aad7e3581fee777d2b8a6c10c7e6c96d0c6d82c64b4724ed8b1ae188af77f701"
+  "receipt_fingerprint": "sha256:3f09b97b1e4cbe7887696314f5f94d45efb15e6df327b0b1317c90dbd06cd3c8"
 }

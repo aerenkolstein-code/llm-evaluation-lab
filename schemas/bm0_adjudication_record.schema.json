@@ -13,13 +13,16 @@
     "metric_id",
     "round_role",
     "adjudicator_type",
+    "authority_role",
     "adjudicator_id",
     "adjudicator_configuration_fingerprint",
+    "llm_judge_assistance",
     "record_status",
     "decision",
     "blind_to_model_identity",
     "blind_to_provider_identity",
     "blind_to_peer_decisions",
+    "blind_to_llm_assistance_before_decision",
     "rubric_version",
     "rubric_fingerprint",
     "evidence_complete",
@@ -35,9 +38,37 @@
     "item_alias": {"$ref": "#/$defs/identifier"},
     "metric_id": {"$ref": "#/$defs/identifier"},
     "round_role": {"enum": ["PRIMARY", "TIEBREAK"]},
-    "adjudicator_type": {"enum": ["HUMAN", "FIXED_JUDGE"]},
+    "adjudicator_type": {"const": "HUMAN"},
+    "authority_role": {"const": "BLINDED_INDEPENDENT_HUMAN_REVIEW"},
     "adjudicator_id": {"$ref": "#/$defs/identifier"},
     "adjudicator_configuration_fingerprint": {"$ref": "#/$defs/sha256"},
+    "llm_judge_assistance": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "judge_id",
+            "judge_version",
+            "judge_configuration_fingerprint",
+            "calibration_set_fingerprint",
+            "known_bad_control_receipt_fingerprint",
+            "judge_error_audit_fingerprint",
+            "final_authority"
+          ],
+          "properties": {
+            "judge_id": {"$ref": "#/$defs/identifier"},
+            "judge_version": {"$ref": "#/$defs/identifier"},
+            "judge_configuration_fingerprint": {"$ref": "#/$defs/sha256"},
+            "calibration_set_fingerprint": {"$ref": "#/$defs/sha256"},
+            "known_bad_control_receipt_fingerprint": {"$ref": "#/$defs/sha256"},
+            "judge_error_audit_fingerprint": {"$ref": "#/$defs/sha256"},
+            "final_authority": {"const": false}
+          }
+        }
+      ]
+    },
     "record_status": {"enum": ["COMPLETED", "ERROR"]},
     "decision": {
       "oneOf": [{"enum": ["PASS", "FAIL", "UNKNOWN"]}, {"type": "null"}]
@@ -45,6 +76,7 @@
     "blind_to_model_identity": {"const": true},
     "blind_to_provider_identity": {"const": true},
     "blind_to_peer_decisions": {"const": true},
+    "blind_to_llm_assistance_before_decision": {"const": true},
     "rubric_version": {"$ref": "#/$defs/identifier"},
     "rubric_fingerprint": {"$ref": "#/$defs/sha256"},
     "evidence_complete": {"type": "boolean"},

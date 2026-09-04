@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 from b2.bm0 import (
+    ADJUDICATION_AUTHORITY_ORDER,
+    APPROVED_TARGET_MEASUREMENT_BINDINGS,
     BOUND_ARTIFACT_PATHS,
     CANONICAL_FAMILY_LINEAGE,
     CANONICAL_SOURCE_ARTIFACT_PATHS,
@@ -23,6 +25,7 @@ from b2.bm0 import (
     TARGET_CLASSES,
     TARGET_IDS_BY_CLASS,
     TARGET_LINEAGE_BY_ID,
+    UNKNOWN_DISPOSITION_SEMANTICS,
     assert_claim_allowed,
     bounded_pilot_design_v1,
     build_bm0_receipt,
@@ -193,7 +196,12 @@ def identity(
     }
 
 
-def observation(planned: dict, status: str) -> dict:
+def observation(
+    planned: dict,
+    status: str,
+    *,
+    unknown_disposition: str | None = None,
+) -> dict:
     system_only = planned["target_class"] == "SYSTEM_EVAL_ONLY"
     if status == "PASS":
         failure_value, evidence, hard, adjudication = 0, True, True, "RESOLVED"
@@ -202,12 +210,21 @@ def observation(planned: dict, status: str) -> dict:
     elif status == "ERROR":
         failure_value, evidence, hard, adjudication = None, False, None, "ERROR"
     elif status == "UNKNOWN":
-        failure_value, evidence, hard, adjudication = None, False, None, "UNRESOLVED"
+        unknown_disposition = (
+            unknown_disposition or "UNRESOLVED_SCORER_EVIDENCE"
+        )
+        semantics = UNKNOWN_DISPOSITION_SEMANTICS[unknown_disposition]
+        failure_value = semantics["model_failure_value"]
+        evidence = semantics["evidence_complete"]
+        hard = semantics["hard_invariant_pass"]
+        adjudication = semantics["adjudication_statuses"][0]
     else:
         failure_value, evidence, hard, adjudication = None, True, None, "UNRESOLVED"
     model_failure_value = None if system_only else failure_value
     system_failure_value = failure_value if system_only else None
-    scorable = status in {"PASS", "FAIL"}
+    scorable = status in {"PASS", "FAIL"} or (
+        status == "UNKNOWN" and failure_value in {0, 1}
+    )
     if system_only:
         resolved_model = SYSTEM_SCOPE_ID
         identity_certainty = "SYSTEM_SCOPE"
@@ -215,7 +232,7 @@ def observation(planned: dict, status: str) -> dict:
         provider_terminal = "NOT_APPLICABLE"
         provider_http_status = None
         attribution_status = "NOT_APPLICABLE"
-    elif scorable:
+    elif status in {"PASS", "FAIL", "UNKNOWN"}:
         resolved_model = planned["expected_resolved_model_or_version_id"]
         identity_certainty = planned["required_identity_certainty"]
         provider_request_id = f"request-{planned['attempt_id']}"
@@ -273,14 +290,21 @@ def observation(planned: dict, status: str) -> dict:
             "request_started_at": "2026-09-04T12:00:00Z",
             "response_completed_at": "2026-09-04T12:00:01Z",
         },
-        "raw_response_fingerprint": "sha256:" + "a" * 64 if scorable else None,
+        "raw_response_fingerprint": "sha256:" + "a" * 64
+        if status in {"PASS", "FAIL", "UNKNOWN"} and not system_only
+        or status in {"PASS", "FAIL"} and system_only
+        else None,
         "scorer_id": planned["scorer_id"],
         "scorer_version": planned["scorer_version"],
         "scorer_fingerprint": planned["scorer_fingerprint"],
         "oracle_id": planned["oracle_id"],
         "oracle_version": planned["oracle_version"],
         "oracle_fingerprint": planned["oracle_fingerprint"],
-        "evidence_receipt_fingerprint": "sha256:" + "b" * 64 if scorable else None,
+        "evidence_receipt_fingerprint": "sha256:" + "b" * 64
+        if status in {"PASS", "FAIL"}
+        or status == "UNKNOWN"
+        and unknown_disposition != "UNRESOLVED_SCORER_EVIDENCE"
+        else None,
         "usage": {
             "attribution_status": attribution_status,
             "input_tokens": 10 if attribution_status == "ATTRIBUTABLE" else None,
@@ -302,6 +326,7 @@ def observation(planned: dict, status: str) -> dict:
         "provider_terminal_status": provider_terminal,
         "provider_http_status": provider_http_status,
         "terminal_status": status,
+        "unknown_disposition": unknown_disposition,
         "model_failure_value": model_failure_value,
         "system_invariant_failure_value": system_failure_value,
         "evidence_complete": evidence,
@@ -330,13 +355,16 @@ def adjudication(
         "metric_id": "model_failure_rate",
         "round_role": role,
         "adjudicator_type": "HUMAN",
+        "authority_role": "BLINDED_INDEPENDENT_HUMAN_REVIEW",
         "adjudicator_id": adjudicator,
         "adjudicator_configuration_fingerprint": "sha256:" + "5" * 64,
+        "llm_judge_assistance": None,
         "record_status": record_status,
         "decision": decision,
         "blind_to_model_identity": True,
         "blind_to_provider_identity": True,
         "blind_to_peer_decisions": True,
+        "blind_to_llm_assistance_before_decision": True,
         "rubric_version": "rubric-v1",
         "rubric_fingerprint": "sha256:" + "3" * 64,
         "evidence_complete": evidence_complete,
@@ -351,6 +379,27 @@ def adjudication_plan() -> dict:
     plan = {
         "plan_id": "adjudication-plan-001",
         "mode": "HUMAN_HUMAN",
+        "authority_order": list(ADJUDICATION_AUTHORITY_ORDER),
+        "route_policy": {
+            "deterministic_oracle": "FINAL_WHEN_APPLICABLE",
+            "structured_rule_scorer": "FINAL_WHEN_ORACLE_NOT_APPLICABLE",
+            "open_nondeterministic": "HUMAN_HUMAN_MINIMUM_TWO_INDEPENDENT",
+        },
+        "llm_judge_assistance_policy": {
+            "allowed": True,
+            "final_authority": False,
+            "calibration_set_required": True,
+            "known_bad_control_required": True,
+            "exact_identity_and_version_required": True,
+            "judge_error_audit_required": True,
+            "hidden_from_primary_humans_until_decision": True,
+        },
+        "agreement_reporting_policy": {
+            "required": True,
+            "measure": "RAW_EXACT_AGREEMENT_OVER_TWO_PRIMARY_HUMAN_DECISIONS",
+            "disagreement_escalation_required": True,
+            "auditable_final_label_required": True,
+        },
         "metric_ids": ["model_failure_rate"],
         "primary_adjudicators": [
             {
@@ -550,6 +599,15 @@ class B2BM0Tests(unittest.TestCase):
             tuple(checked["default_comparable_classes"]),
             DEFAULT_COMPARABLE_CLASSES,
         )
+        for target in checked["targets"]:
+            self.assertEqual(
+                {
+                    "benchmark_lane": target["benchmark_lane"],
+                    "rationale": target["rationale"],
+                    "unknown_policy": target["unknown_policy"],
+                },
+                APPROVED_TARGET_MEASUREMENT_BINDINGS[target["entry_id"]],
+            )
 
     def test_matrix_semantic_tamper_fails_even_after_refingerprint(self):
         tampered = copy.deepcopy(self.matrix)
@@ -557,6 +615,25 @@ class B2BM0Tests(unittest.TestCase):
         tampered = refingerprint(tampered, "matrix_fingerprint")
         with self.assertRaises(ValueError):
             validate_target_matrix(tampered)
+
+        for field, replacement in (
+            ("benchmark_lane", "EXCLUDED_SYSTEM_EVAL_ONLY"),
+            ("rationale", "generic benchmark rationale"),
+        ):
+            with self.subTest(field=field):
+                drifted = copy.deepcopy(self.matrix)
+                drifted["targets"][0][field] = replacement
+                drifted = refingerprint(drifted, "matrix_fingerprint")
+                with self.assertRaises(ValueError):
+                    validate_target_matrix(drifted)
+
+        policy_drift = copy.deepcopy(self.matrix)
+        policy_drift["targets"][0]["unknown_policy"][
+            "model_failure_values"
+        ]["UNJUSTIFIED_UNKNOWN"] = 0
+        policy_drift = refingerprint(policy_drift, "matrix_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_target_matrix(policy_drift)
 
     def test_canonical_lineage_binds_all_16_entries_and_32_source_cases(self):
         receipt = validate_canonical_family_lineage_v1(
@@ -602,8 +679,14 @@ class B2BM0Tests(unittest.TestCase):
             for metric in checked["metrics"]
             if metric["metric_id"] == "model_failure_rate"
         )
-        self.assertEqual(metric["numerator_statuses"], ["FAIL"])
-        self.assertEqual(metric["denominator_statuses"], ["PASS", "FAIL"])
+        self.assertEqual(metric["numerator_statuses"], ["FAIL", "UNKNOWN"])
+        self.assertEqual(
+            metric["denominator_statuses"], ["PASS", "FAIL", "UNKNOWN"]
+        )
+        self.assertEqual(
+            metric["model_failure_value_rule"],
+            "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED",
+        )
         self.assertEqual(
             set(metric["excluded_terminal_statuses"]),
             set(NON_MODEL_SCORABLE_TERMINALS),
@@ -627,6 +710,19 @@ class B2BM0Tests(unittest.TestCase):
         tampered = refingerprint(tampered, "registry_fingerprint")
         with self.assertRaises(ValueError):
             validate_bm0_metric_registry(tampered)
+
+        coerced_unknown = copy.deepcopy(self.registry)
+        coerced_metric = next(
+            metric
+            for metric in coerced_unknown["metrics"]
+            if metric["metric_id"] == "model_failure_rate"
+        )
+        coerced_metric["model_failure_value_rule"] = "UNKNOWN_IS_ZERO"
+        coerced_unknown = refingerprint(
+            coerced_unknown, "registry_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_bm0_metric_registry(coerced_unknown)
 
         system_metric = next(
             metric
@@ -900,17 +996,20 @@ class B2BM0Tests(unittest.TestCase):
 
     def test_frozen_adjudication_mode_requires_matching_composition(self):
         manifest = self.frozen_manifest([identity()])
-        manifest["adjudication_mode"] = "HUMAN_JUDGE"
-        manifest["adjudication_plan"]["mode"] = "HUMAN_JUDGE"
-        manifest["adjudication_plan"] = refingerprint(
-            manifest["adjudication_plan"], "plan_fingerprint"
-        )
-        manifest = refingerprint(manifest, "manifest_fingerprint")
-        with self.assertRaises(ValueError):
-            validate_benchmark_manifest(
-                manifest,
-                expected_artifact_fingerprints=self.execution_bindings,
-            )
+        for forbidden_mode in ("HUMAN_JUDGE", "JUDGE_JUDGE"):
+            with self.subTest(mode=forbidden_mode):
+                drifted = copy.deepcopy(manifest)
+                drifted["adjudication_mode"] = forbidden_mode
+                drifted["adjudication_plan"]["mode"] = forbidden_mode
+                drifted["adjudication_plan"] = refingerprint(
+                    drifted["adjudication_plan"], "plan_fingerprint"
+                )
+                drifted = refingerprint(drifted, "manifest_fingerprint")
+                with self.assertRaises(ValueError):
+                    validate_benchmark_manifest(
+                        drifted,
+                        expected_artifact_fingerprints=self.execution_bindings,
+                    )
 
     def test_system_eval_only_never_enters_model_comparison(self):
         system_attempt = identity(
@@ -1159,6 +1258,75 @@ class B2BM0Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_observation(unknown_with_resolved_identity)
 
+    def test_unknown_is_family_bound_and_preserves_model_failure_tristate(self):
+        direct_attempts = [
+            identity(serial="unknown-correct", item="item-unknown-correct"),
+            identity(serial="unknown-failure", item="item-unknown-failure"),
+            identity(serial="unknown-unresolved", item="item-unknown-unresolved"),
+        ]
+        rows = [
+            observation(
+                direct_attempts[0],
+                "UNKNOWN",
+                unknown_disposition="CORRECT_ABSTENTION",
+            ),
+            observation(
+                direct_attempts[1],
+                "UNKNOWN",
+                unknown_disposition="UNJUSTIFIED_UNKNOWN",
+            ),
+            observation(
+                direct_attempts[2],
+                "UNKNOWN",
+                unknown_disposition="UNRESOLVED_ADJUDICATION_EVIDENCE",
+            ),
+        ]
+        for row in rows:
+            self.assertEqual(validate_observation(row), row)
+        self.assertEqual(
+            [row["model_failure_value"] for row in rows], [0, 1, None]
+        )
+
+        manifest = self.frozen_manifest(direct_attempts)
+        result = model_failure_denominator_v1(
+            manifest,
+            rows,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        model = result["by_model"]["model-a"]
+        self.assertEqual(model["failure_count"], 1)
+        self.assertEqual(model["model_scorable_denominator"], 2)
+        self.assertEqual(model["failure_rate"], 0.5)
+        self.assertEqual(model["excluded_terminal_counts"]["UNKNOWN"], 1)
+
+        grounded_attempt = identity(
+            target_class="MODEL_CONTEXT_GROUNDED",
+            target_id="BM0-TUT-E01-QA0-ENTITY-ATTRIBUTE-BINDING",
+            serial="unknown-preserved",
+        )
+        grounded = observation(
+            grounded_attempt,
+            "UNKNOWN",
+            unknown_disposition="CORRECT_UNKNOWN_PRESERVATION",
+        )
+        self.assertEqual(validate_observation(grounded)["model_failure_value"], 0)
+
+        wrong_family = observation(
+            grounded_attempt,
+            "UNKNOWN",
+            unknown_disposition="CORRECT_ABSTENTION",
+        )
+        with self.assertRaises(ValueError):
+            validate_observation(wrong_family)
+
+        coerced_unresolved = copy.deepcopy(rows[2])
+        coerced_unresolved["model_failure_value"] = 0
+        coerced_unresolved = refingerprint(
+            coerced_unresolved, "observation_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_observation(coerced_unresolved)
+
     def test_scorable_observation_allows_unavailable_accounting_but_not_unknown_identity(self):
         attempt = identity()
         manifest = self.frozen_manifest([attempt])
@@ -1294,7 +1462,7 @@ class B2BM0Tests(unittest.TestCase):
                 expected_artifact_fingerprints=self.execution_bindings,
             )
 
-    def test_model_failure_rate_excludes_error_unknown_blocked_and_not_evaluable(self):
+    def test_model_failure_rate_excludes_fixed_terminals_and_unresolved_unknown(self):
         statuses = [
             "PASS",
             "FAIL",
@@ -1703,6 +1871,43 @@ class B2BM0Tests(unittest.TestCase):
         self.assertEqual(result["failure_rate_delta_left_minus_right"], -1.0)
         self.assertFalse(result["ranking_emitted"])
 
+    def test_paired_aggregation_includes_resolved_unknown_and_excludes_null_unknown(self):
+        attempts = [
+            identity(model=model, serial=f"unknown-{model}-{item}", item=item)
+            for model in ("model-a", "model-b")
+            for item in ("item-001", "item-002")
+        ]
+        manifest = self.frozen_manifest(attempts)
+        dispositions = {
+            ("model-a", "item-001"): "CORRECT_ABSTENTION",
+            ("model-b", "item-001"): "UNJUSTIFIED_UNKNOWN",
+            ("model-a", "item-002"): "UNRESOLVED_SCORER_EVIDENCE",
+        }
+        rows = []
+        for attempt in attempts:
+            key = (attempt["model_subject_id"], attempt["corpus_item_alias"])
+            if key == ("model-b", "item-002"):
+                rows.append(observation(attempt, "FAIL"))
+            else:
+                rows.append(
+                    observation(
+                        attempt,
+                        "UNKNOWN",
+                        unknown_disposition=dispositions[key],
+                    )
+                )
+        result = paired_complete_case_v1(
+            manifest,
+            rows,
+            left_model_subject_id="model-a",
+            right_model_subject_id="model-b",
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        self.assertEqual(result["paired_scorable_count"], 1)
+        self.assertEqual(result["excluded_pair_count"], 1)
+        self.assertEqual(result["left_failure_rate"], 0.0)
+        self.assertEqual(result["right_failure_rate"], 1.0)
+
     def test_paired_complete_case_pairs_predeclared_retry_ordinals(self):
         left_root = identity(model="model-a", serial="a-root", item="item-001")
         left_retry = copy.deepcopy(left_root)
@@ -1775,6 +1980,16 @@ class B2BM0Tests(unittest.TestCase):
         )
         self.assertEqual(agreed["terminal_status"], "PASS")
         self.assertEqual(agreed["reason"], "PRIMARY_AGREEMENT")
+        self.assertTrue(agreed["agreement_report"]["exact_agreement"])
+        self.assertEqual(agreed["agreement_report"]["raw_agreement_rate"], 1.0)
+        self.assertTrue(agreed["agreement_report"]["auditable_final_label"])
+        self.assertEqual(
+            agreed["agreement_report"]["final_authority"],
+            "BLINDED_INDEPENDENT_HUMAN_REVIEW",
+        )
+        self.assertFalse(
+            agreed["agreement_report"]["llm_judge_final_authority"]
+        )
 
         fail_primary = adjudication(adjudicator="reviewer-b", decision="FAIL", serial="003")
         unresolved = resolve_adjudication_v1(
@@ -1783,6 +1998,9 @@ class B2BM0Tests(unittest.TestCase):
             expected_artifact_fingerprints=self.execution_bindings,
         )
         self.assertEqual(unresolved["terminal_status"], "UNKNOWN")
+        self.assertFalse(unresolved["agreement_report"]["exact_agreement"])
+        self.assertEqual(unresolved["agreement_report"]["raw_agreement_rate"], 0.0)
+        self.assertFalse(unresolved["agreement_report"]["disagreement_escalated"])
         tiebreak = adjudication(
             adjudicator="reviewer-c", decision="FAIL", role="TIEBREAK", serial="004"
         )
@@ -1793,6 +2011,63 @@ class B2BM0Tests(unittest.TestCase):
         )
         self.assertEqual(resolved["terminal_status"], "FAIL")
         self.assertEqual(resolved["reason"], "PREDECLARED_TIEBREAK")
+        self.assertTrue(resolved["agreement_report"]["disagreement_escalated"])
+        self.assertEqual(
+            resolved["agreement_report"]["tiebreak_human_record_count"], 1
+        )
+        self.assertTrue(resolved["agreement_report"]["auditable_final_label"])
+
+    def test_llm_judge_is_calibrated_assistance_only_never_authority(self):
+        record = adjudication(
+            adjudicator="reviewer-a", decision="PASS", serial="llm-assist"
+        )
+        record["llm_judge_assistance"] = {
+            "judge_id": "judge-a",
+            "judge_version": "judge-version-20260904",
+            "judge_configuration_fingerprint": "sha256:" + "1" * 64,
+            "calibration_set_fingerprint": "sha256:" + "2" * 64,
+            "known_bad_control_receipt_fingerprint": "sha256:" + "3" * 64,
+            "judge_error_audit_fingerprint": "sha256:" + "4" * 64,
+            "final_authority": False,
+        }
+        record = refingerprint(record, "record_fingerprint")
+        self.assertEqual(validate_adjudication_record(record), record)
+
+        self.assertEqual(
+            adjudication_plan()["authority_order"],
+            list(ADJUDICATION_AUTHORITY_ORDER),
+        )
+        judge_authority = copy.deepcopy(record)
+        judge_authority["llm_judge_assistance"]["final_authority"] = True
+        judge_authority = refingerprint(judge_authority, "record_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_adjudication_record(judge_authority)
+
+        judge_primary = copy.deepcopy(record)
+        judge_primary["adjudicator_type"] = "FIXED_JUDGE"
+        judge_primary = refingerprint(judge_primary, "record_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_adjudication_record(judge_primary)
+
+        uncalibrated = copy.deepcopy(record)
+        uncalibrated["llm_judge_assistance"].pop("calibration_set_fingerprint")
+        uncalibrated = refingerprint(uncalibrated, "record_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_adjudication_record(uncalibrated)
+
+        manifest = self.frozen_manifest([identity()])
+        manifest["adjudication_plan"]["authority_order"][0:2] = reversed(
+            manifest["adjudication_plan"]["authority_order"][0:2]
+        )
+        manifest["adjudication_plan"] = refingerprint(
+            manifest["adjudication_plan"], "plan_fingerprint"
+        )
+        manifest = refingerprint(manifest, "manifest_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(
+                manifest,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
 
     def test_unknown_primary_is_terminal_and_cannot_be_tiebroken(self):
         manifest = self.frozen_manifest(
@@ -2101,6 +2376,32 @@ class B2BM0Tests(unittest.TestCase):
         self.assertEqual(checked["corpus_commitment_status"], "NOT_COMMITTED")
         self.assertIsNone(checked["corpus_aggregate_commitment"])
         self.assertEqual(checked["adjudication_mode"], "NOT_SELECTED")
+        self.assertEqual(
+            checked["adjudication_authority_order"],
+            list(ADJUDICATION_AUTHORITY_ORDER),
+        )
+        self.assertEqual(checked["open_case_adjudication_mode"], "HUMAN_HUMAN")
+        self.assertEqual(checked["unknown_policy_count"], 16)
+        self.assertEqual(
+            checked["unknown_model_failure_semantics"],
+            "PER_ENTRY_TRISTATE_NO_NULL_COERCION",
+        )
+        self.assertEqual(
+            checked["predecessor_review_evidence"]["head_sha"],
+            "44e14170e7b1e686827ef829e23819b19656eef3",
+        )
+        self.assertEqual(
+            checked["predecessor_review_evidence"]["exact_head_ci"][
+                "conclusion"
+            ],
+            "SUCCESS",
+        )
+        self.assertEqual(
+            checked["predecessor_review_evidence"]["independent_qa"][
+                "verdict"
+            ],
+            "FAIL_REPAIR_REQUIRED",
+        )
         self.assertEqual(checked["primary_estimate_pool"], "PRIVATE_HIDDEN_HOLDOUT")
         self.assertEqual(
             checked["sap_design_rule_id"], "BOUNDED-PILOT-FIXED-SUITE-V1"
@@ -2219,6 +2520,7 @@ class B2BM0Tests(unittest.TestCase):
         ):
             self.assertIn(field, trial_schema["required"])
             self.assertIn(field, observation_schema["required"])
+        self.assertIn("unknown_disposition", observation_schema["required"])
         for target_ids in TARGET_IDS_BY_CLASS.values():
             for target_id in target_ids:
                 self.assertIn(target_id, json.dumps(trial_schema, sort_keys=True))
@@ -2247,6 +2549,10 @@ class B2BM0Tests(unittest.TestCase):
             self.assertIn(semantic_field, observation_conditions)
         self.assertIn("UNVERIFIABLE_ALIAS_DISCLOSED", observation_conditions)
         self.assertIn("NOT_APPLICABLE_SYSTEM_SCOPE", observation_conditions)
+        self.assertIn("CORRECT_ABSTENTION", observation_conditions)
+        self.assertIn("CORRECT_UNKNOWN_PRESERVATION", observation_conditions)
+        self.assertIn("UNJUSTIFIED_UNKNOWN", observation_conditions)
+        self.assertIn("UNRESOLVED_ADJUDICATION_EVIDENCE", observation_conditions)
 
         manifest_schema = load_json(
             ROOT / "schemas" / "bm0_benchmark_manifest.schema.json"
@@ -2263,6 +2569,24 @@ class B2BM0Tests(unittest.TestCase):
         self.assertIn(
             "NOT_IN_PUBLIC_REPO_DECLARATION",
             json.dumps(manifest_schema, sort_keys=True),
+        )
+        manifest_schema_text = json.dumps(manifest_schema, sort_keys=True)
+        self.assertNotIn("HUMAN_JUDGE", manifest_schema_text)
+        self.assertNotIn("JUDGE_JUDGE", manifest_schema_text)
+        self.assertNotIn("FIXED_JUDGE", manifest_schema_text)
+        self.assertIn("CALIBRATED_LLM_JUDGE_ASSISTANCE_ONLY", manifest_schema_text)
+
+        adjudication_schema = load_json(
+            ROOT / "schemas" / "bm0_adjudication_record.schema.json"
+        )
+        self.assertEqual(
+            adjudication_schema["properties"]["adjudicator_type"]["const"],
+            "HUMAN",
+        )
+        self.assertFalse(
+            adjudication_schema["properties"]["llm_judge_assistance"][
+                "oneOf"
+            ][1]["properties"]["final_authority"]["const"]
         )
 
         contract_schema = load_json(

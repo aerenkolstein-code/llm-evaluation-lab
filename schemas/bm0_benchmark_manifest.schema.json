@@ -74,9 +74,7 @@
     "adjudication_mode": {
       "enum": [
         "NOT_SELECTED",
-        "HUMAN_HUMAN",
-        "HUMAN_JUDGE",
-        "JUDGE_JUDGE"
+        "HUMAN_HUMAN"
       ]
     },
     "adjudication_plan": {
@@ -537,11 +535,7 @@
             "$ref": "#/$defs/sha256"
           },
           "adjudication_mode": {
-            "enum": [
-              "HUMAN_HUMAN",
-              "HUMAN_JUDGE",
-              "JUDGE_JUDGE"
-            ]
+            "const": "HUMAN_HUMAN"
           },
           "adjudication_plan": {
             "$ref": "#/$defs/adjudication_plan"
@@ -712,10 +706,7 @@
       ],
       "properties": {
         "adjudicator_type": {
-          "enum": [
-            "HUMAN",
-            "FIXED_JUDGE"
-          ]
+          "const": "HUMAN"
         },
         "adjudicator_id": {
           "$ref": "#/$defs/identifier"
@@ -731,6 +722,10 @@
       "required": [
         "plan_id",
         "mode",
+        "authority_order",
+        "route_policy",
+        "llm_judge_assistance_policy",
+        "agreement_reporting_policy",
         "metric_ids",
         "primary_adjudicators",
         "tiebreak_adjudicator",
@@ -743,11 +738,41 @@
           "$ref": "#/$defs/identifier"
         },
         "mode": {
-          "enum": [
-            "HUMAN_HUMAN",
-            "HUMAN_JUDGE",
-            "JUDGE_JUDGE"
+          "const": "HUMAN_HUMAN"
+        },
+        "authority_order": {
+          "const": [
+            "DETERMINISTIC_ORACLE",
+            "STRUCTURED_RULE_SCORER",
+            "BLINDED_INDEPENDENT_HUMAN_REVIEW",
+            "CALIBRATED_LLM_JUDGE_ASSISTANCE_ONLY"
           ]
+        },
+        "route_policy": {
+          "const": {
+            "deterministic_oracle": "FINAL_WHEN_APPLICABLE",
+            "structured_rule_scorer": "FINAL_WHEN_ORACLE_NOT_APPLICABLE",
+            "open_nondeterministic": "HUMAN_HUMAN_MINIMUM_TWO_INDEPENDENT"
+          }
+        },
+        "llm_judge_assistance_policy": {
+          "const": {
+            "allowed": true,
+            "final_authority": false,
+            "calibration_set_required": true,
+            "known_bad_control_required": true,
+            "exact_identity_and_version_required": true,
+            "judge_error_audit_required": true,
+            "hidden_from_primary_humans_until_decision": true
+          }
+        },
+        "agreement_reporting_policy": {
+          "const": {
+            "required": true,
+            "measure": "RAW_EXACT_AGREEMENT_OVER_TWO_PRIMARY_HUMAN_DECISIONS",
+            "disagreement_escalation_required": true,
+            "auditable_final_label_required": true
+          }
         },
         "metric_ids": {
           "type": "array",

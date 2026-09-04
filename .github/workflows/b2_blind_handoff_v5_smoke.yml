@@ -107,11 +107,13 @@ jobs:
           from pathlib import Path
 
           receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["schema_version"] == "b2-blind-handoff-offline-smoke/v2"
           assert receipt["terminal_status"] == "HANDOFF_SMOKE_PASS"
           assert receipt["provider_attempts"] == 0
           assert receipt["credential_lookups"] == 0
           assert receipt["automatic_retries"] == 0
           assert receipt["return_decryptability_proven"] is True
+          assert receipt["return_private_key_possession_proven"] is True
           assert receipt["cleanup_completed"] is True
           PY
           test ! -e "$smoke_root"

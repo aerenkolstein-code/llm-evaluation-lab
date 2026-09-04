@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -16,6 +18,7 @@ from b2.blind_handoff import (
     HandoffError,
     PROTOCOL_VERSION,
     SMOKE_RAW,
+    _canonical_json,
     _claim_once,
     _commit_new_directory,
     _cmd_generate_input_key,
@@ -68,7 +71,7 @@ def make_material(mode: str = "smoke") -> dict[str, object]:
         "return_public": _RETURN_PUBLIC,
         "context": context,
         "prompt": prompt,
-        "challenge": bytes(range(32)),
+        "runner_challenge": bytes(range(32)),
         "ack_key": bytes(range(32, 64)),
         "binding": binding,
     }
@@ -80,7 +83,6 @@ def make_payload(material: dict[str, object]) -> bytes:
         return_public_pem=material["return_public"],
         context=material["context"],
         prompt=material["prompt"],
-        challenge=material["challenge"],
         ack_key=material["ack_key"],
         binding=material["binding"],
         now_unix=NOW,
@@ -140,7 +142,7 @@ class BlindHandoffV5Tests(unittest.TestCase):
         self.assertEqual(material["context"], files["context.txt"])
         self.assertEqual(material["prompt"], files["prompt.txt"])
         self.assertEqual(material["return_public"], files["return-public.pem"])
-        self.assertEqual(material["challenge"], files["challenge.bin"])
+        self.assertNotIn("challenge.bin", files)
         self.assertEqual(material["ack_key"], files["ack-key.bin"])
 
     def test_every_identity_mismatch_is_rejected(self):
@@ -205,7 +207,6 @@ class BlindHandoffV5Tests(unittest.TestCase):
                 return_public_pem=material["return_public"],
                 context=material["context"],
                 prompt=material["prompt"],
-                challenge=material["challenge"],
                 ack_key=material["ack_key"],
                 binding=changed,
                 now_unix=NOW,
@@ -219,13 +220,13 @@ class BlindHandoffV5Tests(unittest.TestCase):
             return_public_pem=material["return_public"],
             kind="challenge-response",
             binding=binding,
-            plaintext=material["challenge"],
+            plaintext=material["runner_challenge"],
             now_unix=NOW,
         )
         ack = create_challenge_ack(
             binding=binding,
             challenge_envelope=challenge_envelope,
-            challenge=material["challenge"],
+            challenge=material["runner_challenge"],
             ack_key=material["ack_key"],
             now_unix=NOW,
         )
@@ -245,7 +246,7 @@ class BlindHandoffV5Tests(unittest.TestCase):
         with self.assertRaisesRegex(HandoffError, "stale"):
             verify_challenge_ack(
                 binding=binding, challenge_envelope=challenge_envelope,
-                challenge=material["challenge"], ack_key=material["ack_key"],
+                challenge=material["runner_challenge"], ack_key=material["ack_key"],
                 acknowledgement=ack, now_unix=stale,
             )
         with self.assertRaisesRegex(HandoffError, "stale"):
@@ -261,22 +262,22 @@ class BlindHandoffV5Tests(unittest.TestCase):
         envelope = encrypt_return_envelope(
             return_public_pem=material["return_public"],
             kind="challenge-response", binding=binding,
-            plaintext=material["challenge"], now_unix=NOW,
+            plaintext=material["runner_challenge"], now_unix=NOW,
         )
         recovered = decrypt_return_envelope(
             return_private_pem=material["return_private"], envelope_bytes=envelope,
             expected_kind="challenge-response", expected_binding=binding,
             now_unix=NOW,
         )
-        self.assertEqual(material["challenge"], recovered)
+        self.assertEqual(material["runner_challenge"], recovered)
         ack = create_challenge_ack(
             binding=binding, challenge_envelope=envelope,
-            challenge=material["challenge"], ack_key=material["ack_key"],
+            challenge=recovered, ack_key=material["ack_key"],
             now_unix=NOW,
         )
         verify_challenge_ack(
             binding=binding, challenge_envelope=envelope,
-            challenge=material["challenge"], ack_key=material["ack_key"],
+            challenge=material["runner_challenge"], ack_key=material["ack_key"],
             acknowledgement=ack, now_unix=NOW,
         )
         forged = json.loads(ack)
@@ -284,8 +285,63 @@ class BlindHandoffV5Tests(unittest.TestCase):
         with self.assertRaises(HandoffError):
             verify_challenge_ack(
                 binding=binding, challenge_envelope=envelope,
-                challenge=material["challenge"], ack_key=material["ack_key"],
+                challenge=material["runner_challenge"], ack_key=material["ack_key"],
                 acknowledgement=json.dumps(forged).encode(), now_unix=NOW,
+            )
+
+    def test_ack_requires_return_private_key_not_only_preshared_material(self):
+        material = make_material()
+        binding = material["binding"]
+        accepted = decrypt_input_payload(
+            input_private_pem=material["input_private"],
+            payload=make_payload(material),
+            expected_binding=binding,
+            now_unix=NOW,
+        )
+        self.assertNotIn("challenge.bin", accepted)
+
+        runner_challenge = material["runner_challenge"]
+        envelope = encrypt_return_envelope(
+            return_public_pem=material["return_public"],
+            kind="challenge-response",
+            binding=binding,
+            plaintext=runner_challenge,
+            now_unix=NOW,
+        )
+        envelope_document = json.loads(envelope)
+
+        # This is the exact forgery enabled by v5.1: all fields needed for the
+        # acknowledgement were public or pre-shared, so no decryption was
+        # necessary. v5.2 authenticates the unrevealed plaintext bytes too.
+        forged_body = {
+            "protocol": PROTOCOL_VERSION,
+            "kind": "challenge-ack",
+            "status": "VERIFIED",
+            "binding": binding.as_dict(),
+            "challenge_envelope_sha256": sha256_hex(envelope),
+            "challenge_plaintext_sha256": envelope_document["plaintext_sha256"],
+        }
+        forged_body["hmac_sha256"] = hmac.new(
+            material["ack_key"], _canonical_json(forged_body), hashlib.sha256
+        ).hexdigest()
+        with self.assertRaisesRegex(HandoffError, "HMAC mismatch"):
+            verify_challenge_ack(
+                binding=binding,
+                challenge_envelope=envelope,
+                challenge=runner_challenge,
+                ack_key=material["ack_key"],
+                acknowledgement=(json.dumps(forged_body) + "\n").encode(),
+                now_unix=NOW,
+            )
+
+        wrong_private, _ = generate_rsa_keypair()
+        with self.assertRaises(HandoffError):
+            decrypt_return_envelope(
+                return_private_pem=wrong_private,
+                envelope_bytes=envelope,
+                expected_kind="challenge-response",
+                expected_binding=binding,
+                now_unix=NOW,
             )
 
     def test_claims_are_one_time_and_replay_fails_closed(self):
@@ -382,11 +438,15 @@ class BlindHandoffV5Tests(unittest.TestCase):
                 bridge_main_sha="901ba05b99c413d45415c474c71b5969c155dea1",
                 now_unix=NOW,
             )
+            self.assertEqual(
+                "b2-blind-handoff-offline-smoke/v2", receipt["schema_version"]
+            )
             self.assertEqual("HANDOFF_SMOKE_PASS", receipt["terminal_status"])
             self.assertEqual(0, receipt["provider_attempts"])
             self.assertEqual(0, receipt["credential_lookups"])
             self.assertEqual(0, receipt["automatic_retries"])
             self.assertTrue(receipt["return_decryptability_proven"])
+            self.assertTrue(receipt["return_private_key_possession_proven"])
             self.assertTrue(receipt["cleanup_completed"])
             self.assertFalse(root.exists())
 
@@ -485,11 +545,13 @@ class BlindHandoffV5Tests(unittest.TestCase):
         self.assertEqual([], real_files)
 
     def test_protocol_and_ci_dependency_are_documented(self):
-        self.assertEqual("b2-blind-handoff/v5.1", PROTOCOL_VERSION)
+        self.assertEqual("b2-blind-handoff/v5.2", PROTOCOL_VERSION)
         workflow = Path(".github/workflows/test.yml").read_text()
         docs = Path("docs/b2/blind-handoff-v5.md").read_text()
         self.assertIn("[blind-handoff]", workflow)
         self.assertIn("test.yml", docs)
+        self.assertIn("payload has been accepted, the runner generates", docs)
+        self.assertIn("unrevealed raw challenge", docs)
 
 
 if __name__ == "__main__":

@@ -90,7 +90,7 @@ Only a non-empty final may produce bridge-level PASS, which still does not score
 answer quality.
 
 The transport boundary is separately specified in
-[B2 Blind Handoff v5.1](blind-handoff-v5.md). The durable review tree contains
+[B2 Blind Handoff v5.2](blind-handoff-v5.md). The durable review tree contains
 no live workflow; any future provider run requires separate authorization and a
 new reviewed exact-head orchestration change.
 

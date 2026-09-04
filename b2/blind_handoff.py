@@ -33,7 +33,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
-PROTOCOL_VERSION = "b2-blind-handoff/v5.1"
+PROTOCOL_VERSION = "b2-blind-handoff/v5.2"
 ENCRYPTION_ALGORITHM = "RSA-OAEP-SHA256+AES-256-GCM/v1"
 MIN_RSA_BITS = 3072
 MAX_ENVELOPE_BYTES = 4 * 1024 * 1024
@@ -45,6 +45,7 @@ _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _HANDOFF_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$")
+_CHALLENGE_ACK_DOMAIN = b"b2-blind-handoff/return-private-key-possession/v1\x00"
 
 
 class HandoffError(ValueError):
@@ -549,7 +550,6 @@ def create_input_payload(
     return_public_pem: bytes,
     context: bytes,
     prompt: bytes,
-    challenge: bytes,
     ack_key: bytes,
     binding: HandoffBinding,
     now_unix: int | None = None,
@@ -568,14 +568,13 @@ def create_input_payload(
     for name, actual in checks.items():
         if getattr(binding, name) != actual:
             raise HandoffError(f"binding does not match {name}")
-    if len(challenge) != 32 or len(ack_key) != 32:
-        raise HandoffError("challenge and acknowledgement key must each be 32 bytes")
+    if len(ack_key) != 32:
+        raise HandoffError("acknowledgement key must be 32 bytes")
     archive = _build_archive(
         "input-package",
         binding,
         {
             "ack-key.bin": ack_key,
-            "challenge.bin": challenge,
             "context.txt": context,
             "prompt.txt": prompt,
             "return-public.pem": return_public_pem,
@@ -616,12 +615,11 @@ def decrypt_input_payload(
         expected_kind="input-package",
         expected_binding=binding,
         expected_names={
-            "ack-key.bin", "challenge.bin", "context.txt", "prompt.txt",
-            "return-public.pem",
+            "ack-key.bin", "context.txt", "prompt.txt", "return-public.pem",
         },
     )
-    if len(files["challenge.bin"]) != 32 or len(files["ack-key.bin"]) != 32:
-        raise HandoffError("private challenge material has invalid length")
+    if len(files["ack-key.bin"]) != 32:
+        raise HandoffError("private acknowledgement key has invalid length")
     if sha256_hex(files["return-public.pem"]) != binding.return_public_key_sha256:
         raise HandoffError("return public key fingerprint mismatch")
     if (
@@ -729,8 +727,23 @@ def create_challenge_ack(
         "challenge_envelope_sha256": sha256_hex(challenge_envelope),
         "challenge_plaintext_sha256": sha256_hex(challenge),
     }
-    body["hmac_sha256"] = hmac.new(ack_key, _canonical_json(body), hashlib.sha256).hexdigest()
+    body["hmac_sha256"] = _challenge_ack_hmac(
+        ack_key=ack_key,
+        challenge=challenge,
+        body=body,
+    )
     return _json_bytes(body)
+
+
+def _challenge_ack_hmac(
+    *, ack_key: bytes, challenge: bytes, body: Mapping[str, object],
+) -> str:
+    """Bind acknowledgement authentication to the unrevealed challenge bytes."""
+
+    if len(challenge) != 32 or len(ack_key) != 32:
+        raise HandoffError("challenge acknowledgement material has invalid length")
+    transcript = _CHALLENGE_ACK_DOMAIN + challenge + _canonical_json(body)
+    return hmac.new(ack_key, transcript, hashlib.sha256).hexdigest()
 
 
 def verify_challenge_ack(
@@ -750,7 +763,11 @@ def verify_challenge_ack(
     }
     _strict_keys(document, expected_keys, "challenge acknowledgement")
     supplied_mac = _require_hex64(document.pop("hmac_sha256"), "hmac_sha256")
-    expected_mac = hmac.new(ack_key, _canonical_json(document), hashlib.sha256).hexdigest()
+    expected_mac = _challenge_ack_hmac(
+        ack_key=ack_key,
+        challenge=challenge,
+        body=document,
+    )
     if not hmac.compare_digest(supplied_mac, expected_mac):
         raise HandoffError("challenge acknowledgement HMAC mismatch")
     if (
@@ -1064,13 +1081,12 @@ def _cmd_prepare_input(args: argparse.Namespace) -> dict[str, object]:
         or len(prompt) != binding.prompt_bytes
     ):
         raise HandoffError("private frozen inputs do not match the authorized binding")
-    challenge, ack_key = os.urandom(32), os.urandom(32)
+    ack_key = os.urandom(32)
     payload = create_input_payload(
         input_public_pem=input_public,
         return_public_pem=return_public,
         context=context,
         prompt=prompt,
-        challenge=challenge,
         ack_key=ack_key,
         binding=binding,
     )
@@ -1078,7 +1094,6 @@ def _cmd_prepare_input(args: argparse.Namespace) -> dict[str, object]:
         "binding.json": _json_bytes(binding.as_dict()),
         "return-private.pem": return_private,
         "return-public.pem": return_public,
-        "challenge.bin": challenge,
         "ack-key.bin": ack_key,
         "payload-prepared.json": _json_bytes({
             "protocol": PROTOCOL_VERSION,
@@ -1124,7 +1139,6 @@ def _cmd_accept_input(args: argparse.Namespace) -> dict[str, object]:
         "context.txt": files["context.txt"],
         "prompt.txt": files["prompt.txt"],
         "return-public.pem": files["return-public.pem"],
-        "challenge.bin": files["challenge.bin"],
         "ack-key.bin": files["ack-key.bin"],
         "payload-accepted.json": _json_bytes({
             "protocol": PROTOCOL_VERSION,
@@ -1148,20 +1162,30 @@ def _cmd_encrypt_challenge(args: argparse.Namespace) -> dict[str, object]:
     binding = _state_binding(state)
     _require_claim(state, "payload-accepted", binding)
     _require_distinct_paths({"state directory": state, "challenge output": args.output})
-    challenge = state.joinpath("challenge.bin").read_bytes()
-    envelope = encrypt_return_envelope(
-        return_public_pem=state.joinpath("return-public.pem").read_bytes(),
-        kind="challenge-response",
-        binding=binding,
-        plaintext=challenge,
-    )
-    _atomic_create(args.output, envelope, mode=0o644)
+    challenge = os.urandom(32)
+    challenge_path = state / "runner-challenge.bin"
+    _atomic_create(challenge_path, challenge)
+    try:
+        envelope = encrypt_return_envelope(
+            return_public_pem=state.joinpath("return-public.pem").read_bytes(),
+            kind="challenge-response",
+            binding=binding,
+            plaintext=challenge,
+        )
+        _atomic_create(args.output, envelope, mode=0o644)
+    except Exception:
+        challenge_path.unlink(missing_ok=True)
+        raise
     try:
         _claim_once(state, "challenge-published", binding=binding, artifact=envelope)
     except Exception:
         Path(args.output).unlink(missing_ok=True)
+        challenge_path.unlink(missing_ok=True)
         raise
-    return {"status": "CHALLENGE_ENCRYPTED", "envelope_sha256": sha256_hex(envelope)}
+    return {
+        "status": "RUNNER_CHALLENGE_ENCRYPTED",
+        "envelope_sha256": sha256_hex(envelope),
+    }
 
 
 def _cmd_verify_challenge(args: argparse.Namespace) -> dict[str, object]:
@@ -1174,19 +1198,18 @@ def _cmd_verify_challenge(args: argparse.Namespace) -> dict[str, object]:
         "ack output": args.ack_output,
     })
     envelope = Path(args.challenge_envelope).read_bytes()
-    challenge = state.joinpath("challenge.bin").read_bytes()
-    actual = decrypt_return_envelope(
+    recovered_challenge = decrypt_return_envelope(
         return_private_pem=state.joinpath("return-private.pem").read_bytes(),
         envelope_bytes=envelope,
         expected_kind="challenge-response",
         expected_binding=binding,
     )
-    if not hmac.compare_digest(actual, challenge):
-        raise HandoffError("challenge round-trip plaintext mismatch")
+    if len(recovered_challenge) != 32:
+        raise HandoffError("runner possession challenge must be exactly 32 bytes")
     ack = create_challenge_ack(
         binding=binding,
         challenge_envelope=envelope,
-        challenge=challenge,
+        challenge=recovered_challenge,
         ack_key=state.joinpath("ack-key.bin").read_bytes(),
     )
     _atomic_create(args.ack_output, ack, mode=0o644)
@@ -1195,7 +1218,10 @@ def _cmd_verify_challenge(args: argparse.Namespace) -> dict[str, object]:
     except Exception:
         Path(args.ack_output).unlink(missing_ok=True)
         raise
-    return {"status": "RETURN_KEY_PROVEN", "ack_sha256": sha256_hex(ack)}
+    return {
+        "status": "RETURN_PRIVATE_KEY_POSSESSION_PROVEN",
+        "ack_sha256": sha256_hex(ack),
+    }
 
 
 def _cmd_verify_ack(args: argparse.Namespace) -> dict[str, object]:
@@ -1205,7 +1231,7 @@ def _cmd_verify_ack(args: argparse.Namespace) -> dict[str, object]:
     verify_challenge_ack(
         binding=binding,
         challenge_envelope=Path(args.challenge_envelope).read_bytes(),
-        challenge=state.joinpath("challenge.bin").read_bytes(),
+        challenge=state.joinpath("runner-challenge.bin").read_bytes(),
         ack_key=state.joinpath("ack-key.bin").read_bytes(),
         acknowledgement=Path(args.acknowledgement).read_bytes(),
     )
@@ -1325,7 +1351,6 @@ def deterministic_smoke_receipt(
         return_private, return_public = generate_rsa_keypair()
         context = b"B2-HANDOFF-V5-SYNTHETIC-CONTEXT\n"
         prompt = b"B2-HANDOFF-V5-SYNTHETIC-PROMPT\n"
-        challenge = hashlib.sha256(b"synthetic-return-challenge").digest()
         ack_key = hashlib.sha256(b"synthetic-ack-key").digest()
         binding = HandoffBinding(
             handoff_id=f"synthetic-smoke-{workflow_run_id}-{execution_head_sha[:12]}",
@@ -1348,7 +1373,6 @@ def deterministic_smoke_receipt(
             return_public_pem=return_public,
             context=context,
             prompt=prompt,
-            challenge=challenge,
             ack_key=ack_key,
             binding=binding,
             now_unix=now_unix,
@@ -1361,11 +1385,18 @@ def deterministic_smoke_receipt(
         )
         if accepted["context.txt"] != context or accepted["prompt.txt"] != prompt:
             raise HandoffError("synthetic input round trip changed frozen bytes")
+        if "challenge.bin" in accepted:
+            raise HandoffError("runner possession challenge leaked into input payload")
+        # Deterministic test material is derived only after the runner has
+        # accepted the payload, mirroring the production command ordering.
+        runner_challenge = hashlib.sha256(
+            b"synthetic-runner-return-challenge"
+        ).digest()
         challenge_envelope = encrypt_return_envelope(
             return_public_pem=return_public,
             kind="challenge-response",
             binding=binding,
-            plaintext=challenge,
+            plaintext=runner_challenge,
             now_unix=now_unix,
         )
         recovered_challenge = decrypt_return_envelope(
@@ -1375,19 +1406,19 @@ def deterministic_smoke_receipt(
             expected_binding=binding,
             now_unix=now_unix,
         )
-        if not hmac.compare_digest(recovered_challenge, challenge):
+        if not hmac.compare_digest(recovered_challenge, runner_challenge):
             raise HandoffError("synthetic return-key proof changed challenge bytes")
         ack = create_challenge_ack(
             binding=binding,
             challenge_envelope=challenge_envelope,
-            challenge=challenge,
+            challenge=recovered_challenge,
             ack_key=ack_key,
             now_unix=now_unix,
         )
         verify_challenge_ack(
             binding=binding,
             challenge_envelope=challenge_envelope,
-            challenge=challenge,
+            challenge=runner_challenge,
             ack_key=ack_key,
             acknowledgement=ack,
             now_unix=now_unix,
@@ -1412,7 +1443,7 @@ def deterministic_smoke_receipt(
         )
         _atomic_write(root / "synthetic-state.marker", b"synthetic/non-private\n")
         report = {
-            "schema_version": "b2-blind-handoff-offline-smoke/v1",
+            "schema_version": "b2-blind-handoff-offline-smoke/v2",
             "terminal_status": smoke["terminal_status"],
             "protocol": PROTOCOL_VERSION,
             "workflow_run_id": workflow_run_id,
@@ -1427,6 +1458,7 @@ def deterministic_smoke_receipt(
             "prompt_sha256": binding.prompt_sha256,
             "prompt_bytes": binding.prompt_bytes,
             "return_decryptability_proven": True,
+            "return_private_key_possession_proven": True,
             "provider_attempts": 0,
             "credential_lookups": 0,
             "automatic_retries": 0,

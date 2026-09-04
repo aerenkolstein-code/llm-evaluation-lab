@@ -78,6 +78,10 @@ Public-safe receipt may retain only metadata/fingerprints such as:
 
 Do not commit private inputs or answers into this public repository.
 
+The execution transport used for the current Q1 blind run is separately
+specified in [B2 Blind Handoff v5](blind-handoff-v5.md). Its no-provider smoke
+and return-key proof gate must be GREEN before this bridge is invoked live.
+
 ## Private output-pair semantics
 
 `--raw-output` and `--receipt-output` are one evidence pair, not two unrelated files.

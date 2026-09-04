@@ -13,7 +13,7 @@ permissions:
 jobs:
   blind-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       EXPECTED_CONTEXT_SHA256: a595fb210b225e201e6b9a191a2559880ebd118946f770b440e5326955d58e58
       EXPECTED_PROMPT_SHA256: c27eeeab07789ed2ac49c3c5a6034093659c35cdf8b76b1c78b2b670872c5d4c
@@ -47,7 +47,7 @@ jobs:
       - name: Publish ephemeral input public key
         uses: actions/upload-artifact@v4
         with:
-          name: b2-blind-q1-r1-input-public-key-v2
+          name: b2-blind-q1-r1-input-public-key-v3
           path: /tmp/b2-handshake/input_public.pem
           retention-days: 1
           if-no-files-found: error
@@ -57,10 +57,10 @@ jobs:
           GH_READ_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          api_base="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/blind-input"
+          api_base="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/blind-input-v3"
           auth=(-H "Authorization: Bearer ${GH_READ_TOKEN}" -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28")
           found=0
-          for _ in $(seq 1 144); do
+          for _ in $(seq 1 240); do
             if curl -fsSL "${auth[@]}" "${api_base}/manifest.json?ref=${GITHUB_REF_NAME}" -o /tmp/b2-handshake/manifest.json; then
               found=1
               break
@@ -179,7 +179,7 @@ jobs:
       - name: Upload encrypted private result
         uses: actions/upload-artifact@v4
         with:
-          name: b2-blind-q1-r1-encrypted-result-v2
+          name: b2-blind-q1-r1-encrypted-result-v3
           path: /tmp/b2-result.encrypted.json
           retention-days: 1
           if-no-files-found: error

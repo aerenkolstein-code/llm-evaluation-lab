@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/bm0-candidate-roster-budget.schema.json",
+  "title": "B2 BM0 Candidate Provider/Model Roster and Estimate-Only Budget",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "work_order_id",
+    "research_as_of",
+    "roster_label",
+    "provider_roster_status",
+    "budget_label",
+    "research_sources",
+    "candidates",
+    "budget_model",
+    "selection_gate",
+    "artifact_fingerprint"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "b2-bm0-candidate-roster-budget/v1"
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "work_order_id": {
+      "const": "WO-B2-BM0"
+    },
+    "research_as_of": {
+      "type": "string",
+      "format": "date"
+    },
+    "roster_label": {
+      "const": "CANDIDATE"
+    },
+    "provider_roster_status": {
+      "const": "NOT_SELECTED"
+    },
+    "budget_label": {
+      "const": "ESTIMATE_ONLY"
+    },
+    "research_sources": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_id",
+          "provider_id",
+          "source_url",
+          "retrieved_on",
+          "source_type",
+          "source_fingerprint"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+          },
+          "provider_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://"
+          },
+          "retrieved_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "source_type": {
+            "const": "OFFICIAL_PUBLIC_API_DOCUMENTATION"
+          },
+          "source_fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "candidate_id",
+          "provider_id",
+          "requested_model_id",
+          "endpoint_family",
+          "capability_modes",
+          "roster_label",
+          "selection_status",
+          "pricing_source_id",
+          "pricing",
+          "refresh_before_live_selection"
+        ],
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+          },
+          "provider_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+          },
+          "requested_model_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+          },
+          "endpoint_family": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+          },
+          "capability_modes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "contains": {
+              "const": "TEXT_RESPONSE"
+            },
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+            }
+          },
+          "roster_label": {
+            "const": "CANDIDATE"
+          },
+          "selection_status": {
+            "const": "NOT_SELECTED"
+          },
+          "pricing_source_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+          },
+          "pricing": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "currency",
+              "unit",
+              "processing_mode",
+              "context_band",
+              "input_usd_per_million_tokens",
+              "output_usd_per_million_tokens",
+              "cache_discount_assumed",
+              "regional_uplift_assumed",
+              "valid_through"
+            ],
+            "properties": {
+              "currency": {
+                "const": "USD"
+              },
+              "unit": {
+                "const": "PER_1M_TOKENS"
+              },
+              "processing_mode": {
+                "const": "STANDARD"
+              },
+              "context_band": {
+                "const": "SHORT_CONTEXT_OR_BASE"
+              },
+              "input_usd_per_million_tokens": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "output_usd_per_million_tokens": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "cache_discount_assumed": {
+                "const": false
+              },
+              "regional_uplift_assumed": {
+                "const": false
+              },
+              "valid_through": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "format": "date"
+                  }
+                ]
+              }
+            }
+          },
+          "refresh_before_live_selection": {
+            "const": true
+          }
+        }
+      }
+    },
+    "budget_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estimate_label",
+        "assumption_set_id",
+        "scope",
+        "default_comparable_entry_count",
+        "cases_per_entry",
+        "replicates_per_case",
+        "calls_per_candidate",
+        "input_tokens_per_call",
+        "output_tokens_per_call",
+        "automatic_retries",
+        "cached_input_tokens",
+        "tool_or_search_surcharge_included",
+        "tax_region_discount_included",
+        "formula",
+        "candidate_estimates",
+        "aggregate_estimated_token_cost_usd",
+        "spending_authority"
+      ],
+      "properties": {
+        "estimate_label": {
+          "const": "ESTIMATE_ONLY"
+        },
+        "assumption_set_id": {
+          "const": "BM0-DEFAULT-BOUNDED-PILOT-ESTIMATE-V1"
+        },
+        "scope": {
+          "const": "DEFAULT_COMPARABLE_CLASSES_ONLY"
+        },
+        "default_comparable_entry_count": {
+          "const": 8
+        },
+        "cases_per_entry": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8
+        },
+        "replicates_per_case": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 5
+        },
+        "calls_per_candidate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "input_tokens_per_call": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "output_tokens_per_call": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "automatic_retries": {
+          "const": 0
+        },
+        "cached_input_tokens": {
+          "const": 0
+        },
+        "tool_or_search_surcharge_included": {
+          "const": false
+        },
+        "tax_region_discount_included": {
+          "const": false
+        },
+        "formula": {
+          "const": "calls * ((input_tokens_per_call * input_usd_per_million_tokens + output_tokens_per_call * output_usd_per_million_tokens) / 1000000)"
+        },
+        "candidate_estimates": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "candidate_id",
+              "planned_calls",
+              "estimated_input_tokens",
+              "estimated_output_tokens",
+              "estimated_token_cost_usd",
+              "estimate_status",
+              "spending_authority"
+            ],
+            "properties": {
+              "candidate_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+              },
+              "planned_calls": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "estimated_input_tokens": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "estimated_output_tokens": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "estimated_token_cost_usd": {
+                "type": "number",
+                "minimum": 0
+              },
+              "estimate_status": {
+                "const": "ESTIMATE_ONLY"
+              },
+              "spending_authority": {
+                "const": false
+              }
+            }
+          }
+        },
+        "aggregate_estimated_token_cost_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "spending_authority": {
+          "const": false
+        }
+      }
+    },
+    "selection_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selection_status",
+        "live_execution_authorized",
+        "credential_path_selected",
+        "maximum_spend_selected",
+        "required_next_action"
+      ],
+      "properties": {
+        "selection_status": {
+          "const": "NOT_SELECTED"
+        },
+        "live_execution_authorized": {
+          "const": false
+        },
+        "credential_path_selected": {
+          "const": false
+        },
+        "maximum_spend_selected": {
+          "const": false
+        },
+        "required_next_action": {
+          "const": "FRESH_PROVIDER_MODEL_PRICE_REGION_REFRESH_AND_SEPARATE_LIVE_WORK_ORDER"
+        }
+      }
+    },
+    "artifact_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

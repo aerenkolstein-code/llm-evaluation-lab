@@ -15,6 +15,7 @@ from b2.bm0 import (
     HIDDEN_HOLDOUT_DECLARATION,
     HIDDEN_HOLDOUT_DECLARATION_ID,
     IMPLEMENTATION_BASE_SHA,
+    METRIC_WEIGHTING_RULES,
     NON_MODEL_SCORABLE_TERMINALS,
     SAP_METHOD_IDS,
     SAP_DESIGN_RULE,
@@ -23,6 +24,7 @@ from b2.bm0 import (
     TARGET_IDS_BY_CLASS,
     TARGET_LINEAGE_BY_ID,
     assert_claim_allowed,
+    bounded_pilot_design_v1,
     build_bm0_receipt,
     case_failure_probability_v1,
     control_false_positive_rate_v1,
@@ -41,6 +43,7 @@ from b2.bm0 import (
     validate_benchmark_manifest,
     validate_bm0_metric_registry,
     validate_bm0_receipt,
+    validate_candidate_roster_budget,
     validate_corpus_policy,
     validate_canonical_family_lineage_v1,
     validate_measurement_contract,
@@ -140,6 +143,11 @@ def identity(
         },
         "target_id": resolved_target,
         "target_class": target_class,
+        "applicability_result": (
+            "NOT_APPLICABLE"
+            if target_class == "SYSTEM_EVAL_ONLY"
+            else "APPLICABLE"
+        ),
         "entry_id": lineage["entry_id"],
         "family_id": lineage["family_id"],
         "case_id": resolved_case_id,
@@ -242,6 +250,7 @@ def observation(planned: dict, status: str) -> dict:
         "reasoning_controls_fingerprint": sha256_json(planned["reasoning_controls"]),
         "target_id": planned["target_id"],
         "target_class": planned["target_class"],
+        "applicability_result": planned["applicability_result"],
         "entry_id": planned["entry_id"],
         "family_id": planned["family_id"],
         "case_id": planned["case_id"],
@@ -373,6 +382,9 @@ class B2BM0Tests(unittest.TestCase):
         cls.matrix = load_json(BENCHMARK / "bm0-target-applicability.json")
         cls.registry = load_json(BENCHMARK / "bm0-metric-registry.json")
         cls.corpus = load_json(BENCHMARK / "bm0-corpus-policy.json")
+        cls.candidates = load_json(
+            BENCHMARK / "bm0-candidate-roster-budget.json"
+        )
         cls.manifest_template = load_json(
             BENCHMARK / "bm0-benchmark-manifest.template.json"
         )
@@ -437,6 +449,71 @@ class B2BM0Tests(unittest.TestCase):
                     )
                 ],
             }
+        model_bindings = {
+            (
+                attempt["provider_subject_id"],
+                attempt["model_subject_id"],
+                attempt["requested_model_id"],
+            )
+            for attempt in attempts
+            if attempt["target_class"] != "SYSTEM_EVAL_ONLY"
+        }
+        if not model_bindings:
+            model_bindings = {("provider-model-a", "model-a", "model-a")}
+        capability_by_subject_entry = {
+            (attempt["model_subject_id"], attempt["entry_id"]): attempt[
+                "capability_mode"
+            ]
+            for attempt in attempts
+            if attempt["target_class"] != "SYSTEM_EVAL_ONLY"
+        }
+        manifest["model_applicability"] = []
+        for provider_id, model_id, requested_model_id in sorted(model_bindings):
+            for lineage in CANONICAL_FAMILY_LINEAGE:
+                system_only = lineage["target_class"] == "SYSTEM_EVAL_ONLY"
+                if system_only:
+                    applicability_result = "NOT_APPLICABLE"
+                    comparison_result = "NOT_APPLICABLE"
+                    reason_code = "SYSTEM_EVAL_ONLY_NO_MODEL_TRIAL"
+                else:
+                    applicability_result = "APPLICABLE"
+                    reason_code = "DECLARED_CAPABILITY_SUPPORTED"
+                    if lineage["target_class"] == "AGENT_STANDARDIZED":
+                        comparison_result = (
+                            "COMPARABLE_AFTER_SANDBOX_EQUIVALENCE"
+                            if establish_sandbox
+                            else "COMPARABILITY_LIMIT"
+                        )
+                    else:
+                        comparison_result = "DEFAULT_COMPARABLE"
+                row = {
+                    "provider_subject_id": provider_id,
+                    "model_subject_id": model_id,
+                    "requested_model_id": requested_model_id,
+                    "entry_id": lineage["entry_id"],
+                    "target_id": lineage["target_id"],
+                    "family_id": lineage["family_id"],
+                    "target_class": lineage["target_class"],
+                    "capability_mode": (
+                        "SYSTEM_EVAL"
+                        if system_only
+                        else capability_by_subject_entry.get(
+                            (model_id, lineage["entry_id"]), "TEXT_ONLY"
+                        )
+                    ),
+                    "applicability_result": applicability_result,
+                    "comparison_result": comparison_result,
+                    "reason_code": reason_code,
+                    "evidence_fingerprint": sha256_json(
+                        {
+                            "model_subject_id": model_id,
+                            "entry_id": lineage["entry_id"],
+                            "applicability_result": applicability_result,
+                        }
+                    ),
+                    "declared_before_execution": True,
+                }
+                manifest["model_applicability"].append(row)
         return refingerprint(manifest, "manifest_fingerprint")
 
     def computed_receipt(self) -> dict:
@@ -531,6 +608,14 @@ class B2BM0Tests(unittest.TestCase):
             set(metric["excluded_terminal_statuses"]),
             set(NON_MODEL_SCORABLE_TERMINALS),
         )
+        self.assertEqual(
+            metric["applicability_filter"],
+            "APPLICABLE_MODEL_PROVIDER_ONLY",
+        )
+        self.assertEqual(
+            metric["weighting"],
+            METRIC_WEIGHTING_RULES["model_failure_rate"],
+        )
 
         tampered = copy.deepcopy(self.registry)
         model_metric = next(
@@ -565,6 +650,47 @@ class B2BM0Tests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             validate_bm0_metric_registry(diagnostic_tamper)
+
+        weighting_tamper = copy.deepcopy(self.registry)
+        weighted = next(
+            metric
+            for metric in weighting_tamper["metrics"]
+            if metric["metric_id"] == "family_conditional_failure_rate"
+        )
+        weighted["weighting"]["across_cases"] = (
+            "WEIGHT_BY_NUMBER_OF_REPLICATES"
+        )
+        weighting_tamper = refingerprint(
+            weighting_tamper, "registry_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_bm0_metric_registry(weighting_tamper)
+
+    def test_candidate_roster_and_budget_are_estimate_only_and_executable(self):
+        checked = validate_candidate_roster_budget(self.candidates)
+        self.assertEqual(checked["roster_label"], "CANDIDATE")
+        self.assertEqual(checked["provider_roster_status"], "NOT_SELECTED")
+        self.assertEqual(checked["budget_label"], "ESTIMATE_ONLY")
+        self.assertEqual(len(checked["candidates"]), 3)
+        self.assertFalse(checked["budget_model"]["spending_authority"])
+        self.assertEqual(
+            checked["budget_model"]["aggregate_estimated_token_cost_usd"],
+            8.592,
+        )
+
+        selected = copy.deepcopy(self.candidates)
+        selected["candidates"][0]["selection_status"] = "SELECTED"
+        selected = refingerprint(selected, "artifact_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_candidate_roster_budget(selected)
+
+        stale_cost = copy.deepcopy(self.candidates)
+        stale_cost["budget_model"]["candidate_estimates"][0][
+            "estimated_token_cost_usd"
+        ] = 0.01
+        stale_cost = refingerprint(stale_cost, "artifact_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_candidate_roster_budget(stale_cost)
 
     def test_manifest_template_stays_design_only_and_unselected(self):
         checked = validate_benchmark_manifest(self.manifest_template)
@@ -658,6 +784,81 @@ class B2BM0Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_benchmark_manifest(
                 public_only,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+    def test_frozen_manifest_requires_complete_per_model_applicability_grid(self):
+        attempt = identity()
+        manifest = self.frozen_manifest([attempt])
+        checked = validate_benchmark_manifest(
+            manifest,
+            expected_artifact_fingerprints=self.execution_bindings,
+        )
+        declarations = checked["model_applicability"]
+        self.assertEqual(len(declarations), 16)
+        self.assertEqual(
+            sum(
+                row["applicability_result"] == "NOT_APPLICABLE"
+                for row in declarations
+            ),
+            4,
+        )
+        self.assertTrue(
+            all(
+                row["comparison_result"] == "NOT_APPLICABLE"
+                for row in declarations
+                if row["applicability_result"] == "NOT_APPLICABLE"
+            )
+        )
+
+        incomplete = copy.deepcopy(manifest)
+        incomplete["model_applicability"].pop()
+        incomplete = refingerprint(incomplete, "manifest_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(
+                incomplete,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        hidden_zero = copy.deepcopy(manifest)
+        planned_row = next(
+            row
+            for row in hidden_zero["model_applicability"]
+            if row["entry_id"] == attempt["entry_id"]
+        )
+        planned_row.update(
+            {
+                "applicability_result": "NOT_APPLICABLE",
+                "comparison_result": "NOT_APPLICABLE",
+                "reason_code": "PROVIDER_CAPABILITY_UNAVAILABLE",
+            }
+        )
+        hidden_zero = refingerprint(hidden_zero, "manifest_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(
+                hidden_zero,
+                expected_artifact_fingerprints=self.execution_bindings,
+            )
+
+        system_as_applicable = copy.deepcopy(manifest)
+        system_row = next(
+            row
+            for row in system_as_applicable["model_applicability"]
+            if row["target_class"] == "SYSTEM_EVAL_ONLY"
+        )
+        system_row.update(
+            {
+                "applicability_result": "APPLICABLE",
+                "comparison_result": "DEFAULT_COMPARABLE",
+                "reason_code": "DECLARED_CAPABILITY_SUPPORTED",
+            }
+        )
+        system_as_applicable = refingerprint(
+            system_as_applicable, "manifest_fingerprint"
+        )
+        with self.assertRaises(ValueError):
+            validate_benchmark_manifest(
+                system_as_applicable,
                 expected_artifact_fingerprints=self.execution_bindings,
             )
 
@@ -784,6 +985,22 @@ class B2BM0Tests(unittest.TestCase):
         self_parent["parent_attempt_id"] = self_parent["attempt_id"]
         with self.assertRaises(ValueError):
             validate_trial_identity(self_parent)
+
+        model_na = identity()
+        model_na["applicability_result"] = "NOT_APPLICABLE"
+        with self.assertRaises(ValueError):
+            validate_trial_identity(model_na)
+
+        system_applicable = identity(target_class="SYSTEM_EVAL_ONLY")
+        system_applicable["applicability_result"] = "APPLICABLE"
+        with self.assertRaises(ValueError):
+            validate_trial_identity(system_applicable)
+
+        observed = observation(identity(), "PASS")
+        observed["applicability_result"] = "NOT_APPLICABLE"
+        observed = refingerprint(observed, "observation_fingerprint")
+        with self.assertRaises(ValueError):
+            validate_observation(observed)
 
     def test_trial_identity_binds_case_lineage_contamination_and_exposure(self):
         checked = validate_trial_identity(identity())
@@ -1349,7 +1566,17 @@ class B2BM0Tests(unittest.TestCase):
             )
             for index in range(2)
         ]
-        control_manifest = self.frozen_manifest(control_attempts)
+        for attempt in control_attempts:
+            attempt["corpus_pool_id"] = "CONTROL"
+            attempt["exposure_status"] = "PUBLICLY_DISCLOSED_CONTROL"
+        hidden_anchor = identity(
+            serial="control-hidden-anchor",
+            item="control-hidden-anchor-item",
+            case_id="control-hidden-anchor-case",
+        )
+        control_manifest = self.frozen_manifest(
+            [hidden_anchor, *control_attempts]
+        )
         cfpr = control_false_positive_rate_v1(
             control_manifest,
             [
@@ -1905,10 +2132,10 @@ class B2BM0Tests(unittest.TestCase):
             with self.subTest(claim=forbidden), self.assertRaises(ValueError):
                 assert_claim_allowed(forbidden, receipt)
 
-    def test_sap_binds_fourteen_methods_and_bounded_pilot_no_peeking_rule(self):
+    def test_sap_binds_fifteen_methods_and_bounded_pilot_no_peeking_rule(self):
         methods = self.contract["sap"]["methods"]
         self.assertEqual(tuple(method["method_id"] for method in methods), SAP_METHOD_IDS)
-        self.assertEqual(len({method["implementation"] for method in methods}), 14)
+        self.assertEqual(len({method["implementation"] for method in methods}), 15)
         self.assertTrue(self.contract["sap"]["frozen_before_hidden_access"])
         self.assertEqual(self.contract["sap"]["design_rule"], SAP_DESIGN_RULE)
         self.assertEqual(
@@ -1922,6 +2149,47 @@ class B2BM0Tests(unittest.TestCase):
             "FORBIDDEN",
         )
 
+    def test_bounded_pilot_design_enforces_case_and_repeat_bounds(self):
+        attempts = [
+            identity(
+                serial=f"pilot-{case_index}-{replicate}",
+                item=f"pilot-item-{case_index}",
+                case_id=f"pilot-case-{case_index}",
+                replicate=replicate,
+            )
+            for case_index in range(2)
+            for replicate in range(2)
+        ]
+        result = bounded_pilot_design_v1(attempts)
+        self.assertEqual(result["terminal_status"], "PASS")
+        self.assertEqual(result["group_count"], 1)
+        self.assertFalse(result["outcome_fields_read"])
+        self.assertFalse(result["precision_claimed"])
+
+        one_case = [
+            identity(
+                serial=f"one-case-{replicate}",
+                item="one-case-item",
+                case_id="one-case",
+                replicate=replicate,
+            )
+            for replicate in range(4)
+        ]
+        with self.assertRaises(ValueError):
+            bounded_pilot_design_v1(one_case)
+
+        one_repeat = [
+            identity(
+                serial=f"one-repeat-{case_index}",
+                item=f"one-repeat-item-{case_index}",
+                case_id=f"one-repeat-case-{case_index}",
+                replicate=0,
+            )
+            for case_index in range(2)
+        ]
+        with self.assertRaises(ValueError):
+            bounded_pilot_design_v1(one_repeat)
+
     def test_json_schemas_are_strict_and_cover_identity_manifest_and_adjudication(self):
         schemas = [
             "bm0_trial_identity.schema.json",
@@ -1929,6 +2197,7 @@ class B2BM0Tests(unittest.TestCase):
             "bm0_adjudication_record.schema.json",
             "bm0_benchmark_manifest.schema.json",
             "bm0_measurement_contract.schema.json",
+            "bm0_candidate_roster_budget.schema.json",
         ]
         for filename in schemas:
             with self.subTest(schema=filename):
@@ -1946,6 +2215,7 @@ class B2BM0Tests(unittest.TestCase):
             "generator_or_mutation_version",
             "contamination_status",
             "exposure_status",
+            "applicability_result",
         ):
             self.assertIn(field, trial_schema["required"])
             self.assertIn(field, observation_schema["required"])
@@ -1989,6 +2259,7 @@ class B2BM0Tests(unittest.TestCase):
             "PRIVATE_HIDDEN_HOLDOUT", json.dumps(manifest_schema, sort_keys=True)
         )
         self.assertIn("hidden_holdout_authority", manifest_schema["required"])
+        self.assertIn("model_applicability", manifest_schema["required"])
         self.assertIn(
             "NOT_IN_PUBLIC_REPO_DECLARATION",
             json.dumps(manifest_schema, sort_keys=True),
@@ -2025,6 +2296,14 @@ class B2BM0Tests(unittest.TestCase):
         )
         self.assertIn(
             "design_rule", contract_schema["properties"]["sap"]["required"]
+        )
+        self.assertIn("applicability_contract", contract_schema["required"])
+        self.assertIn(
+            "candidate_roster_budget_contract", contract_schema["required"]
+        )
+        self.assertIn(
+            "schemas/bm0_candidate_roster_budget.schema.json",
+            contract_schema["properties"]["artifact_bindings"]["required"],
         )
 
     def test_checked_in_receipt_matches_regeneration(self):

@@ -26,6 +26,7 @@ TRIAL_IDENTITY_SCHEMA_VERSION = "b2-bm0-trial-identity/v1"
 MANIFEST_SCHEMA_VERSION = "b2-bm0-benchmark-manifest/v1"
 OBSERVATION_SCHEMA_VERSION = "b2-bm0-observation/v1"
 ADJUDICATION_SCHEMA_VERSION = "b2-bm0-adjudication-record/v1"
+CANDIDATE_ROSTER_BUDGET_SCHEMA_VERSION = "b2-bm0-candidate-roster-budget/v1"
 RECEIPT_SCHEMA_VERSION = "b2-bm0-contract-validation-receipt/v1"
 
 WORK_ORDER_ID = "WO-B2-BM0"
@@ -56,6 +57,13 @@ MODEL_METRIC_TARGET_CLASSES = {
     "model_failure_rate": DEFAULT_COMPARABLE_CLASSES,
     "sandboxed_agent_failure_rate": ("AGENT_STANDARDIZED",),
 }
+APPLICABILITY_RESULTS = ("APPLICABLE", "NOT_APPLICABLE")
+APPLICABILITY_REASON_CODES = (
+    "DECLARED_CAPABILITY_SUPPORTED",
+    "PROVIDER_CAPABILITY_UNAVAILABLE",
+    "DECLARED_ENVIRONMENT_UNSUPPORTED",
+    "SYSTEM_EVAL_ONLY_NO_MODEL_TRIAL",
+)
 CANONICAL_FAMILY_LINEAGE = (
     {
         "entry_id": "E01",
@@ -310,6 +318,7 @@ SAP_METHOD_IDS = (
     "BM0-SAP-12-CONTROL-FALSE-POSITIVE-RATE-V1",
     "BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1",
     "BM0-SAP-14-INFRASTRUCTURE-ERROR-RATE-V1",
+    "BM0-SAP-15-BOUNDED-PILOT-DESIGN-V1",
 )
 SAP_IMPLEMENTATIONS = {
     SAP_METHOD_IDS[0]: "fixed_attempt_stop_v1",
@@ -326,6 +335,7 @@ SAP_IMPLEMENTATIONS = {
     SAP_METHOD_IDS[11]: "control_false_positive_rate_v1",
     SAP_METHOD_IDS[12]: "within_case_instability_v1",
     SAP_METHOD_IDS[13]: "infrastructure_error_rate_v1",
+    SAP_METHOD_IDS[14]: "bounded_pilot_design_v1",
 }
 PAIR_COMPATIBILITY_FIELDS = (
     "benchmark_id",
@@ -493,7 +503,7 @@ SAP_FROZEN_PARAMETERS = {
     },
     SAP_METHOD_IDS[11]: {
         "statistical_unit": "VALID_CONTROL_TRIAL",
-        "control_selector": "variant_id=CONTROL",
+        "control_selector": "corpus_pool_id=CONTROL",
         "numerator": ["FAIL"],
         "denominator": ["PASS", "FAIL"],
         "excluded": list(NON_MODEL_SCORABLE_TERMINALS),
@@ -516,6 +526,20 @@ SAP_FROZEN_PARAMETERS = {
         "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
         "model_failure_attribution": "FORBIDDEN",
     },
+    SAP_METHOD_IDS[14]: {
+        "sample_size_rule_id": "BOUNDED-PILOT-FIXED-SUITE-V1",
+        "purpose": "BOUNDED_PILOT_MECHANISM_CONDITIONED_FREQUENCY_EVIDENCE",
+        "statistical_unit": "DISTINCT_CASE_VARIANT",
+        "cluster_unit": "CASE_ID_WITH_REPEATED_TRIALS_NESTED",
+        "minimum_distinct_cases_per_family_entry": 2,
+        "maximum_distinct_cases_per_family_entry": 8,
+        "minimum_replicates_per_case": 2,
+        "maximum_replicates_per_case": 5,
+        "target_precision": "NOT_CLAIMED_BOUNDED_PILOT",
+        "significance_or_superiority_claim": "FORBIDDEN",
+        "outcome_dependent_extension": "FORBIDDEN",
+        "change_control": "NEW_FROZEN_MANIFEST_AND_SEPARATE_APPROVAL_REQUIRED",
+    },
 }
 
 EXPECTED_METRIC_IDS = {
@@ -529,6 +553,102 @@ EXPECTED_METRIC_IDS = {
     "sandboxed_agent_failure_rate",
     "system_invariant_failure_rate",
     "non_scorable_attempt_rate",
+}
+METRIC_WEIGHTING_RULES = {
+    "case_failure_probability": {
+        "statistical_unit": "VALID_MODEL_TRIAL",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "NOT_APPLICABLE_CASE_SCOPED",
+        "across_families": "NOT_APPLICABLE_CASE_SCOPED",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN",
+    },
+    "family_conditional_failure_rate": {
+        "statistical_unit": "DISTINCT_CASE_VARIANT_CFP",
+        "within_case": "EQUAL_WEIGHT_REPLICATES_TO_CFP",
+        "across_cases": "EQUAL_WEIGHT_DISTINCT_CASE_CFP",
+        "across_families": "MODEL_X_FAMILY_PROFILE_NO_SCALAR_POOL",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN",
+    },
+    "control_false_positive_rate": {
+        "statistical_unit": "VALID_CONTROL_TRIAL",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "EQUAL_WEIGHT_PER_VALID_CONTROL_TRIAL",
+        "across_families": "CONTROL_DIAGNOSTIC_ONLY",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN",
+    },
+    "within_case_instability": {
+        "statistical_unit": "ELIGIBLE_DISTINCT_CASE_VARIANT",
+        "within_case": "ONE_SWITCH_INDICATOR_PER_CASE",
+        "across_cases": "EQUAL_WEIGHT_DISTINCT_CASES",
+        "across_families": "SEPARATE_FAMILY_PROFILE",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN",
+    },
+    "infrastructure_error_rate": {
+        "statistical_unit": "PREDECLARED_ATTEMPT",
+        "within_case": "EQUAL_WEIGHT_PER_ATTEMPT",
+        "across_cases": "EQUAL_WEIGHT_PER_ATTEMPT_DIAGNOSTIC",
+        "across_families": "DIAGNOSTIC_ONLY",
+        "across_models": "REPORT_PROVIDER_MODEL_AND_TOTAL_SEPARATELY",
+        "cross_family_micro_pooling": "DIAGNOSTIC_ONLY",
+    },
+    "terminal_distribution": {
+        "statistical_unit": "PREDECLARED_ATTEMPT",
+        "within_case": "EQUAL_WEIGHT_PER_ATTEMPT",
+        "across_cases": "EQUAL_WEIGHT_PER_ATTEMPT_DIAGNOSTIC",
+        "across_families": "REPORT_STRATIFIED_COUNTS",
+        "across_models": "REPORT_STRATIFIED_COUNTS",
+        "cross_family_micro_pooling": "COUNTS_ONLY_NO_QUALITY_CLAIM",
+    },
+    "model_failure_rate": {
+        "statistical_unit": "VALID_MODEL_TRIAL",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "EQUAL_WEIGHT_PER_VALID_TRIAL_NOT_CASE_BALANCED",
+        "across_families": "NO_BROAD_AGGREGATE_CLAIM",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN_AS_PRIMARY_SUMMARY",
+    },
+    "sandboxed_agent_failure_rate": {
+        "statistical_unit": "VALID_AGENT_TRIAL_AFTER_EQUIVALENCE",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "EQUAL_WEIGHT_PER_VALID_TRIAL_NOT_CASE_BALANCED",
+        "across_families": "NO_BROAD_AGGREGATE_CLAIM",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN_AS_PRIMARY_SUMMARY",
+    },
+    "system_invariant_failure_rate": {
+        "statistical_unit": "VALID_SYSTEM_TRIAL",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "EQUAL_WEIGHT_PER_VALID_TRIAL",
+        "across_families": "SYSTEM_PROFILE_ONLY",
+        "across_models": "NOT_APPLICABLE_SYSTEM_SCOPE",
+        "cross_family_micro_pooling": "FORBIDDEN_AS_MODEL_QUALITY",
+    },
+    "non_scorable_attempt_rate": {
+        "statistical_unit": "PREDECLARED_ATTEMPT",
+        "within_case": "EQUAL_WEIGHT_PER_ATTEMPT",
+        "across_cases": "EQUAL_WEIGHT_PER_ATTEMPT_DIAGNOSTIC",
+        "across_families": "REPORT_STRATIFIED_COUNTS",
+        "across_models": "REPORT_PROVIDER_MODEL_AND_TOTAL_SEPARATELY",
+        "cross_family_micro_pooling": "DIAGNOSTIC_ONLY",
+    },
+}
+METRIC_APPLICABILITY_FILTERS = {
+    metric_id: (
+        "SYSTEM_SCOPE_ONLY_MODEL_PROVIDER_NOT_APPLICABLE"
+        if metric_id == "system_invariant_failure_rate"
+        else "ALL_PREDECLARED_ATTEMPTS_WITH_APPLICABILITY_DISCLOSED"
+        if metric_id in {
+            "terminal_distribution",
+            "infrastructure_error_rate",
+            "non_scorable_attempt_rate",
+        }
+        else "APPLICABLE_MODEL_PROVIDER_ONLY"
+    )
+    for metric_id in EXPECTED_METRIC_IDS
 }
 EXPECTED_POOL_IDS = {
     "PUBLIC_REGRESSION",
@@ -646,12 +766,14 @@ BOUND_ARTIFACT_PATHS = (
     "cases/b2/public-safe/benchmark/bm0-target-applicability.json",
     "cases/b2/public-safe/benchmark/bm0-metric-registry.json",
     "cases/b2/public-safe/benchmark/bm0-corpus-policy.json",
+    "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json",
     "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json",
     "schemas/bm0_trial_identity.schema.json",
     "schemas/bm0_observation.schema.json",
     "schemas/bm0_adjudication_record.schema.json",
     "schemas/bm0_benchmark_manifest.schema.json",
     "schemas/bm0_measurement_contract.schema.json",
+    "schemas/bm0_candidate_roster_budget.schema.json",
     *CANONICAL_SOURCE_ARTIFACT_PATHS,
 )
 CONTRACT_ARTIFACT_PATH = (
@@ -1142,9 +1264,11 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
                 "kind",
                 "description",
                 "applicability_classes",
+                "applicability_filter",
                 "numerator_statuses",
                 "denominator_statuses",
                 "excluded_terminal_statuses",
+                "weighting",
                 "corpus_pool",
                 "activation_gate",
                 "estimate_method_id",
@@ -1164,6 +1288,28 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
         applicability = _strings(metric, "applicability_classes", entry_label)
         if not set(applicability).issubset(TARGET_CLASSES):
             raise ValueError(f"{metric_id} has an unsupported applicability class")
+        applicability_filter = _text(
+            metric, "applicability_filter", entry_label
+        )
+        if applicability_filter != METRIC_APPLICABILITY_FILTERS.get(metric_id):
+            raise ValueError(f"{metric_id} applicability filter drifted")
+        weighting = _obj(metric.get("weighting"), f"{entry_label}.weighting")
+        _exact_keys(
+            weighting,
+            {
+                "statistical_unit",
+                "within_case",
+                "across_cases",
+                "across_families",
+                "across_models",
+                "cross_family_micro_pooling",
+            },
+            f"{entry_label}.weighting",
+        )
+        for weighting_key in weighting:
+            _text(weighting, weighting_key, f"{entry_label}.weighting")
+        if dict(weighting) != METRIC_WEIGHTING_RULES.get(metric_id):
+            raise ValueError(f"{metric_id} weighting contract drifted")
         numerator = _strings(
             metric, "numerator_statuses", entry_label, allow_empty=True
         )
@@ -1385,6 +1531,357 @@ def validate_bm0_metric_registry(document: object) -> dict[str, Any]:
     return _verify_fingerprint(doc, "registry_fingerprint", label)
 
 
+def validate_candidate_roster_budget(document: object) -> dict[str, Any]:
+    """Validate the point-in-time candidate inventory and estimate-only budget.
+
+    This artifact is research input, not a selected execution roster.  Its
+    formulas are executable so a changed token assumption or copied price
+    cannot leave a stale total looking authoritative.
+    """
+
+    label = "bm0-candidate-roster-budget"
+    doc = _obj(document, label)
+    _exact_keys(
+        doc,
+        {
+            "schema_version",
+            "artifact_id",
+            "work_order_id",
+            "research_as_of",
+            "roster_label",
+            "provider_roster_status",
+            "budget_label",
+            "research_sources",
+            "candidates",
+            "budget_model",
+            "selection_gate",
+            "artifact_fingerprint",
+        },
+        label,
+    )
+    if (
+        _text(doc, "schema_version", label)
+        != CANDIDATE_ROSTER_BUDGET_SCHEMA_VERSION
+        or doc.get("work_order_id") != WORK_ORDER_ID
+        or doc.get("roster_label") != "CANDIDATE"
+        or doc.get("provider_roster_status") != "NOT_SELECTED"
+        or doc.get("budget_label") != "ESTIMATE_ONLY"
+    ):
+        raise ValueError("candidate roster/budget authority labels drifted")
+    _identifier(doc, "artifact_id", label)
+    research_as_of = _text(doc, "research_as_of", label)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", research_as_of) is None:
+        raise ValueError("research_as_of must be an ISO date")
+
+    sources_raw = doc.get("research_sources")
+    if not isinstance(sources_raw, list) or len(sources_raw) < 3:
+        raise ValueError("candidate research requires at least three official sources")
+    sources: dict[str, dict[str, Any]] = {}
+    source_providers: set[str] = set()
+    for index, raw in enumerate(sources_raw):
+        source_label = f"{label}.research_sources[{index}]"
+        source = _obj(raw, source_label)
+        _exact_keys(
+            source,
+            {
+                "source_id",
+                "provider_id",
+                "source_url",
+                "retrieved_on",
+                "source_type",
+                "source_fingerprint",
+            },
+            source_label,
+        )
+        source_id = _identifier(source, "source_id", source_label)
+        provider_id = _identifier(source, "provider_id", source_label)
+        source_url = _text(source, "source_url", source_label)
+        if not source_url.startswith("https://"):
+            raise ValueError("candidate pricing source must be public HTTPS")
+        if source.get("source_type") != "OFFICIAL_PUBLIC_API_DOCUMENTATION":
+            raise ValueError("candidate source must be official API documentation")
+        if source.get("retrieved_on") != research_as_of:
+            raise ValueError("candidate source retrieval date drifted")
+        expected_source_fingerprint = sha256_json(
+            {key: value for key, value in source.items() if key != "source_fingerprint"}
+        )
+        if (
+            _require_sha256(
+                source.get("source_fingerprint"),
+                f"{source_label}.source_fingerprint",
+            )
+            != expected_source_fingerprint
+        ):
+            raise ValueError("candidate research source fingerprint drifted")
+        if source_id in sources:
+            raise ValueError("duplicate candidate research source ID")
+        sources[source_id] = dict(source)
+        source_providers.add(provider_id)
+    if len(source_providers) < 3:
+        raise ValueError("candidate research must preserve provider diversity")
+
+    candidates_raw = doc.get("candidates")
+    if not isinstance(candidates_raw, list) or len(candidates_raw) < 3:
+        raise ValueError("candidate roster must contain at least three entries")
+    candidates: dict[str, dict[str, Any]] = {}
+    candidate_keys: set[tuple[str, str]] = set()
+    for index, raw in enumerate(candidates_raw):
+        candidate_label = f"{label}.candidates[{index}]"
+        candidate = _obj(raw, candidate_label)
+        _exact_keys(
+            candidate,
+            {
+                "candidate_id",
+                "provider_id",
+                "requested_model_id",
+                "endpoint_family",
+                "capability_modes",
+                "roster_label",
+                "selection_status",
+                "pricing_source_id",
+                "pricing",
+                "refresh_before_live_selection",
+            },
+            candidate_label,
+        )
+        candidate_id = _identifier(candidate, "candidate_id", candidate_label)
+        provider_id = _identifier(candidate, "provider_id", candidate_label)
+        requested_model_id = _identifier(
+            candidate, "requested_model_id", candidate_label
+        )
+        _identifier(candidate, "endpoint_family", candidate_label)
+        capabilities = _strings(candidate, "capability_modes", candidate_label)
+        if "TEXT_RESPONSE" not in capabilities or len(capabilities) != len(
+            set(capabilities)
+        ):
+            raise ValueError("candidate capability modes are incomplete or duplicated")
+        if (
+            candidate.get("roster_label") != "CANDIDATE"
+            or candidate.get("selection_status") != "NOT_SELECTED"
+            or _boolean(
+                candidate,
+                "refresh_before_live_selection",
+                candidate_label,
+            )
+            is not True
+        ):
+            raise ValueError("candidate entry cannot imply roster selection")
+        source_id = _identifier(candidate, "pricing_source_id", candidate_label)
+        source = sources.get(source_id)
+        if source is None or source["provider_id"] != provider_id:
+            raise ValueError("candidate pricing source/provider binding drifted")
+        pricing = _obj(candidate.get("pricing"), f"{candidate_label}.pricing")
+        _exact_keys(
+            pricing,
+            {
+                "currency",
+                "unit",
+                "processing_mode",
+                "context_band",
+                "input_usd_per_million_tokens",
+                "output_usd_per_million_tokens",
+                "cache_discount_assumed",
+                "regional_uplift_assumed",
+                "valid_through",
+            },
+            f"{candidate_label}.pricing",
+        )
+        if (
+            pricing.get("currency") != "USD"
+            or pricing.get("unit") != "PER_1M_TOKENS"
+            or pricing.get("processing_mode") != "STANDARD"
+            or pricing.get("context_band") != "SHORT_CONTEXT_OR_BASE"
+            or _boolean(
+                pricing, "cache_discount_assumed", f"{candidate_label}.pricing"
+            )
+            is not False
+            or _boolean(
+                pricing, "regional_uplift_assumed", f"{candidate_label}.pricing"
+            )
+            is not False
+        ):
+            raise ValueError("candidate pricing basis drifted")
+        for price_key in (
+            "input_usd_per_million_tokens",
+            "output_usd_per_million_tokens",
+        ):
+            if _number(pricing, price_key, f"{candidate_label}.pricing") <= 0:
+                raise ValueError("candidate token price must be positive")
+        valid_through = pricing.get("valid_through")
+        if valid_through is not None and (
+            not isinstance(valid_through, str)
+            or re.fullmatch(r"\d{4}-\d{2}-\d{2}", valid_through) is None
+        ):
+            raise ValueError("pricing.valid_through must be null or an ISO date")
+        key = (provider_id, requested_model_id)
+        if candidate_id in candidates or key in candidate_keys:
+            raise ValueError("duplicate candidate provider/model entry")
+        candidates[candidate_id] = dict(candidate)
+        candidate_keys.add(key)
+
+    budget = _obj(doc.get("budget_model"), f"{label}.budget_model")
+    _exact_keys(
+        budget,
+        {
+            "estimate_label",
+            "assumption_set_id",
+            "scope",
+            "default_comparable_entry_count",
+            "cases_per_entry",
+            "replicates_per_case",
+            "calls_per_candidate",
+            "input_tokens_per_call",
+            "output_tokens_per_call",
+            "automatic_retries",
+            "cached_input_tokens",
+            "tool_or_search_surcharge_included",
+            "tax_region_discount_included",
+            "formula",
+            "candidate_estimates",
+            "aggregate_estimated_token_cost_usd",
+            "spending_authority",
+        },
+        f"{label}.budget_model",
+    )
+    if (
+        budget.get("estimate_label") != "ESTIMATE_ONLY"
+        or budget.get("scope") != "DEFAULT_COMPARABLE_CLASSES_ONLY"
+        or _identifier(budget, "assumption_set_id", f"{label}.budget_model")
+        != "BM0-DEFAULT-BOUNDED-PILOT-ESTIMATE-V1"
+        or _integer(
+            budget,
+            "default_comparable_entry_count",
+            f"{label}.budget_model",
+        )
+        != 8
+        or _integer(budget, "automatic_retries", f"{label}.budget_model") != 0
+        or _integer(budget, "cached_input_tokens", f"{label}.budget_model") != 0
+        or _boolean(
+            budget,
+            "tool_or_search_surcharge_included",
+            f"{label}.budget_model",
+        )
+        is not False
+        or _boolean(
+            budget,
+            "tax_region_discount_included",
+            f"{label}.budget_model",
+        )
+        is not False
+        or _boolean(budget, "spending_authority", f"{label}.budget_model")
+        is not False
+        or budget.get("formula")
+        != "calls * ((input_tokens_per_call * input_usd_per_million_tokens + output_tokens_per_call * output_usd_per_million_tokens) / 1000000)"
+    ):
+        raise ValueError("candidate estimate-only budget authority drifted")
+    cases_per_entry = _integer(
+        budget, "cases_per_entry", f"{label}.budget_model", minimum=1
+    )
+    repeats_per_case = _integer(
+        budget, "replicates_per_case", f"{label}.budget_model", minimum=1
+    )
+    if not (
+        SAP_DESIGN_RULE["minimum_distinct_cases_per_family_entry"]
+        <= cases_per_entry
+        <= SAP_DESIGN_RULE["maximum_distinct_cases_per_family_entry"]
+        and SAP_DESIGN_RULE["minimum_replicates_per_case"]
+        <= repeats_per_case
+        <= SAP_DESIGN_RULE["maximum_replicates_per_case"]
+    ):
+        raise ValueError("budget assumptions violate the bounded-pilot design")
+    entry_count = budget["default_comparable_entry_count"]
+    calls_per_candidate = _integer(
+        budget, "calls_per_candidate", f"{label}.budget_model", minimum=1
+    )
+    if calls_per_candidate != entry_count * cases_per_entry * repeats_per_case:
+        raise ValueError("budget calls_per_candidate formula drifted")
+    input_tokens = _integer(
+        budget, "input_tokens_per_call", f"{label}.budget_model", minimum=1
+    )
+    output_tokens = _integer(
+        budget, "output_tokens_per_call", f"{label}.budget_model", minimum=1
+    )
+    estimates_raw = budget.get("candidate_estimates")
+    if not isinstance(estimates_raw, list) or len(estimates_raw) != len(candidates):
+        raise ValueError("budget must estimate every candidate exactly once")
+    estimates: dict[str, dict[str, Any]] = {}
+    for index, raw in enumerate(estimates_raw):
+        estimate_label = f"{label}.budget_model.candidate_estimates[{index}]"
+        estimate = _obj(raw, estimate_label)
+        _exact_keys(
+            estimate,
+            {
+                "candidate_id",
+                "planned_calls",
+                "estimated_input_tokens",
+                "estimated_output_tokens",
+                "estimated_token_cost_usd",
+                "estimate_status",
+                "spending_authority",
+            },
+            estimate_label,
+        )
+        candidate_id = _identifier(estimate, "candidate_id", estimate_label)
+        candidate = candidates.get(candidate_id)
+        if candidate is None or candidate_id in estimates:
+            raise ValueError("budget estimate candidate binding drifted")
+        if (
+            _integer(estimate, "planned_calls", estimate_label)
+            != calls_per_candidate
+            or _integer(estimate, "estimated_input_tokens", estimate_label)
+            != calls_per_candidate * input_tokens
+            or _integer(estimate, "estimated_output_tokens", estimate_label)
+            != calls_per_candidate * output_tokens
+            or estimate.get("estimate_status") != "ESTIMATE_ONLY"
+            or _boolean(estimate, "spending_authority", estimate_label) is not False
+        ):
+            raise ValueError("candidate budget volume or authority drifted")
+        pricing = candidate["pricing"]
+        expected_cost = round(
+            calls_per_candidate
+            * (
+                input_tokens * pricing["input_usd_per_million_tokens"]
+                + output_tokens * pricing["output_usd_per_million_tokens"]
+            )
+            / 1_000_000,
+            6,
+        )
+        actual_cost = _number(
+            estimate, "estimated_token_cost_usd", estimate_label
+        )
+        if not math.isclose(actual_cost, expected_cost, rel_tol=0, abs_tol=1e-9):
+            raise ValueError("candidate token-cost estimate is stale or incorrect")
+        estimates[candidate_id] = dict(estimate)
+    if set(estimates) != set(candidates):
+        raise ValueError("candidate budget estimate coverage drifted")
+    expected_aggregate = round(
+        sum(row["estimated_token_cost_usd"] for row in estimates.values()), 6
+    )
+    if not math.isclose(
+        _number(
+            budget,
+            "aggregate_estimated_token_cost_usd",
+            f"{label}.budget_model",
+        ),
+        expected_aggregate,
+        rel_tol=0,
+        abs_tol=1e-9,
+    ):
+        raise ValueError("candidate aggregate budget estimate drifted")
+
+    selection = _obj(doc.get("selection_gate"), f"{label}.selection_gate")
+    if dict(selection) != {
+        "selection_status": "NOT_SELECTED",
+        "live_execution_authorized": False,
+        "credential_path_selected": False,
+        "maximum_spend_selected": False,
+        "required_next_action": "FRESH_PROVIDER_MODEL_PRICE_REGION_REFRESH_AND_SEPARATE_LIVE_WORK_ORDER",
+    }:
+        raise ValueError("candidate roster selection gate drifted")
+    assert_public_safe(doc)
+    return _verify_fingerprint(doc, "artifact_fingerprint", label)
+
+
 def validate_corpus_policy(document: object) -> dict[str, Any]:
     label = "bm0-corpus-policy"
     doc = _obj(document, label)
@@ -1538,6 +2035,7 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
             "reasoning_controls",
             "target_id",
             "target_class",
+            "applicability_result",
             "entry_id",
             "family_id",
             "case_id",
@@ -1627,6 +2125,9 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
         raise ValueError("trial identity target class is unsupported")
     if doc["target_id"] not in TARGET_IDS_BY_CLASS[target_class]:
         raise ValueError("trial target ID does not belong to its declared class")
+    applicability_result = _text(doc, "applicability_result", label)
+    if applicability_result not in APPLICABILITY_RESULTS:
+        raise ValueError("trial applicability result is unsupported")
     lineage = TARGET_LINEAGE_BY_ID[doc["target_id"]]
     if (
         doc["entry_id"] != lineage["entry_id"]
@@ -1665,6 +2166,10 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
     identity_certainty = _text(doc, "required_identity_certainty", label)
     alias_limitation = _text(doc, "alias_limitation", label)
     if target_class == "SYSTEM_EVAL_ONLY":
+        if applicability_result != "NOT_APPLICABLE":
+            raise ValueError(
+                "system-only trials must disclose model/provider NOT_APPLICABLE"
+            )
         if subject_identity != (SYSTEM_SCOPE_ID, SYSTEM_SCOPE_ID, SYSTEM_SCOPE_ID):
             raise ValueError("system-only trials must use the non-model SYSTEM_SCOPE identity")
         if (
@@ -1678,6 +2183,10 @@ def validate_trial_identity(document: object) -> dict[str, Any]:
             raise ValueError("system-only identity fields must be explicit SYSTEM_SCOPE")
     elif SYSTEM_SCOPE_ID in subject_identity:
         raise ValueError("model and agent trials cannot use the SYSTEM_SCOPE identity")
+    elif applicability_result != "APPLICABLE":
+        raise ValueError(
+            "model and agent trials must be declared APPLICABLE before execution"
+        )
     elif identity_certainty == "EXACT":
         if (
             expected_resolved is None
@@ -1933,6 +2442,162 @@ def corpus_aggregate_commitment_v1(
     )
 
 
+def validate_model_applicability_records_v1(
+    records: object,
+    *,
+    sandbox_equivalence_status: str,
+    require_selected_subject: bool,
+) -> dict[str, Any]:
+    """Validate the per-provider/model applicability disclosure grid.
+
+    Applicability is intentionally separate from terminal outcome.  Every
+    selected provider/model subject receives one declaration for every formal
+    B2 entry, including explicit NOT_APPLICABLE declarations for the four
+    SYSTEM_EVAL_ONLY entries.  This prevents omitted cells from being read as
+    zeros, failures, or silently unsupported capabilities.
+    """
+
+    label = "model-applicability"
+    if not isinstance(records, list):
+        raise ValueError("model_applicability must be an array")
+    if require_selected_subject and not records:
+        raise ValueError(
+            "a frozen selected roster requires per-model applicability records"
+        )
+    if sandbox_equivalence_status not in {"NOT_ESTABLISHED", "ESTABLISHED"}:
+        raise ValueError("unsupported sandbox equivalence status")
+
+    checked: list[dict[str, Any]] = []
+    subjects: dict[str, tuple[str, str]] = {}
+    by_subject: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for index, raw in enumerate(records):
+        entry_label = f"{label}[{index}]"
+        row = _obj(raw, entry_label)
+        _exact_keys(
+            row,
+            {
+                "provider_subject_id",
+                "model_subject_id",
+                "requested_model_id",
+                "entry_id",
+                "target_id",
+                "family_id",
+                "target_class",
+                "capability_mode",
+                "applicability_result",
+                "comparison_result",
+                "reason_code",
+                "evidence_fingerprint",
+                "declared_before_execution",
+            },
+            entry_label,
+        )
+        for key in (
+            "provider_subject_id",
+            "model_subject_id",
+            "requested_model_id",
+            "entry_id",
+            "target_id",
+            "family_id",
+            "target_class",
+            "capability_mode",
+            "applicability_result",
+            "comparison_result",
+            "reason_code",
+        ):
+            _identifier(row, key, entry_label)
+        if SYSTEM_SCOPE_ID in {
+            row["provider_subject_id"],
+            row["model_subject_id"],
+            row["requested_model_id"],
+        }:
+            raise ValueError(
+                "per-model applicability records require a real provider/model subject"
+            )
+        if row["applicability_result"] not in APPLICABILITY_RESULTS:
+            raise ValueError("unsupported model applicability result")
+        if row["reason_code"] not in APPLICABILITY_REASON_CODES:
+            raise ValueError("unsupported model applicability reason")
+        _require_sha256(
+            row.get("evidence_fingerprint"),
+            f"{entry_label}.evidence_fingerprint",
+        )
+        if _boolean(row, "declared_before_execution", entry_label) is not True:
+            raise ValueError("applicability must be declared before execution")
+
+        lineage = TARGET_LINEAGE_BY_ENTRY.get(row["entry_id"])
+        if lineage is None or any(
+            row[key] != lineage[key]
+            for key in ("target_id", "family_id", "target_class")
+        ):
+            raise ValueError("model applicability lineage drifted")
+
+        if row["target_class"] == "SYSTEM_EVAL_ONLY":
+            expected_result = "NOT_APPLICABLE"
+            expected_comparison = "NOT_APPLICABLE"
+            expected_reason = "SYSTEM_EVAL_ONLY_NO_MODEL_TRIAL"
+            if row["capability_mode"] != "SYSTEM_EVAL":
+                raise ValueError(
+                    "system-only applicability must use SYSTEM_EVAL capability mode"
+                )
+        elif row["applicability_result"] == "NOT_APPLICABLE":
+            expected_result = "NOT_APPLICABLE"
+            expected_comparison = "NOT_APPLICABLE"
+            expected_reason = row["reason_code"]
+            if expected_reason not in {
+                "PROVIDER_CAPABILITY_UNAVAILABLE",
+                "DECLARED_ENVIRONMENT_UNSUPPORTED",
+            }:
+                raise ValueError(
+                    "non-system NOT_APPLICABLE requires a capability/environment reason"
+                )
+        else:
+            expected_result = "APPLICABLE"
+            expected_reason = "DECLARED_CAPABILITY_SUPPORTED"
+            if row["target_class"] == "AGENT_STANDARDIZED":
+                expected_comparison = (
+                    "COMPARABLE_AFTER_SANDBOX_EQUIVALENCE"
+                    if sandbox_equivalence_status == "ESTABLISHED"
+                    else "COMPARABILITY_LIMIT"
+                )
+            else:
+                expected_comparison = "DEFAULT_COMPARABLE"
+        if (
+            row["applicability_result"] != expected_result
+            or row["comparison_result"] != expected_comparison
+            or row["reason_code"] != expected_reason
+        ):
+            raise ValueError("model applicability semantics drifted")
+
+        subject_id = row["model_subject_id"]
+        subject_binding = (
+            row["provider_subject_id"],
+            row["requested_model_id"],
+        )
+        if subject_id in subjects and subjects[subject_id] != subject_binding:
+            raise ValueError(
+                "one applicability subject cannot span providers or requested models"
+            )
+        subjects[subject_id] = subject_binding
+        if row["entry_id"] in by_subject[subject_id]:
+            raise ValueError("duplicate provider/model applicability entry")
+        checked_row = dict(row)
+        by_subject[subject_id][row["entry_id"]] = checked_row
+        checked.append(checked_row)
+
+    expected_entries = set(TARGET_LINEAGE_BY_ENTRY)
+    for subject_id, declarations in by_subject.items():
+        if set(declarations) != expected_entries:
+            raise ValueError(
+                f"{subject_id} must disclose applicability for all 16 formal entries"
+            )
+    return {
+        "records": checked,
+        "subjects": subjects,
+        "by_subject": by_subject,
+    }
+
+
 def validate_benchmark_manifest(
     document: object,
     *,
@@ -1958,6 +2623,7 @@ def validate_benchmark_manifest(
             "hidden_holdout_authority",
             "comparison_classes",
             "sandbox_equivalence",
+            "model_applicability",
             "artifact_fingerprints",
             "planned_attempts",
             "planned_attempt_count",
@@ -2078,6 +2744,11 @@ def validate_benchmark_manifest(
         raise ValueError("unsupported sandbox equivalence status")
     if "SYSTEM_EVAL_ONLY" in comparison_classes:
         raise ValueError("system-only targets can never enter model comparison")
+    applicability = validate_model_applicability_records_v1(
+        doc.get("model_applicability"),
+        sandbox_equivalence_status=sandbox_status,
+        require_selected_subject=state == "FROZEN",
+    )
 
     artifact_fingerprints = _obj(
         doc.get("artifact_fingerprints"), f"{label}.artifact_fingerprints"
@@ -2152,6 +2823,24 @@ def validate_benchmark_manifest(
                 "one model subject cannot aggregate multiple providers or snapshots"
             )
         model_subject_bindings[subject_id] = binding
+        declarations = applicability["by_subject"].get(subject_id)
+        if declarations is None:
+            raise ValueError(
+                "planned model attempt lacks a complete applicability disclosure"
+            )
+        declaration = declarations.get(attempt["entry_id"])
+        if (
+            declaration is None
+            or declaration["provider_subject_id"]
+            != attempt["provider_subject_id"]
+            or declaration["requested_model_id"] != attempt["requested_model_id"]
+            or declaration["target_id"] != attempt["target_id"]
+            or declaration["capability_mode"] != attempt["capability_mode"]
+            or declaration["applicability_result"] != "APPLICABLE"
+        ):
+            raise ValueError(
+                "planned model attempt is not backed by an APPLICABLE declaration"
+            )
     attempt_index = {
         attempt["attempt_id"]: index for index, attempt in enumerate(attempts)
     }
@@ -2179,6 +2868,7 @@ def validate_benchmark_manifest(
         "reasoning_controls",
         "target_id",
         "target_class",
+        "applicability_result",
         "entry_id",
         "family_id",
         "case_id",
@@ -2283,6 +2973,7 @@ def validate_benchmark_manifest(
             or attempts
             or planned_count != 0
             or sandbox_status != "NOT_ESTABLISHED"
+            or applicability["records"]
         ):
             raise ValueError("design-only template cannot select roster/corpus/adjudication")
     else:
@@ -2371,6 +3062,7 @@ def validate_observation(document: object) -> dict[str, Any]:
             "reasoning_controls_fingerprint",
             "target_id",
             "target_class",
+            "applicability_result",
             "entry_id",
             "family_id",
             "case_id",
@@ -2452,6 +3144,9 @@ def validate_observation(document: object) -> dict[str, Any]:
     target_class = _text(doc, "target_class", label)
     if target_class not in TARGET_CLASSES or doc["target_id"] not in TARGET_IDS_BY_CLASS[target_class]:
         raise ValueError("observation target identity is inconsistent")
+    applicability_result = _text(doc, "applicability_result", label)
+    if applicability_result not in APPLICABILITY_RESULTS:
+        raise ValueError("observation applicability result is unsupported")
     lineage = TARGET_LINEAGE_BY_ID[doc["target_id"]]
     if (
         doc["entry_id"] != lineage["entry_id"]
@@ -2478,6 +3173,10 @@ def validate_observation(document: object) -> dict[str, Any]:
     }:
         raise ValueError("observation alias limitation is unsupported")
     if target_class == "SYSTEM_EVAL_ONLY":
+        if applicability_result != "NOT_APPLICABLE":
+            raise ValueError(
+                "system observation must disclose model/provider NOT_APPLICABLE"
+            )
         if any(
             doc[key] != SYSTEM_SCOPE_ID
             for key in (
@@ -2504,6 +3203,10 @@ def validate_observation(document: object) -> dict[str, Any]:
         doc["endpoint_id"],
     }:
         raise ValueError("model and agent observations cannot use SYSTEM_SCOPE")
+    elif applicability_result != "APPLICABLE":
+        raise ValueError(
+            "model and agent observations require an APPLICABLE declaration"
+        )
     elif identity_certainty == "EXACT":
         if (
             doc["resolved_model_or_version_id"] is None
@@ -2773,6 +3476,7 @@ def validate_observation_grid_v1(
             "developer_wrapper_version",
             "target_id",
             "target_class",
+            "applicability_result",
             "entry_id",
             "family_id",
             "case_id",
@@ -3365,7 +4069,7 @@ def control_false_positive_rate_v1(
     control_ids = {
         attempt_id
         for attempt_id in relevant_attempt_ids
-        if grid["planned"][attempt_id]["variant_id"] == "CONTROL"
+        if grid["planned"][attempt_id]["corpus_pool_id"] == "CONTROL"
     }
     missing = sorted(control_ids - set(grid["observed"]))
     by_model: dict[str, Any] = {}
@@ -3493,6 +4197,92 @@ def infrastructure_error_rate_v1(
         "infrastructure_error_count": error_count,
         "infrastructure_error_rate": rate,
         "model_failure_attribution": "FORBIDDEN",
+    }
+
+
+def bounded_pilot_design_v1(
+    planned_attempts: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Validate bounded-pilot case and replicate counts before execution.
+
+    Retry attempts remain visible for infrastructure accounting but never count
+    as additional stochastic replicates. Only root trials for applicable
+    model/provider subjects enter this design check.
+    """
+
+    attempts = [validate_trial_identity(row) for row in planned_attempts]
+    roots = [
+        row
+        for row in attempts
+        if row["parent_attempt_id"] is None
+        and row["target_class"] != "SYSTEM_EVAL_ONLY"
+        and row["applicability_result"] == "APPLICABLE"
+    ]
+    if not roots:
+        raise ValueError("bounded pilot requires applicable model root trials")
+    groups: dict[
+        tuple[str, str, str], dict[tuple[str, str], set[int]]
+    ] = defaultdict(lambda: defaultdict(set))
+    trial_ids: set[str] = set()
+    for row in roots:
+        if row["trial_id"] in trial_ids:
+            raise ValueError("bounded pilot root trial IDs must be unique")
+        trial_ids.add(row["trial_id"])
+        group_key = (
+            row["model_subject_id"],
+            row["entry_id"],
+            row["family_id"],
+        )
+        case_key = (row["case_id"], row["variant_id"])
+        replicates = groups[group_key][case_key]
+        if row["replicate_index"] in replicates:
+            raise ValueError(
+                "repeated attempts cannot masquerade as distinct pilot replicates"
+            )
+        replicates.add(row["replicate_index"])
+
+    min_cases = SAP_DESIGN_RULE["minimum_distinct_cases_per_family_entry"]
+    max_cases = SAP_DESIGN_RULE["maximum_distinct_cases_per_family_entry"]
+    min_repeats = SAP_DESIGN_RULE["minimum_replicates_per_case"]
+    max_repeats = SAP_DESIGN_RULE["maximum_replicates_per_case"]
+    summaries: list[dict[str, Any]] = []
+    for (model_subject_id, entry_id, family_id), cases in sorted(groups.items()):
+        if not min_cases <= len(cases) <= max_cases:
+            raise ValueError(
+                "bounded pilot distinct-case count is outside the frozen range"
+            )
+        case_summaries = []
+        for (case_id, variant_id), replicate_indexes in sorted(cases.items()):
+            if not min_repeats <= len(replicate_indexes) <= max_repeats:
+                raise ValueError(
+                    "bounded pilot replicate count is outside the frozen range"
+                )
+            case_summaries.append(
+                {
+                    "case_id": case_id,
+                    "variant_id": variant_id,
+                    "replicate_count": len(replicate_indexes),
+                }
+            )
+        summaries.append(
+            {
+                "model_subject_id": model_subject_id,
+                "entry_id": entry_id,
+                "family_id": family_id,
+                "distinct_case_count": len(cases),
+                "cases": case_summaries,
+            }
+        )
+    return {
+        "method_id": SAP_METHOD_IDS[14],
+        "design_rule_id": SAP_DESIGN_RULE["sample_size_rule_id"],
+        "purpose": SAP_DESIGN_RULE["purpose"],
+        "terminal_status": "PASS",
+        "group_count": len(summaries),
+        "groups": summaries,
+        "outcome_fields_read": False,
+        "precision_claimed": False,
+        "significance_or_superiority_claimed": False,
     }
 
 
@@ -4000,10 +4790,12 @@ def validate_measurement_contract(
             "provider_roster_status",
             "artifact_bindings",
             "target_contract",
+            "applicability_contract",
             "terminal_semantics",
             "model_failure_denominator",
             "sap",
             "adjudication_contract",
+            "candidate_roster_budget_contract",
             "claim_ceiling",
             "execution_boundaries",
             "bm0_green_gate",
@@ -4034,6 +4826,12 @@ def validate_measurement_contract(
         claimed = _require_sha256(bindings.get(path), f"artifact_bindings[{path}]")
         if claimed != sha256_json(artifact):
             raise ValueError(f"BM0 artifact binding mismatch for {path}")
+    candidate_artifact_path = (
+        "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json"
+    )
+    checked_candidates = validate_candidate_roster_budget(
+        bound_artifacts[candidate_artifact_path]
+    )
     lineage_receipt = validate_canonical_family_lineage_v1(
         bound_artifacts[
             "cases/b2/public-safe/benchmark/bm0-target-applicability.json"
@@ -4065,6 +4863,20 @@ def validate_measurement_contract(
     ):
         raise ValueError("BM0 target contract drifted")
 
+    applicability = _obj(
+        doc.get("applicability_contract"),
+        f"{label}.applicability_contract",
+    )
+    if dict(applicability) != {
+        "manifest_field": "model_applicability",
+        "result_values": list(APPLICABILITY_RESULTS),
+        "completeness": "EXACTLY_ONE_PER_SELECTED_PROVIDER_MODEL_X_16_ENTRY",
+        "not_applicable_denominator": "EXCLUDED_AND_DISCLOSED",
+        "planned_model_attempt_requirement": "MATCHING_APPLICABLE_DECLARATION_REQUIRED",
+        "system_eval_rule": "MODEL_PROVIDER_NOT_APPLICABLE_SYSTEM_SCOPE_SCORED_SEPARATELY",
+    }:
+        raise ValueError("BM0 per-model applicability contract drifted")
+
     terminal_raw = doc.get("terminal_semantics")
     if not isinstance(terminal_raw, list) or len(terminal_raw) != len(TERMINAL_STATUSES):
         raise ValueError("BM0 terminal semantics must enumerate all six states")
@@ -4090,13 +4902,15 @@ def validate_measurement_contract(
     denominator = _obj(doc.get("model_failure_denominator"), f"{label}.model_failure_denominator")
     _exact_keys(
         denominator,
-        {"unit", "corpus_pool", "eligible_classes", "included_statuses", "failure_status", "excluded_statuses", "zero_denominator", "partial_grid", "retry_semantics"},
+        {"unit", "corpus_pool", "eligible_classes", "required_applicability_result", "excluded_applicability_results", "included_statuses", "failure_status", "excluded_statuses", "zero_denominator", "partial_grid", "retry_semantics"},
         f"{label}.model_failure_denominator",
     )
     if (
         denominator.get("unit") != "UNIQUE_PREDECLARED_ATTEMPT"
         or denominator.get("corpus_pool") != PRIMARY_ESTIMATE_POOL_ID
         or tuple(denominator.get("eligible_classes", [])) != DEFAULT_COMPARABLE_CLASSES
+        or denominator.get("required_applicability_result") != "APPLICABLE"
+        or denominator.get("excluded_applicability_results") != ["NOT_APPLICABLE"]
         or denominator.get("included_statuses") != ["PASS", "FAIL"]
         or denominator.get("failure_status") != "FAIL"
         or set(denominator.get("excluded_statuses", [])) != set(NON_MODEL_SCORABLE_TERMINALS)
@@ -4161,6 +4975,22 @@ def validate_measurement_contract(
     ):
         raise ValueError("BM0 adjudication contract drifted")
 
+    candidate_contract = _obj(
+        doc.get("candidate_roster_budget_contract"),
+        f"{label}.candidate_roster_budget_contract",
+    )
+    if dict(candidate_contract) != {
+        "artifact_path": candidate_artifact_path,
+        "schema_path": "schemas/bm0_candidate_roster_budget.schema.json",
+        "roster_label": "CANDIDATE",
+        "provider_roster_status": "NOT_SELECTED",
+        "budget_label": "ESTIMATE_ONLY",
+        "candidate_count": len(checked_candidates["candidates"]),
+        "spending_authority": False,
+        "refresh_before_live_selection": True,
+    }:
+        raise ValueError("BM0 candidate roster/budget contract drifted")
+
     claims = _obj(doc.get("claim_ceiling"), f"{label}.claim_ceiling")
     _exact_keys(claims, {"allowed_claim_codes", "forbidden_claim_codes"}, f"{label}.claim_ceiling")
     if set(_strings(claims, "allowed_claim_codes", "claim_ceiling")) != ALLOWED_CLAIM_CODES:
@@ -4218,6 +5048,11 @@ def build_bm0_receipt(
     checked_contract = validate_measurement_contract(
         contract, bound_artifacts=bound_artifacts
     )
+    checked_candidates = validate_candidate_roster_budget(
+        bound_artifacts[
+            "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json"
+        ]
+    )
     supplied_artifacts = {
         "cases/b2/public-safe/benchmark/bm0-target-applicability.json": target_matrix,
         "cases/b2/public-safe/benchmark/bm0-metric-registry.json": metric_registry,
@@ -4267,6 +5102,7 @@ def build_bm0_receipt(
             target_class: class_counts[target_class] for target_class in TARGET_CLASSES
         },
         "default_comparable_classes": list(DEFAULT_COMPARABLE_CLASSES),
+        "applicability_manifest_contract": "PER_MODEL_PROVIDER_X_16_ENTRY",
         "primary_estimate_pool": PRIMARY_ESTIMATE_POOL_ID,
         "sandbox_equivalence_status": "NOT_ESTABLISHED",
         "terminal_statuses": list(TERMINAL_STATUSES),
@@ -4278,6 +5114,15 @@ def build_bm0_receipt(
         "sap_no_peeking_rule": SAP_DESIGN_RULE["outcome_dependent_extension"],
         "manifest_template_state": checked_manifest["study_state"],
         "provider_roster_status": checked_manifest["provider_roster_status"],
+        "candidate_roster_artifact_status": checked_candidates["roster_label"],
+        "candidate_provider_roster_status": checked_candidates[
+            "provider_roster_status"
+        ],
+        "candidate_count": len(checked_candidates["candidates"]),
+        "budget_model_status": checked_candidates["budget_label"],
+        "estimated_budget_spending_authority": checked_candidates[
+            "budget_model"
+        ]["spending_authority"],
         "corpus_commitment_status": checked_manifest["corpus_commitment_status"],
         "corpus_aggregate_commitment": checked_manifest[
             "corpus_aggregate_commitment"
@@ -4325,6 +5170,7 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "canonical_source_artifact_count",
         "target_class_counts",
         "default_comparable_classes",
+        "applicability_manifest_contract",
         "primary_estimate_pool",
         "sandbox_equivalence_status",
         "terminal_statuses",
@@ -4336,6 +5182,11 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         "sap_no_peeking_rule",
         "manifest_template_state",
         "provider_roster_status",
+        "candidate_roster_artifact_status",
+        "candidate_provider_roster_status",
+        "candidate_count",
+        "budget_model_status",
+        "estimated_budget_spending_authority",
         "corpus_commitment_status",
         "corpus_aggregate_commitment",
         "adjudication_mode",
@@ -4372,6 +5223,8 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         or doc.get("target_class_counts") != EXPECTED_TARGET_CLASS_COUNTS
         or tuple(doc.get("default_comparable_classes", []))
         != DEFAULT_COMPARABLE_CLASSES
+        or doc.get("applicability_manifest_contract")
+        != "PER_MODEL_PROVIDER_X_16_ENTRY"
         or doc.get("primary_estimate_pool") != PRIMARY_ESTIMATE_POOL_ID
         or doc.get("sandbox_equivalence_status") != "NOT_ESTABLISHED"
         or tuple(doc.get("terminal_statuses", [])) != TERMINAL_STATUSES
@@ -4386,6 +5239,11 @@ def validate_bm0_receipt(document: object) -> dict[str, Any]:
         != SAP_DESIGN_RULE["outcome_dependent_extension"]
         or doc.get("manifest_template_state") != "DESIGN_ONLY"
         or doc.get("provider_roster_status") != "NOT_SELECTED"
+        or doc.get("candidate_roster_artifact_status") != "CANDIDATE"
+        or doc.get("candidate_provider_roster_status") != "NOT_SELECTED"
+        or doc.get("candidate_count") != 3
+        or doc.get("budget_model_status") != "ESTIMATE_ONLY"
+        or doc.get("estimated_budget_spending_authority") is not False
         or doc.get("corpus_commitment_status") != "NOT_COMMITTED"
         or doc.get("corpus_aggregate_commitment") is not None
         or doc.get("adjudication_mode") != "NOT_SELECTED"

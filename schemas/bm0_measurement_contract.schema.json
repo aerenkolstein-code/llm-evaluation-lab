@@ -14,10 +14,12 @@
     "provider_roster_status",
     "artifact_bindings",
     "target_contract",
+    "applicability_contract",
     "terminal_semantics",
     "model_failure_denominator",
     "sap",
     "adjudication_contract",
+    "candidate_roster_budget_contract",
     "claim_ceiling",
     "execution_boundaries",
     "bm0_green_gate",
@@ -55,12 +57,14 @@
         "cases/b2/public-safe/benchmark/bm0-target-applicability.json",
         "cases/b2/public-safe/benchmark/bm0-metric-registry.json",
         "cases/b2/public-safe/benchmark/bm0-corpus-policy.json",
+        "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json",
         "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json",
         "schemas/bm0_trial_identity.schema.json",
         "schemas/bm0_observation.schema.json",
         "schemas/bm0_adjudication_record.schema.json",
         "schemas/bm0_benchmark_manifest.schema.json",
         "schemas/bm0_measurement_contract.schema.json",
+        "schemas/bm0_candidate_roster_budget.schema.json",
         "cases/b2/public-safe/qa0-fixtures.json",
         "results/b2/qa0-contract-validation.json",
         "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
@@ -88,6 +92,9 @@
         "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": {
           "$ref": "#/$defs/sha256"
         },
+        "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json": {
+          "$ref": "#/$defs/sha256"
+        },
         "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": {
           "$ref": "#/$defs/sha256"
         },
@@ -104,6 +111,9 @@
           "$ref": "#/$defs/sha256"
         },
         "schemas/bm0_measurement_contract.schema.json": {
+          "$ref": "#/$defs/sha256"
+        },
+        "schemas/bm0_candidate_roster_budget.schema.json": {
           "$ref": "#/$defs/sha256"
         },
         "cases/b2/public-safe/qa0-fixtures.json": {
@@ -322,6 +332,8 @@
         "unit",
         "corpus_pool",
         "eligible_classes",
+        "required_applicability_result",
+        "excluded_applicability_results",
         "included_statuses",
         "failure_status",
         "excluded_statuses",
@@ -367,6 +379,14 @@
         },
         "retry_semantics": {
           "const": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"
+        },
+        "required_applicability_result": {
+          "const": "APPLICABLE"
+        },
+        "excluded_applicability_results": {
+          "const": [
+            "NOT_APPLICABLE"
+          ]
         }
       }
     },
@@ -389,8 +409,8 @@
         },
         "methods": {
           "type": "array",
-          "minItems": 14,
-          "maxItems": 14,
+          "minItems": 15,
+          "maxItems": 15,
           "prefixItems": [
             {
               "properties": {
@@ -531,6 +551,16 @@
                   "const": "infrastructure_error_rate_v1"
                 }
               }
+            },
+            {
+              "properties": {
+                "method_id": {
+                  "const": "BM0-SAP-15-BOUNDED-PILOT-DESIGN-V1"
+                },
+                "implementation": {
+                  "const": "bounded_pilot_design_v1"
+                }
+              }
             }
           ],
           "allOf": [
@@ -547,7 +577,7 @@
                 "properties": {
                   "method_id": {
                     "type": "string",
-                    "pattern": "^BM0-SAP-(?:0[1-9]|1[0-4])-[A-Z0-9-]+-V1$"
+                    "pattern": "^BM0-SAP-(?:0[1-9]|1[0-5])-[A-Z0-9-]+-V1$"
                   },
                   "implementation": {
                     "type": "string",
@@ -693,6 +723,82 @@
     },
     "contract_fingerprint": {
       "$ref": "#/$defs/sha256"
+    },
+    "applicability_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_field",
+        "result_values",
+        "completeness",
+        "not_applicable_denominator",
+        "planned_model_attempt_requirement",
+        "system_eval_rule"
+      ],
+      "properties": {
+        "manifest_field": {
+          "const": "model_applicability"
+        },
+        "result_values": {
+          "const": [
+            "APPLICABLE",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "completeness": {
+          "const": "EXACTLY_ONE_PER_SELECTED_PROVIDER_MODEL_X_16_ENTRY"
+        },
+        "not_applicable_denominator": {
+          "const": "EXCLUDED_AND_DISCLOSED"
+        },
+        "planned_model_attempt_requirement": {
+          "const": "MATCHING_APPLICABLE_DECLARATION_REQUIRED"
+        },
+        "system_eval_rule": {
+          "const": "MODEL_PROVIDER_NOT_APPLICABLE_SYSTEM_SCOPE_SCORED_SEPARATELY"
+        }
+      }
+    },
+    "candidate_roster_budget_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_path",
+        "schema_path",
+        "roster_label",
+        "provider_roster_status",
+        "budget_label",
+        "candidate_count",
+        "spending_authority",
+        "refresh_before_live_selection"
+      ],
+      "properties": {
+        "artifact_path": {
+          "const": "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json"
+        },
+        "schema_path": {
+          "const": "schemas/bm0_candidate_roster_budget.schema.json"
+        },
+        "roster_label": {
+          "const": "CANDIDATE"
+        },
+        "provider_roster_status": {
+          "const": "NOT_SELECTED"
+        },
+        "budget_label": {
+          "const": "ESTIMATE_ONLY"
+        },
+        "candidate_count": {
+          "type": "integer",
+          "minimum": 3
+        },
+        "spending_authority": {
+          "const": false
+        },
+        "refresh_before_live_selection": {
+          "const": true
+        }
+      }
     }
   },
   "$defs": {

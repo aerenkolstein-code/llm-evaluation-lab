@@ -34,6 +34,20 @@ That expansion permits the separately registered
 context-grounded.
 `SYSTEM_EVAL_ONLY` can never enter a model-comparison denominator.
 
+Applicability is frozen per selected provider/model, not inferred from this
+family-level classification. A `FROZEN` manifest must contain exactly one
+`model_applicability` row for every selected model subject × every E01–E16
+entry. Each row declares `APPLICABLE` or `NOT_APPLICABLE`, its capability mode,
+reason code, comparison status, evidence fingerprint, and that the decision
+was made before execution. Omission, duplication, or a planned model attempt
+without a matching `APPLICABLE` row is invalid. The four `SYSTEM_EVAL_ONLY`
+rows are always `NOT_APPLICABLE` for each model/provider and are scored under
+`SYSTEM_SCOPE` instead. For a non-system entry, `NOT_APPLICABLE` must disclose
+either unavailable provider capability or an unsupported declared environment;
+it is excluded and disclosed, never encoded as zero, `FAIL`, or a missing row.
+The design-only template has no selected subjects and therefore contains an
+empty applicability array.
+
 The 16 targets are not newly invented generic capabilities. Each row binds one
 formal entry and its existing public-safe fixture/validation lineage:
 
@@ -106,6 +120,7 @@ any hidden-corpus access:
 | `BM0-SAP-12-CONTROL-FALSE-POSITIVE-RATE-V1` | `control_false_positive_rate_v1` | report matched `CONTROL` failures separately with a Wilson interval |
 | `BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1` | `within_case_instability_v1` | count repeat-eligible cases containing both PASS and FAIL; repeats never become distinct cases |
 | `BM0-SAP-14-INFRASTRUCTURE-ERROR-RATE-V1` | `infrastructure_error_rate_v1` | report ERROR/planned attempts separately and forbid model-failure attribution |
+| `BM0-SAP-15-BOUNDED-PILOT-DESIGN-V1` | `bounded_pilot_design_v1` | validate 2–8 distinct cases per model × family entry and 2–5 root replicates per case before execution; retries never inflate repeats and no outcome field is read |
 
 The sample-size rule is explicitly
 `BOUNDED-PILOT-FIXED-SUITE-V1`: 2–8 distinct cases per formal family entry and
@@ -115,14 +130,26 @@ significance, superiority, ranking, or population evidence. Extending the
 sample from observed outcomes is forbidden and requires a new frozen manifest
 plus separate approval.
 
-The metric registry separately freezes:
+The metric registry separately freezes numerator, denominator, exclusions,
+applicability filter, statistical unit, and all weighting levels:
 
-- CFP = `FAIL / (PASS + FAIL)` for one model/version × one case;
-- FCFR = equal-weight mean across distinct case CFPs in one family entry;
-- CFPR = failed matched `CONTROL` trials / scorable `CONTROL` trials;
-- within-case instability = switching cases / repeat-eligible cases;
-- infrastructure error rate = `ERROR / planned attempts`;
-- the complete typed terminal distribution.
+| Metric | Statistical unit and within-case weighting | Across cases/families/models |
+|---|---|---|
+| CFP | valid model trial; equal weight per valid replicate | case-scoped; no cross-family pooling; separate model subjects |
+| FCFR | distinct case-variant CFP; repeats receive equal weight inside CFP | equal weight per distinct-case CFP; family profile only; separate model subjects |
+| CFPR | valid matched-control trial; equal weight per valid replicate | equal weight per valid control trial; control diagnostic only; separate model subjects |
+| Within-case instability | one switch indicator per repeat-eligible case | equal weight per distinct case; separate family/model profiles |
+| Model failure rate | valid `APPLICABLE` model trial; equal weight per valid replicate | equal weight per valid trial, not case-balanced; no broad family aggregate; separate models |
+| Sandboxed-agent failure rate | valid applicable agent trial after equivalence | equal weight per valid trial, not case-balanced; no broad family aggregate; separate models |
+| System-invariant failure rate | valid `SYSTEM_SCOPE` trial | equal weight per valid trial; system profile only; never a model aggregate |
+| Infrastructure error rate | every predeclared attempt | equal attempt weights; diagnostic provider/model and total views only |
+| Terminal distribution | every predeclared attempt | stratified counts only; no pooled quality claim |
+| Non-scorable attempt rate | every predeclared attempt | stratified diagnostic counts; no pooled quality claim |
+
+Quality metrics filter to `APPLICABLE` model/provider rows. System quality uses
+only system scope, while terminal and infrastructure diagnostics retain all
+predeclared attempts and disclose applicability. Cross-family micro-pooling is
+forbidden for primary quality summaries.
 
 Wilson uncertainty applies to binary trial-level CFP/CFPR estimates. FCFR uses
 case-cluster bootstrap uncertainty; repeated trials are never resampled or
@@ -180,6 +207,7 @@ The checked manifest is deliberately a `DESIGN_ONLY` template:
 - adjudication mode: `NOT_SELECTED`;
 - planned attempt count: `0`;
 - sandbox equivalence: `NOT_ESTABLISHED`.
+- per-model applicability records: `[]` because no roster is selected.
 
 Execution requires a separate, fully populated `FROZEN` manifest created before
 runtime access to the private holdout and containing at least one predeclared
@@ -194,6 +222,31 @@ plan: mode, allowed metrics, two primary identities and types, one distinct
 tiebreak identity and type, an immutable configuration fingerprint for every
 human protocol or fixed judge, and the exact rubric version and fingerprint.
 The template itself cannot be used to execute a study.
+
+## Candidate roster and estimate-only budget
+
+`bm0-candidate-roster-budget.json` is a dated research artifact permitted by
+the approved BM0 work order. It is not the execution roster. Every entry is
+labelled `CANDIDATE` and `NOT_SELECTED`; every amount is `ESTIMATE_ONLY`, has
+`spending_authority: false`, and must be refreshed before a later live-work
+order selects models, credentials, region, or maximum spend.
+
+| Provider | Candidate model | Public standard/base token price used (USD / 1M) | 96-call estimate |
+|---|---|---:|---:|
+| OpenAI | `gpt-5.6-terra` | input 2.00 / output 12.00 | $3.840 |
+| Anthropic | `claude-sonnet-5` | input 2.00 / output 10.00 | $3.456 |
+| Google | `gemini-3.6-flash` | input 0.75 / output 3.75 | $1.296 |
+
+The 2026-09-04 public-documentation snapshot is sourced from the
+[OpenAI API pricing page](https://developers.openai.com/api/docs/pricing),
+[Anthropic Claude Sonnet 5 overview](https://platform.claude.com/docs/en/models/sonnet-5/overview),
+and [Google Gemini API pricing page](https://ai.google.dev/gemini-api/docs/pricing).
+The executable estimate assumes only the eight default-comparable entries,
+four cases per entry, three root replicates per case, 8,000 input and 2,000
+output tokens per call: 96 calls per candidate and $8.592 aggregate token cost.
+It assumes no automatic retries or cached-input discount and excludes tool or
+search surcharges, taxes, regional uplift, and negotiated discounts. These
+figures therefore authorize neither spending nor execution.
 
 ## Corpus separation
 
@@ -253,6 +306,7 @@ GREEN are outside the claim ceiling.
 | `cases/b2/public-safe/benchmark/bm0-target-applicability.json` | exact 16-target matrix |
 | `cases/b2/public-safe/benchmark/bm0-metric-registry.json` | metric applicability, numerator, denominator, and uncertainty rules |
 | `cases/b2/public-safe/benchmark/bm0-corpus-policy.json` | public/control/mutation/hidden split and access policy |
+| `cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json` | dated candidate-only provider/model inventory, official public pricing sources, and executable estimate-only budget |
 | `cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json` | non-executable design template for a later frozen study |
 | `schemas/bm0_*.schema.json` | strict JSON schemas for contract, manifest, identity, observation, and adjudication |
 | `b2/bm0.py` | pure offline validators and executable SAP methods |

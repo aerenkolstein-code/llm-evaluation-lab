@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/schemas/bm0_trial_identity.schema.json",
+  "$id": "https://example.org/schemas/bm0_trial_identity.schema.json",
   "title": "B2 BM0 Trial Identity",
   "type": "object",
   "additionalProperties": false,
@@ -27,6 +27,7 @@
     "reasoning_controls",
     "target_id",
     "target_class",
+    "applicability_result",
     "entry_id",
     "family_id",
     "case_id",
@@ -450,6 +451,12 @@
     "environment_fingerprint": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "applicability_result": {
+      "enum": [
+        "APPLICABLE",
+        "NOT_APPLICABLE"
+      ]
     }
   },
   "allOf": [
@@ -798,6 +805,32 @@
           },
           "alias_limitation": {
             "const": "UNVERIFIABLE_ALIAS_DISCLOSED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "const": "SYSTEM_EVAL_ONLY"
+          }
+        },
+        "required": [
+          "target_class"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applicability_result": {
+            "const": "NOT_APPLICABLE"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "applicability_result": {
+            "const": "APPLICABLE"
           }
         }
       }

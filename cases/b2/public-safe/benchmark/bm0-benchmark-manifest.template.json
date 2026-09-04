@@ -20,12 +20,12 @@
     "evidence_refs": []
   },
   "artifact_fingerprints": {
-    "measurement_contract_core": "sha256:a0d7fd05a11d5d5637c97f93c7119436194de1fe6b77696786e2f4be2d42892c",
+    "measurement_contract_core": "sha256:59994ec2bc71f943fe48afad5abc4c1ed5d3954c534ab800d835793f4de86cde",
     "target_matrix": "sha256:7f43972d452284a4249b88df29c7cc5729407b74f26a16635694865bebf1b704",
-    "metric_registry": "sha256:f162175ca9297f262a2106537ca218a619dbcad9b94c48acdca86f77f37b891d",
+    "metric_registry": "sha256:f6ace6950fb56470136e9424a86e366bb489b845246493b24ff7efb8feaa4f35",
     "corpus_policy": "sha256:370f7ac67c404bd263461a876b7b1048dd9ce8fba2813cb4fd1396bf98f42e99",
-    "analysis_plan": "sha256:0a51a8914b6c0f089fc6f605d48209e8be7fa9560ec218e4a52686859b78b66b",
-    "analysis_implementation": "sha256:81f085e5fca542daa2ecd0c0972d3fc40e8bd5eb9fdc5a2fc2deca28f8c5f7e9"
+    "analysis_plan": "sha256:cafdfc261150ea45d65ea7f88f32b17caa983d109170c7910e95e32519cd3d45",
+    "analysis_implementation": "sha256:56a30a435df5f828360d200db8c59069ce5e059edf5da6273e54ba779fece9a7"
   },
   "planned_attempts": [],
   "planned_attempt_count": 0,
@@ -53,5 +53,6 @@
     "public_repository_content_status": "ABSENT",
     "secret_locator_in_public_repository": false
   },
-  "manifest_fingerprint": "sha256:a96ed95409e48b9845445473b24ebb035633cef18f028b358a54fecc07dd414e"
+  "model_applicability": [],
+  "manifest_fingerprint": "sha256:0f97fc6597eb6513d635427fb7aed8cee5a2ffe38756230990e2552c02d78aa3"
 }

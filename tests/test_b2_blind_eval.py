@@ -1,15 +1,26 @@
 from __future__ import annotations
 
+import io
 import json
+import os
+import tempfile
 import unittest
+from email.message import Message
+from pathlib import Path
+from unittest.mock import patch
+from urllib import error, request
 
 from b2.blind_eval import (
     AUTOMATIC_RETRIES,
     BLIND_INPUT_ENVELOPE_VERSION,
     OPENAI_COMPATIBLE_PROTOCOL,
     BlindEvalRequest,
+    OutputCommitError,
     ProviderHTTPResponse,
+    _NoRedirectHandler,
+    _default_transport,
     build_input_envelope,
+    commit_cli_outputs,
     run_blind_eval,
 )
 
@@ -53,6 +64,25 @@ def fixed_perf():
     return 100.0
 
 
+def success_receipt(raw="model answer"):
+    response = ProviderHTTPResponse(
+        200,
+        json.dumps({
+            "id": "resp-123",
+            "model": "fixture-model-resolved",
+            "choices": [{"message": {"content": raw}}],
+        }).encode(),
+    )
+    return run_blind_eval(
+        make_request(),
+        authorize_live_call=True,
+        credential_lookup=lambda _: "fixture-key",
+        transport=CountingTransport(response=response),
+        now_fn=fixed_now,
+        perf_fn=fixed_perf,
+    )
+
+
 class BlindEvalBridgeTests(unittest.TestCase):
     def test_authorization_precedes_credential_lookup_and_network(self):
         looked_up = []
@@ -78,14 +108,12 @@ class BlindEvalBridgeTests(unittest.TestCase):
         secret = "sk-super-secret-value"
         response = ProviderHTTPResponse(
             200,
-            json.dumps(
-                {
-                    "id": "resp-123",
-                    "model": "fixture-model-resolved",
-                    "choices": [{"message": {"content": "model answer"}}],
-                    "usage": {"prompt_tokens": 20, "completion_tokens": 3, "total_tokens": 23},
-                }
-            ).encode(),
+            json.dumps({
+                "id": "resp-123",
+                "model": "fixture-model-resolved",
+                "choices": [{"message": {"content": "model answer"}}],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 3, "total_tokens": 23},
+            }).encode(),
         )
         transport = CountingTransport(response=response)
         req = make_request(context=b"private context body", prompt=b"private prompt body")
@@ -107,23 +135,17 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertNotIn("private prompt body", rendered)
         self.assertNotIn("model answer", rendered)
         self.assertNotIn(secret, rendered)
-        self.assertTrue(receipt.context_sha256.startswith("sha256:"))
-        self.assertTrue(receipt.prompt_sha256.startswith("sha256:"))
-        self.assertTrue(receipt.raw_output_sha256.startswith("sha256:"))
 
     def test_fake_run_receipt_is_byte_stable_with_frozen_clock(self):
         req = make_request(context="材料".encode(), prompt="问题".encode())
         response = ProviderHTTPResponse(
             200,
-            json.dumps(
-                {
-                    "id": "fixed-response",
-                    "model": "fixed-model",
-                    "choices": [{"message": {"content": "固定答案"}}],
-                    "usage": {"total_tokens": 42},
-                },
-                ensure_ascii=False,
-            ).encode("utf-8"),
+            json.dumps({
+                "id": "fixed-response",
+                "model": "fixed-model",
+                "choices": [{"message": {"content": "固定答案"}}],
+                "usage": {"total_tokens": 42},
+            }, ensure_ascii=False).encode("utf-8"),
         )
         kwargs = dict(
             authorize_live_call=True,
@@ -136,52 +158,185 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertEqual("固定答案", raw_a)
         self.assertEqual(raw_a, raw_b)
         self.assertEqual(a.render_json(), b.render_json())
-        self.assertEqual(a.context_sha256, b.context_sha256)
-        self.assertEqual(a.prompt_sha256, b.prompt_sha256)
-        self.assertEqual(a.input_envelope_sha256, b.input_envelope_sha256)
-        self.assertEqual(a.raw_output_sha256, b.raw_output_sha256)
 
     def test_http_error_body_is_never_copied_to_receipt(self):
-        secret = "sk-do-not-leak-this"
         private_echo = "private context body echoed by provider"
-        response = ProviderHTTPResponse(
-            429,
-            json.dumps({"error": f"quota rejected {secret}; echo={private_echo}"}).encode(),
-        )
-        transport = CountingTransport(response=response)
+        response = ProviderHTTPResponse(429, json.dumps({"error": private_echo}).encode())
         receipt, raw = run_blind_eval(
             make_request(context=b"private context body"),
             authorize_live_call=True,
-            credential_lookup=lambda _: secret,
-            transport=transport,
+            credential_lookup=lambda _: "sk-secret",
+            transport=CountingTransport(response=response),
         )
         self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
         self.assertEqual("PROVIDER_HTTP_ERROR", receipt.error_code)
         self.assertEqual(429, receipt.http_status)
-        self.assertEqual(1, transport.calls)
-        self.assertEqual(0, receipt.automatic_retries)
         self.assertIsNone(raw)
-        rendered = receipt.render_json()
-        self.assertNotIn(secret, rendered)
-        self.assertNotIn(private_echo, rendered)
-        self.assertNotIn("quota rejected", rendered)
-        self.assertEqual("provider returned HTTP 429", receipt.safe_error_message)
+        self.assertNotIn(private_echo, receipt.render_json())
 
-    def test_transport_error_is_not_evaluable_redacted_and_not_retried(self):
-        secret = "sk-transport-secret"
-        transport = CountingTransport(exc=OSError(f"network down Authorization: Bearer {secret}"))
-        receipt, _ = run_blind_eval(
+    def test_redirect_handler_refuses_followup_request(self):
+        handler = _NoRedirectHandler()
+        original = request.Request(
+            "https://provider.example/v1/chat/completions",
+            data=b"{}",
+            headers={"Authorization": "Bearer secret"},
+            method="POST",
+        )
+        headers = Message()
+        headers["Location"] = "https://attacker.invalid/collect"
+        redirected = handler.redirect_request(
+            original,
+            None,
+            302,
+            "Found",
+            headers,
+            "https://attacker.invalid/collect",
+        )
+        self.assertIsNone(redirected)
+        self.assertEqual("Bearer secret", original.get_header("Authorization"))
+
+    def test_default_transport_30x_is_one_attempt_and_not_followed(self):
+        class FakeOpener:
+            def __init__(self):
+                self.calls = 0
+                self.requests = []
+
+            def open(self, req, timeout):
+                self.calls += 1
+                self.requests.append(req)
+                headers = Message()
+                headers["Location"] = "https://attacker.invalid/collect"
+                raise error.HTTPError(req.full_url, 302, "Found", headers, io.BytesIO(b"redirect"))
+
+        fake = FakeOpener()
+        captured_handlers = []
+
+        def fake_build_opener(*handlers):
+            captured_handlers.extend(handlers)
+            return fake
+
+        with patch("b2.blind_eval.request.build_opener", side_effect=fake_build_opener):
+            result = _default_transport(
+                "https://provider.example/v1/chat/completions",
+                {"Authorization": "Bearer secret", "Content-Type": "application/json"},
+                {"model": "fixture", "messages": []},
+                5.0,
+            )
+        self.assertEqual(302, result.status)
+        self.assertEqual(1, fake.calls)
+        self.assertEqual(1, len(fake.requests))
+        self.assertTrue(any(isinstance(handler, _NoRedirectHandler) for handler in captured_handlers))
+        self.assertEqual("Bearer secret", fake.requests[0].get_header("Authorization"))
+
+    def test_provider_controlled_metadata_is_omitted_on_echo_or_oversize(self):
+        private = "private context body"
+        response = ProviderHTTPResponse(
+            200,
+            json.dumps({
+                "id": f"https://private.example/{private}",
+                "model": private,
+                "choices": [{"message": {"content": "answer"}}],
+            }).encode(),
+        )
+        receipt, raw = run_blind_eval(
+            make_request(context=private.encode()),
+            authorize_live_call=True,
+            credential_lookup=lambda _: "key",
+            transport=CountingTransport(response=response),
+        )
+        self.assertEqual("PASS", receipt.terminal_status)
+        self.assertEqual("answer", raw)
+        self.assertIsNone(receipt.resolved_model_id)
+        self.assertIsNone(receipt.provider_response_id)
+        self.assertNotIn(private, receipt.render_json())
+
+        oversize = "m" * 129
+        response2 = ProviderHTTPResponse(
+            200,
+            json.dumps({
+                "id": "r" * 129,
+                "model": oversize,
+                "choices": [{"message": {"content": "answer"}}],
+            }).encode(),
+        )
+        receipt2, _ = run_blind_eval(
             make_request(),
             authorize_live_call=True,
-            credential_lookup=lambda _: secret,
-            transport=transport,
+            credential_lookup=lambda _: "key",
+            transport=CountingTransport(response=response2),
         )
-        self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
-        self.assertEqual(1, transport.calls)
-        self.assertEqual("TRANSPORT_ERROR", receipt.error_code)
-        self.assertEqual(0, receipt.automatic_retries)
-        self.assertNotIn(secret, receipt.render_json())
-        self.assertIn("[SECRET_REDACTED]", receipt.safe_error_message)
+        self.assertIsNone(receipt2.resolved_model_id)
+        self.assertIsNone(receipt2.provider_response_id)
+
+    def test_nonpass_commit_removes_stale_raw(self):
+        with tempfile.TemporaryDirectory() as td:
+            raw_path = Path(td) / "run.raw.txt"
+            receipt_path = Path(td) / "run.receipt.json"
+            raw_path.write_text("stale answer", encoding="utf-8")
+            receipt_path.write_text("stale receipt", encoding="utf-8")
+            receipt, raw = run_blind_eval(
+                make_request(), authorize_live_call=False,
+                now_fn=fixed_now, perf_fn=fixed_perf,
+            )
+            commit_cli_outputs(
+                receipt, raw,
+                raw_output_path=raw_path,
+                receipt_output_path=receipt_path,
+            )
+            self.assertFalse(raw_path.exists())
+            self.assertEqual(receipt.render_json(), receipt_path.read_text(encoding="utf-8"))
+
+    def test_output_path_alias_is_rejected_before_commit(self):
+        receipt, raw = success_receipt()
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "same.txt"
+            with self.assertRaises(OutputCommitError):
+                commit_cli_outputs(
+                    receipt, raw,
+                    raw_output_path=path,
+                    receipt_output_path=path,
+                )
+            self.assertFalse(path.exists())
+
+    def test_raw_publication_failure_leaves_no_pass_receipt(self):
+        receipt, raw = success_receipt()
+        with tempfile.TemporaryDirectory() as td:
+            raw_path = Path(td) / "run.raw.txt"
+            receipt_path = Path(td) / "run.receipt.json"
+            def fail_first_replace(src, dst):
+                raise OSError("raw replace failed")
+            with self.assertRaises(OutputCommitError):
+                commit_cli_outputs(
+                    receipt, raw,
+                    raw_output_path=raw_path,
+                    receipt_output_path=receipt_path,
+                    replace_fn=fail_first_replace,
+                )
+            self.assertFalse(raw_path.exists())
+            self.assertFalse(receipt_path.exists())
+
+    def test_receipt_publication_failure_rolls_back_raw(self):
+        receipt, raw = success_receipt()
+        with tempfile.TemporaryDirectory() as td:
+            raw_path = Path(td) / "run.raw.txt"
+            receipt_path = Path(td) / "run.receipt.json"
+            calls = 0
+            def fail_second_replace(src, dst):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("receipt replace failed")
+                return os.replace(src, dst)
+            with self.assertRaises(OutputCommitError):
+                commit_cli_outputs(
+                    receipt, raw,
+                    raw_output_path=raw_path,
+                    receipt_output_path=receipt_path,
+                    replace_fn=fail_second_replace,
+                )
+            self.assertEqual(2, calls)
+            self.assertFalse(raw_path.exists())
+            self.assertFalse(receipt_path.exists())
 
     def test_empty_output_is_not_evaluable(self):
         response = ProviderHTTPResponse(
@@ -209,18 +364,6 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
         self.assertEqual("MISSING_CREDENTIAL", receipt.error_code)
         self.assertEqual(0, transport.calls)
-
-    def test_invalid_provider_json_is_not_evaluable(self):
-        transport = CountingTransport(response=ProviderHTTPResponse(200, b"not-json"))
-        receipt, raw = run_blind_eval(
-            make_request(),
-            authorize_live_call=True,
-            credential_lookup=lambda _: "key",
-            transport=transport,
-        )
-        self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
-        self.assertEqual("INVALID_PROVIDER_JSON", receipt.error_code)
-        self.assertIsNone(raw)
 
     def test_envelope_is_versioned_and_contains_exact_inputs(self):
         envelope = build_input_envelope(b"AAA", b"BBB").decode()

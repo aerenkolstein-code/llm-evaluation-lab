@@ -1,12 +1,12 @@
 # BM1 — Live Multi-Model Harness + Provenance Smoke
 
-**Status:** P2 offline implementation foundation. No live provider call, credential lookup, spend, merge, or BM2 result is authorized by this document.
+**Status:** P2 offline implementation foundation. No live provider call, credential lookup, spend, merge, RUN-READY, BM2 result, or model ranking is authorized by this document.
 
-BM1 is the first B2 stage that prepares the BM0 measurement contract to traverse two real provider APIs under one frozen TARGET/CONTROL pair. The goal is not to rank models. The goal is to prove that model identity, request/response provenance, raw evidence, scorer replay, cost accounting, terminal semantics, and stop behavior remain auditable when the same measurement object crosses provider boundaries.
+BM1 is the first B2 stage that prepares the BM0 measurement contract to traverse two real provider APIs under one frozen TARGET/CONTROL pair. The objective is not to rank models. It is to prove that identity, request/response provenance, raw evidence, scorer replay, typed terminal semantics, cost accounting, and stop behavior remain auditable across provider boundaries.
 
 The frozen P2 implementation baseline is `main@74304a23d7e542b28dcd519f9b58d394447fc696`, tree `84f5bc1a56f8c93c92717cf928dc928a63ab118f`.
 
-P2 is additive and limited to five files: `b2/bm1.py`, `schemas/bm1_live_smoke_manifest.schema.json`, `cases/b2/public-safe/benchmark/bm1-live-smoke-manifest.json`, `tests/test_b2_bm1.py`, and this document. Any sixth path requires a separate scope decision. Existing BM0, blind-evaluation, workflow, dependency, and historical evidence surfaces are not redefined here.
+P2 is additive and limited to five files: `b2/bm1.py`, `schemas/bm1_live_smoke_manifest.schema.json`, `cases/b2/public-safe/benchmark/bm1-live-smoke-manifest.json`, `tests/test_b2_bm1.py`, and this document. Any sixth path requires a separate explicit scope decision. Existing BM0, blind-evaluation, workflow, dependency, and historical evidence surfaces are not redefined here.
 
 ## 1. Frozen measurement object
 
@@ -29,15 +29,17 @@ Attempt order is exactly OpenAI TARGET, OpenAI CONTROL, Google TARGET, Google CO
 
 ## 3. Provider adapters
 
-`b2/bm1.py` separates serialization/scoring, provider request/response normalization, raw-evidence projection, and execution control. OpenAI uses a Responses payload with `reasoning.effort=low`; Google uses an Interactions payload with `generation_config.thinking_level=low`. Deprecated Gemini 3.8 sampling parameters are not sent.
+`b2/bm1.py` separates serialization/scoring, provider request/response normalization, raw-evidence projection, live-attempt claims, and execution control. OpenAI uses a Responses payload with `reasoning.effort=low`; Google uses an Interactions payload with `generation_config.thinking_level=low`. Deprecated Gemini 3.8 sampling parameters are not sent.
 
-The standard-library HTTP transports use `urllib.request` so no dependency change is required. They never discover credentials themselves. A credential value can only be supplied by a future separately authorized runtime.
+The standard-library HTTP transports use `urllib.request`, so no dependency change is required. They never discover credentials themselves. A credential value can only be explicitly supplied by a future separately authorized runtime.
+
+The canonical live execution path is **`BM1Runner` + validated live authorization + durable attempt-claim store + provider transport**. Calling a transport object directly is not a valid BM1 RUN-READY execution path and does not satisfy the Work Order's evidence/authorization contract.
 
 ## 4. Identity and receipt semantics
 
 Requested model ID is not proof of the responding model. Both providers require exact resolved identity. Missing or mismatched identity becomes `NOT_EVALUABLE / IDENTITY_NOT_AUDITABLE`; there is no silent alias acceptance or model substitution.
 
-For every called attempt the public receipt binds manifest, trial/attempt IDs, provider/endpoint, requested/resolved model, response ID, adapter/wrapper/runtime fingerprints, case/prompt/request fingerprints, timestamps/latency, HTTP/provider/terminal status, raw-response fingerprint/bytes, final-content fingerprint/bytes, usage/cost, scorer/oracle fingerprints, evidence receipt fingerprint, and replay availability.
+For every called attempt the public receipt binds manifest, trial/attempt IDs, provider/endpoint, requested/resolved model, response ID, adapter/wrapper/runtime fingerprints, case/prompt/request fingerprints, the pre-call attempt-claim fingerprint, timestamps/latency, HTTP/provider/terminal status, raw-response fingerprint/bytes, final-content fingerprint/bytes, usage/cost, scorer/oracle fingerprints, evidence receipt fingerprint, and replay availability.
 
 Public receipts contain no request/response body, final answer body, reasoning body, credential, authorization header, or private storage locator.
 
@@ -49,38 +51,54 @@ The raw evidence sink receives the canonical request and provider response. Its 
 
 A real private run-bundle destination is intentionally not created during P2. It must be frozen during RUN-READY.
 
-## 6. Stop semantics
+## 6. Rerun / one-shot semantics
+
+The Work Order requires that **any rerun use a new `attempt_id` plus new explicit authorization**. A per-process request counter is not sufficient because a new process could otherwise replay the same approved attempt set.
+
+BM1 therefore freezes `live_attempt_claim = DURABLE_BEFORE_PROVIDER_CALL`:
+
+- offline/deterministic tests may use `InMemoryAttemptClaimStore`;
+- a live transport is rejected unless the runner has a validated live authorization **and** a durable attempt-claim store;
+- the canonical `FileAttemptClaimStore` requires a pre-existing RUN-READY directory supplied by the authorized runtime;
+- before the provider is invoked, it creates `attempt-<sha256(attempt_id)>.json` with exclusive-create semantics, writes the canonical claim, file-`fsync`s, directory-`fsync`s, and reads the claim back;
+- an existing claim fails closed before provider invocation;
+- claim records are append-only for the run and are not rolled back or deleted by the harness;
+- a crash after durable claim but before/after the network request **consumes that attempt ID**. Recovery may classify evidence, but it may not silently reuse the same attempt. A rerun must be represented as a new attempt and separately authorized.
+
+The durable claim binds the manifest, live-authorization fingerprint/ID, execution commit/tree, attempt/trial/sequence, provider/model, case, and variant. The public attempt receipt carries the claim fingerprint without exposing the private claim path.
+
+## 7. Stop semantics
 
 The first provider-local error is recorded with no retry; if global guards remain green, only the next predeclared attempt may proceed. A second provider-local error triggers global stop. Remaining attempts are explicit `BLOCKED`, never omitted.
 
-Secret/header leakage, evidence persistence failure, token/cost guard failure, or manifest/execution binding corruption is a global stop. A fifth request, out-of-order attempt, or duplicate attempt is rejected before transport invocation.
+Secret/header leakage, evidence persistence failure, token/cost guard failure, manifest/execution binding corruption, or durable-claim failure is fail-closed. A fifth request, out-of-order attempt, duplicate attempt, or same-attempt replay is rejected before transport invocation.
 
-## 7. Credential and live authorization boundary
+## 8. Credential and live authorization boundary
 
 P2 code never reads process environment variables or repository secrets. A pure symbolic preflight checks reference names only. OpenAI requires `OPENAI_API_KEY`. Google requires `GEMINI_API_KEY`; simultaneous `GEMINI_API_KEY` and `GOOGLE_API_KEY` references are rejected as ambiguous.
 
-The direct HTTP transports cannot be activated from the P2 manifest alone. A later live run must supply a fingerprinted `b2-bm1-live-authorization/v1` receipt bound to the manifest fingerprint, exact post-merge execution commit/tree, RUN-READY receipt fingerprint, exact four attempt IDs/order, four-request ceiling, USD 0.20 ceiling, zero retries, and issuance/expiry timestamps. `BM1Runner` additionally requires the transport's authorization fingerprint to match the validated runner authorization. There is no `allow_live=True` bypass.
+The direct HTTP transports cannot be activated by the P2 manifest alone. A later live run must supply a fingerprinted `b2-bm1-live-authorization/v1` receipt bound to the manifest fingerprint, exact post-merge execution commit/tree, RUN-READY receipt fingerprint, exact four attempt IDs/order, four-request ceiling, USD 0.20 ceiling, zero retries, and issuance/expiry timestamps. `BM1Runner` additionally requires the transport authorization fingerprint to match the validated runner authorization and requires durable pre-call attempt consumption.
 
-Secrets exist only in the transport object and network headers. Headers never enter request fingerprints, raw evidence, public receipts, or scorer replay inputs.
+Secrets exist only in the transport object and network headers. Headers never enter request fingerprints, raw evidence, public receipts, attempt claims, or scorer replay inputs.
 
-## 8. P2 verification
+## 9. P2 verification
 
-`tests/test_b2_bm1.py` is provider-free. It covers exact manifest/baseline/case/model/path binding, prompt/case tamper rejection, request shapes, Google dual-key ambiguity, four-attempt traversal, identity substitution, first-error/second-error behavior, no fifth request, secret-body stop, evidence-write stop, token guard, scorer replay/tamper rejection, public receipt fingerprints, denial of live transport without RUN-READY authorization, authorization head/tree/expiry binding, standard-library header isolation with a fake opener, and static absence of process-environment lookup or third-party HTTP dependencies.
+`tests/test_b2_bm1.py` is provider-free. It covers exact manifest/baseline/case/model/path binding, prompt/case tamper rejection, provider request shapes, Google dual-key ambiguity, four-attempt traversal, identity substitution, first-error/second-error behavior, no fifth request, secret-body stop, evidence-write stop, token guard, scorer replay/tamper rejection, public receipt fingerprints, denial of live transport without RUN-READY authorization, authorization head/tree/expiry binding, **denial of live execution with a non-durable claim store, cross-run reuse rejection through a fresh runner sharing the same durable claim directory**, standard-library header isolation with a fake opener, and static absence of process-environment credential lookup or third-party HTTP dependencies.
 
 Ordinary repository CI remains offline. No workflow modification belongs to BM1 P2.
 
-## 9. Ordered gates
+## 10. Ordered gates
 
 1. **P2 offline implementation:** exact five paths, deterministic tests, full offline regression, exact-head CI, leak/private-boundary check, engineering READY receipt.
-2. **Pre-Live Independent QA:** distinct reviewer on the exact head/tree. Verify five-path scope, zero-live ordinary CI, retry/fallback/identity/provenance/replay/secret/cost guards.
+2. **Pre-Live Independent QA:** distinct reviewer on the exact head/tree. Verify five-path scope, zero-live ordinary CI, retry/fallback/identity/provenance/replay/secret/cost/one-shot guards.
 3. **Separate merge authorization:** IQA PASS is not merge permission; use expected-head guarded merge plus post-merge regression.
-4. **RUN-READY:** refresh exact merged main, provider/model/API/region/pricing Authority, prove credential presence/type without values, create/freeze private raw-bundle destination, freeze one-shot live authorization, then STOP.
-5. **Explicit bounded live authorization:** at most four predeclared requests; no retry/fallback/substitution; spend inside the ceiling.
-6. **Final Independent QA:** reconcile all attempts, replay scorers, verify identity/provenance/cost/terminal distribution, publish only public-safe evidence.
+4. **RUN-READY:** refresh exact merged main, provider/model/API/region/pricing Authority, prove credential presence/type without values, create/freeze private raw-bundle destination **and durable attempt-claim directory**, freeze one-shot live authorization, then STOP.
+5. **Explicit bounded live authorization:** at most four predeclared requests; no retry/fallback/substitution; spend inside the ceiling. Same attempt IDs cannot be reused even after crash/restart.
+6. **Final Independent QA:** reconcile all attempts/claims, replay scorers, verify identity/provenance/cost/terminal distribution, publish only public-safe evidence.
 
-## 10. Claim ceiling
+## 11. Claim ceiling
 
-BM1 may support: a vendor-neutral evidence-preserving live evaluation harness was implemented and validated across two provider protocols on the same frozen public-safe TARGET/CONTROL pair with auditable identity, zero hidden retry/fallback, bounded cost/attempt semantics, and replayable scoring.
+BM1 may support: a vendor-neutral evidence-preserving live evaluation harness was implemented and validated across two provider protocols on the same frozen public-safe TARGET/CONTROL pair with auditable identity, zero hidden retry/fallback, durable one-shot attempt consumption, bounded cost/attempt semantics, and replayable scoring.
 
 BM1 does not support a model ranking, a model×family benchmark profile, a representative real-world error rate, a population prevalence estimate, or any quality conclusion inferred from HTTP 200 alone.
 

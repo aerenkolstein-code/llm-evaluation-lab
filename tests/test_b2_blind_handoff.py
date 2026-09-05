@@ -527,14 +527,21 @@ class BlindHandoffV5Tests(unittest.TestCase):
     def test_review_workflows_cannot_call_provider(self):
         smoke_path = Path(".github/workflows/b2_blind_handoff_v5_smoke.yml")
         live_path = Path(".github/workflows/b2_blind_handoff_v5_live.yml")
-        workflow = smoke_path.read_text()
-        self.assertFalse(live_path.exists())
-        self.assertNotIn("secrets.", workflow)
-        self.assertNotIn("--authorize-live-call", workflow)
-        self.assertNotIn("python -m b2.blind_eval", workflow)
-        self.assertNotIn("agent/b2-blind-handoff-v5-q1-20260904", workflow)
-        self.assertIn("provider_attempts", workflow)
-        self.assertIn("credential_lookups", workflow)
+        smoke_workflow = smoke_path.read_text()
+        live_workflow = live_path.read_text()
+        live_trigger = live_workflow.split("on:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertRegex(live_trigger, r"^  workflow_dispatch:\n")
+        for forbidden_trigger in (
+            "push:", "pull_request:", "schedule:", "repository_dispatch:",
+            "workflow_run:",
+        ):
+            self.assertNotIn(forbidden_trigger, live_trigger)
+        self.assertNotIn("secrets.", smoke_workflow)
+        self.assertNotIn("--authorize-live-call", smoke_workflow)
+        self.assertNotIn("python -m b2.blind_eval", smoke_workflow)
+        self.assertNotIn("agent/b2-blind-handoff-v5-q1-20260904", smoke_workflow)
+        self.assertIn("provider_attempts", smoke_workflow)
+        self.assertIn("credential_lookups", smoke_workflow)
 
     def test_final_tree_has_no_real_run_scoped_payload_or_ack(self):
         root = Path("blind-handoff/v5")

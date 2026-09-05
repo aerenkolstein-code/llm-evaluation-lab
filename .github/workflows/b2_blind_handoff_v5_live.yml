@@ -1,0 +1,1182 @@
+name: B2 Blind Handoff v5 R1b One-Shot Live
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_ready_receipt_sha256:
+        description: Exact SHA-256 of the separately approved R1B-RUN-READY receipt
+        required: true
+        type: string
+      run_id:
+        description: Exact predeclared R1b run identifier in the approved receipt
+        required: true
+        type: string
+      evaluation_run_id:
+        description: Exact evaluation identifier in the approved receipt
+        required: true
+        type: string
+      handoff_id:
+        description: Exact predeclared v5.2 handoff identifier in the approved receipt
+        required: true
+        type: string
+      authorization_id:
+        description: Exact one-shot authorization identifier frozen for this run
+        required: true
+        type: string
+      confirm_one_shot:
+        description: Confirm that this dispatch is the separately authorized one-shot run
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b2-blind-r1b-one-shot
+  cancel-in-progress: false
+
+jobs:
+  one-shot-live:
+    name: Protected one-shot live lane
+    environment: b2-r1b-live
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - b2-r1b-private
+    timeout-minutes: 180
+    env:
+      DISPATCH_RUN_READY_RECEIPT_SHA256: ${{ inputs.run_ready_receipt_sha256 }}
+      DISPATCH_RUN_ID: ${{ inputs.run_id }}
+      DISPATCH_EVALUATION_RUN_ID: ${{ inputs.evaluation_run_id }}
+      DISPATCH_HANDOFF_ID: ${{ inputs.handoff_id }}
+      DISPATCH_AUTHORIZATION_ID: ${{ inputs.authorization_id }}
+      DISPATCH_CONFIRM_ONE_SHOT: ${{ inputs.confirm_one_shot }}
+      EXECUTION_HEAD_SHA: ${{ vars.B2_R1B_EXECUTION_HEAD_SHA }}
+      BRIDGE_MAIN_SHA: ${{ vars.B2_R1B_BRIDGE_MAIN_SHA }}
+      RUN_READY_RECEIPT_SHA256: ${{ vars.B2_R1B_RUN_READY_RECEIPT_SHA256 }}
+      RUN_READY_RECEIPT_B64: ${{ vars.B2_R1B_RUN_READY_RECEIPT_B64 }}
+      AUTHORIZATION_ID: ${{ vars.B2_R1B_AUTHORIZATION_ID }}
+      RUN_ID: ${{ vars.B2_R1B_RUN_ID }}
+      APPROVED_HANDOFF_ID: ${{ vars.B2_R1B_HANDOFF_ID }}
+      EVALUATION_RUN_ID: ${{ vars.B2_R1B_EVALUATION_RUN_ID }}
+      EXPECTED_CONTEXT_SHA256: ${{ vars.B2_R1B_CONTEXT_SHA256 }}
+      EXPECTED_CONTEXT_BYTES: ${{ vars.B2_R1B_CONTEXT_BYTES }}
+      EXPECTED_PROMPT_SHA256: ${{ vars.B2_R1B_PROMPT_SHA256 }}
+      EXPECTED_PROMPT_BYTES: ${{ vars.B2_R1B_PROMPT_BYTES }}
+      PROVIDER_LABEL: ${{ vars.B2_R1B_PROVIDER_LABEL }}
+      PROVIDER_PROTOCOL: ${{ vars.B2_R1B_PROVIDER_PROTOCOL }}
+      REQUESTED_MODEL_ID: ${{ vars.B2_R1B_REQUESTED_MODEL_ID }}
+      PROVIDER_ENDPOINT: ${{ vars.B2_R1B_PROVIDER_ENDPOINT }}
+      PROVIDER_TIMEOUT_SECONDS: ${{ vars.B2_R1B_TIMEOUT_SECONDS }}
+      PROVIDER_TEMPERATURE: ${{ vars.B2_R1B_TEMPERATURE }}
+      PROVIDER_MAX_TOKENS: ${{ vars.B2_R1B_MAX_TOKENS }}
+      HANDOFF_TTL_SECONDS: ${{ vars.B2_R1B_HANDOFF_TTL_SECONDS }}
+
+    steps:
+      - name: Validate fresh run-ready and one-shot authorization gates
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import binascii
+          import hashlib
+          import json
+          import os
+          import re
+          from decimal import Decimal, InvalidOperation
+          from urllib.parse import urlsplit
+
+          required = (
+              "EXECUTION_HEAD_SHA",
+              "BRIDGE_MAIN_SHA",
+              "RUN_READY_RECEIPT_SHA256",
+              "RUN_READY_RECEIPT_B64",
+              "AUTHORIZATION_ID",
+              "RUN_ID",
+              "APPROVED_HANDOFF_ID",
+              "EVALUATION_RUN_ID",
+              "EXPECTED_CONTEXT_SHA256",
+              "EXPECTED_CONTEXT_BYTES",
+              "EXPECTED_PROMPT_SHA256",
+              "EXPECTED_PROMPT_BYTES",
+              "PROVIDER_LABEL",
+              "PROVIDER_PROTOCOL",
+              "REQUESTED_MODEL_ID",
+              "PROVIDER_ENDPOINT",
+              "PROVIDER_TIMEOUT_SECONDS",
+              "PROVIDER_TEMPERATURE",
+              "PROVIDER_MAX_TOKENS",
+              "HANDOFF_TTL_SECONDS",
+          )
+          if any(not os.environ.get(name) for name in required):
+              raise SystemExit("protected R1b preflight configuration is incomplete")
+          if len(os.environ["RUN_READY_RECEIPT_B64"]) > 16384:
+              raise SystemExit("canonical RUN-READY receipt is oversized")
+          if any(
+              any(ord(character) < 32 or ord(character) == 127 for character in os.environ[name])
+              for name in required
+          ):
+              raise SystemExit("protected R1b preflight configuration contains controls")
+          if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+              raise SystemExit("R1b live execution requires manual dispatch")
+          if os.environ.get("GITHUB_REF") != "refs/heads/main":
+              raise SystemExit("R1b live execution is restricted to main")
+          if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
+              raise SystemExit("workflow reruns are disabled for the one-shot lane")
+          if (
+              not os.environ.get("GITHUB_RUN_ID", "").isdigit()
+              or int(os.environ["GITHUB_RUN_ID"]) <= 0
+              or str(int(os.environ["GITHUB_RUN_ID"])) != os.environ["GITHUB_RUN_ID"]
+          ):
+              raise SystemExit("workflow run ID is not a canonical positive decimal")
+          if os.environ.get("DISPATCH_CONFIRM_ONE_SHOT", "").lower() != "true":
+              raise SystemExit("one-shot confirmation is absent")
+
+          encoded_receipt = os.environ["RUN_READY_RECEIPT_B64"]
+          try:
+              receipt_bytes = base64.b64decode(encoded_receipt, validate=True)
+          except (binascii.Error, ValueError) as exc:
+              raise SystemExit("canonical RUN-READY receipt is not strict base64") from exc
+          if (
+              not receipt_bytes
+              or len(receipt_bytes) > 8192
+              or base64.b64encode(receipt_bytes).decode("ascii") != encoded_receipt
+          ):
+              raise SystemExit("canonical RUN-READY receipt encoding is invalid")
+          if hashlib.sha256(receipt_bytes).hexdigest() != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("canonical RUN-READY receipt digest does not match its bytes")
+
+          def reject_duplicate_keys(pairs):
+              value = {}
+              for key, item in pairs:
+                  if key in value:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  value[key] = item
+              return value
+
+          def reject_nonfinite(value):
+              raise ValueError(f"non-finite JSON number: {value}")
+
+          try:
+              receipt = json.loads(
+                  receipt_bytes.decode("ascii"),
+                  object_pairs_hook=reject_duplicate_keys,
+                  parse_constant=reject_nonfinite,
+              )
+          except (UnicodeDecodeError, ValueError) as exc:
+              raise SystemExit("canonical RUN-READY receipt is not strict ASCII JSON") from exc
+          if not isinstance(receipt, dict):
+              raise SystemExit("canonical RUN-READY receipt root is not an object")
+
+          hex40 = re.compile(r"[0-9a-f]{40}")
+          hex64 = re.compile(r"[0-9a-f]{64}")
+          token = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,127}")
+          run_id = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}")
+          if hex40.fullmatch(os.environ["EXECUTION_HEAD_SHA"]) is None:
+              raise SystemExit("execution head is not an exact commit")
+          if hex40.fullmatch(os.environ["BRIDGE_MAIN_SHA"]) is None:
+              raise SystemExit("bridge main is not an exact commit")
+          for name in (
+              "RUN_READY_RECEIPT_SHA256",
+              "EXPECTED_CONTEXT_SHA256",
+              "EXPECTED_PROMPT_SHA256",
+          ):
+              if hex64.fullmatch(os.environ[name]) is None:
+                  raise SystemExit("an exact SHA-256 preflight binding is invalid")
+          for name in (
+              "AUTHORIZATION_ID",
+              "RUN_ID",
+              "APPROVED_HANDOFF_ID",
+              "EVALUATION_RUN_ID",
+              "PROVIDER_LABEL",
+          ):
+              if run_id.fullmatch(os.environ[name]) is None:
+                  raise SystemExit("a preflight identifier is invalid")
+          if token.fullmatch(os.environ["REQUESTED_MODEL_ID"]) is None:
+              raise SystemExit("requested model ID violates the strict token policy")
+          if os.environ["PROVIDER_PROTOCOL"] != "openai-compatible-chat-completions/v1":
+              raise SystemExit("provider protocol is not supported by this bridge")
+
+          endpoint = urlsplit(os.environ["PROVIDER_ENDPOINT"])
+          if (
+              endpoint.scheme != "https"
+              or not endpoint.hostname
+              or endpoint.username is not None
+              or endpoint.password is not None
+              or endpoint.query
+              or endpoint.fragment
+          ):
+              raise SystemExit("provider endpoint is not a bounded HTTPS endpoint")
+          try:
+              endpoint.port
+          except ValueError as exc:
+              raise SystemExit("provider endpoint port is invalid") from exc
+
+          for name in ("EXPECTED_CONTEXT_BYTES", "EXPECTED_PROMPT_BYTES"):
+              try:
+                  value = int(os.environ[name])
+              except ValueError as exc:
+                  raise SystemExit("an input byte count is invalid") from exc
+              if value <= 0 or str(value) != os.environ[name]:
+                  raise SystemExit("an input byte count is not canonical")
+          try:
+              timeout = int(os.environ["PROVIDER_TIMEOUT_SECONDS"])
+              temperature = Decimal(os.environ["PROVIDER_TEMPERATURE"])
+              max_tokens = int(os.environ["PROVIDER_MAX_TOKENS"])
+              ttl = int(os.environ["HANDOFF_TTL_SECONDS"])
+          except (InvalidOperation, ValueError) as exc:
+              raise SystemExit("numeric preflight configuration is invalid") from exc
+          if not (1 <= timeout <= 600):
+              raise SystemExit("provider timeout is outside the allowed range")
+          if temperature != Decimal("0") or os.environ["PROVIDER_TEMPERATURE"] != "0":
+              raise SystemExit("R1b temperature must be exactly zero")
+          if not (1 <= max_tokens <= 262144):
+              raise SystemExit("max token count is outside the allowed range")
+          if not (300 <= ttl <= 21600):
+              raise SystemExit("handoff TTL is outside the v5.2 freshness range")
+          if any(
+              str(value) != os.environ[name]
+              for name, value in (
+                  ("PROVIDER_TIMEOUT_SECONDS", timeout),
+                  ("PROVIDER_MAX_TOKENS", max_tokens),
+                  ("HANDOFF_TTL_SECONDS", ttl),
+              )
+          ):
+              raise SystemExit("a numeric provider or freshness value is not canonical")
+
+          exact_pairs = (
+              ("DISPATCH_RUN_READY_RECEIPT_SHA256", "RUN_READY_RECEIPT_SHA256"),
+              ("DISPATCH_RUN_ID", "RUN_ID"),
+              ("DISPATCH_EVALUATION_RUN_ID", "EVALUATION_RUN_ID"),
+              ("DISPATCH_HANDOFF_ID", "APPROVED_HANDOFF_ID"),
+              ("DISPATCH_AUTHORIZATION_ID", "AUTHORIZATION_ID"),
+          )
+          if any(os.environ.get(left) != os.environ.get(right) for left, right in exact_pairs):
+              raise SystemExit("dispatch does not match the protected one-shot authorization")
+          if os.environ.get("GITHUB_SHA") != os.environ["EXECUTION_HEAD_SHA"]:
+              raise SystemExit("dispatch head does not match the fresh preflight")
+
+          workflow_path = ".github/workflows/b2_blind_handoff_v5_live.yml"
+          if os.environ.get("GITHUB_REPOSITORY") != "aerenkolstein-code/llm-evaluation-lab":
+              raise SystemExit("R1b execution is restricted to the reviewed repository")
+          expected_workflow_ref = (
+              f"{os.environ['GITHUB_REPOSITORY']}/{workflow_path}@refs/heads/main"
+          )
+          if os.environ.get("GITHUB_WORKFLOW_REF") != expected_workflow_ref:
+              raise SystemExit("R1b execution is not using the reviewed workflow on main")
+
+          expected_receipt = {
+              "authorization_id": os.environ["AUTHORIZATION_ID"],
+              "automatic_retries": 0,
+              "bridge_main_sha": os.environ["BRIDGE_MAIN_SHA"],
+              "context_bytes": int(os.environ["EXPECTED_CONTEXT_BYTES"]),
+              "context_sha256": os.environ["EXPECTED_CONTEXT_SHA256"],
+              "evaluation_run_id": os.environ["EVALUATION_RUN_ID"],
+              "execution_head_sha": os.environ["EXECUTION_HEAD_SHA"],
+              "git_ref": "refs/heads/main",
+              "handoff_id": os.environ["APPROVED_HANDOFF_ID"],
+              "handoff_ttl_seconds": ttl,
+              "max_provider_attempts": 1,
+              "mode": "live",
+              "prompt_bytes": int(os.environ["EXPECTED_PROMPT_BYTES"]),
+              "prompt_sha256": os.environ["EXPECTED_PROMPT_SHA256"],
+              "provider_endpoint": os.environ["PROVIDER_ENDPOINT"],
+              "provider_label": os.environ["PROVIDER_LABEL"],
+              "provider_max_tokens": max_tokens,
+              "provider_protocol": os.environ["PROVIDER_PROTOCOL"],
+              "provider_temperature": 0,
+              "provider_timeout_seconds": timeout,
+              "receipt_type": "R1B-RUN-READY",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "requested_model_id": os.environ["REQUESTED_MODEL_ID"],
+              "run_id": os.environ["RUN_ID"],
+              "schema_version": "b2-r1b-run-ready/v2",
+              "trigger_event": "workflow_dispatch",
+              "workflow_path": workflow_path,
+              "workflow_run_attempt": 1,
+              "work_order": "WO-B2-BLIND-R1B-01 v0.1",
+          }
+          expected_receipt_bytes = json.dumps(
+              expected_receipt,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii")
+          if receipt_bytes != expected_receipt_bytes:
+              raise SystemExit(
+                  "canonical RUN-READY receipt does not match protected execution parameters"
+              )
+          PY
+
+      - name: Atomically consume the durable one-shot authorization claim
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import fcntl
+          import hashlib
+          import json
+          import os
+          import re
+          import stat
+          from pathlib import Path
+
+          claim_base_value = os.environ.get("B2_R1B_ONE_SHOT_CLAIM_BASE", "")
+          if (
+              not claim_base_value
+              or any(ord(character) < 32 or ord(character) == 127 for character in claim_base_value)
+          ):
+              raise SystemExit("durable one-shot claim base is unavailable")
+          claim_base = Path(claim_base_value).expanduser()
+          try:
+              claim_base_info = claim_base.lstat()
+              resolved_claim_base = claim_base.resolve(strict=True)
+              runner_temp = Path(os.environ["RUNNER_TEMP"]).expanduser().resolve(strict=True)
+              exchange_base = Path(os.environ["B2_R1B_EXCHANGE_BASE"]).expanduser().resolve(strict=True)
+          except (FileNotFoundError, OSError, RuntimeError) as exc:
+              raise SystemExit("durable one-shot claim base is unavailable") from exc
+          if (
+              not claim_base.is_absolute()
+              or stat.S_ISLNK(claim_base_info.st_mode)
+              or not stat.S_ISDIR(claim_base_info.st_mode)
+              or any(item.is_symlink() for item in claim_base.parents)
+              or claim_base != resolved_claim_base
+              or len(claim_base.parts) < 3
+              or claim_base_info.st_uid != os.geteuid()
+              or claim_base_info.st_mode & 0o077
+              or claim_base_info.st_mode & 0o700 != 0o700
+          ):
+              raise SystemExit("durable one-shot claim base violates the private 0700 boundary")
+          if any(
+              claim_base == transient_root
+              or claim_base.is_relative_to(transient_root)
+              or transient_root.is_relative_to(claim_base)
+              for transient_root in (runner_temp, exchange_base)
+          ):
+              raise SystemExit("durable one-shot claim base overlaps an ephemeral root")
+
+          receipt_bytes = base64.b64decode(
+              os.environ["RUN_READY_RECEIPT_B64"], validate=True
+          )
+          receipt_digest = hashlib.sha256(receipt_bytes).hexdigest()
+          if receipt_digest != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("RUN-READY receipt changed before authorization claim")
+          run_ready = json.loads(receipt_bytes.decode("ascii"))
+          if json.dumps(
+              run_ready,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii") != receipt_bytes:
+              raise SystemExit("RUN-READY receipt lost canonical form before authorization claim")
+
+          workflow_run_id = os.environ["GITHUB_RUN_ID"]
+          workflow_run_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+          run_identity = {
+              "evaluation_run_id": run_ready["evaluation_run_id"],
+              "handoff_id": run_ready["handoff_id"],
+              "run_id": run_ready["run_id"],
+          }
+          run_identity_digest = hashlib.sha256(
+              json.dumps(
+                  run_identity,
+                  ensure_ascii=True,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("ascii")
+          ).hexdigest()
+          claim = {
+              "authorization_id": run_ready["authorization_id"],
+              "bridge_main_sha": run_ready["bridge_main_sha"],
+              "evaluation_run_id": run_ready["evaluation_run_id"],
+              "execution_head_sha": run_ready["execution_head_sha"],
+              "handoff_id": run_ready["handoff_id"],
+              "receipt_type": "R1B-ONE-SHOT-AUTHORIZATION-CLAIM",
+              "repository": run_ready["repository"],
+              "run_id": run_ready["run_id"],
+              "run_identity_sha256": run_identity_digest,
+              "run_ready_receipt_sha256": receipt_digest,
+              "schema_version": "b2-r1b-one-shot-claim/v1",
+              "workflow_path": run_ready["workflow_path"],
+              "workflow_run_attempt": workflow_run_attempt,
+              "workflow_run_id": workflow_run_id,
+          }
+          claim_bytes = json.dumps(
+              claim,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii")
+          authorization_index = "authorization-" + hashlib.sha256(
+              ("b2-r1b-one-shot/v1\0" + run_ready["authorization_id"]).encode("ascii")
+          ).hexdigest() + ".json"
+          run_identity_index = "run-identity-" + run_identity_digest + ".json"
+          claim_digest = hashlib.sha256(claim_bytes).hexdigest()
+          claim_record = "claim-" + claim_digest + ".json"
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          read_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+          directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+          directory_fd = os.open(claim_base, directory_flags)
+          lock_fd = None
+
+          claim_keys = {
+              "authorization_id",
+              "bridge_main_sha",
+              "evaluation_run_id",
+              "execution_head_sha",
+              "handoff_id",
+              "receipt_type",
+              "repository",
+              "run_id",
+              "run_identity_sha256",
+              "run_ready_receipt_sha256",
+              "schema_version",
+              "workflow_path",
+              "workflow_run_attempt",
+              "workflow_run_id",
+          }
+
+          def reject_duplicate_keys(pairs):
+              parsed = {}
+              for key, value in pairs:
+                  if key in parsed:
+                      raise ValueError("duplicate claim key")
+                  parsed[key] = value
+              return parsed
+
+          def reject_nonfinite(value):
+              raise ValueError(f"non-finite claim value: {value}")
+
+          def read_ledger_claim(entry_name):
+              try:
+                  entry_fd = os.open(entry_name, read_flags, dir_fd=directory_fd)
+              except OSError as exc:
+                  raise SystemExit("durable one-shot ledger entry is unreadable") from exc
+              with os.fdopen(entry_fd, "rb") as handle:
+                  entry_info = os.fstat(handle.fileno())
+                  if (
+                      not stat.S_ISREG(entry_info.st_mode)
+                      or entry_info.st_uid != os.geteuid()
+                      or stat.S_IMODE(entry_info.st_mode) != 0o600
+                      or entry_info.st_size < 2
+                      or entry_info.st_size > 65536
+                  ):
+                      raise SystemExit("durable one-shot ledger entry violates the private boundary")
+                  entry_bytes = handle.read(65537)
+              try:
+                  existing = json.loads(
+                      entry_bytes.decode("ascii"),
+                      object_pairs_hook=reject_duplicate_keys,
+                      parse_constant=reject_nonfinite,
+                  )
+              except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                  raise SystemExit("durable one-shot ledger contains an invalid claim") from exc
+              if (
+                  not isinstance(existing, dict)
+                  or set(existing) != claim_keys
+                  or json.dumps(
+                      existing,
+                      ensure_ascii=True,
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  ).encode("ascii") != entry_bytes
+                  or existing.get("schema_version") != "b2-r1b-one-shot-claim/v1"
+                  or existing.get("receipt_type") != "R1B-ONE-SHOT-AUTHORIZATION-CLAIM"
+                  or existing.get("workflow_run_attempt") != 1
+                  or not isinstance(existing.get("workflow_run_id"), str)
+                  or re.fullmatch(r"[1-9][0-9]*", existing["workflow_run_id"]) is None
+              ):
+                  raise SystemExit("durable one-shot ledger contains an invalid claim")
+              existing_run_identity = {
+                  "evaluation_run_id": existing["evaluation_run_id"],
+                  "handoff_id": existing["handoff_id"],
+                  "run_id": existing["run_id"],
+              }
+              existing_run_digest = hashlib.sha256(
+                  json.dumps(
+                      existing_run_identity,
+                      ensure_ascii=True,
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  ).encode("ascii")
+              ).hexdigest()
+              if existing.get("run_identity_sha256") != existing_run_digest:
+                  raise SystemExit("durable one-shot ledger contains an invalid claim")
+              existing_claim_digest = hashlib.sha256(entry_bytes).hexdigest()
+              expected_authorization_index = "authorization-" + hashlib.sha256(
+                  ("b2-r1b-one-shot/v1\0" + existing["authorization_id"]).encode("ascii")
+              ).hexdigest() + ".json"
+              valid_entry_names = {
+                  "claim-" + existing_claim_digest + ".json",
+                  expected_authorization_index,
+                  "run-identity-" + existing_run_digest + ".json",
+              }
+              if entry_name not in valid_entry_names:
+                  raise SystemExit("durable one-shot ledger index disagrees with its claim")
+              return existing
+
+          try:
+              opened_info = os.fstat(directory_fd)
+              if (
+                  opened_info.st_dev != claim_base_info.st_dev
+                  or opened_info.st_ino != claim_base_info.st_ino
+              ):
+                  raise SystemExit("durable one-shot claim base changed during validation")
+
+              lock_flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+              try:
+                  lock_fd = os.open("ledger.lock", lock_flags, 0o600, dir_fd=directory_fd)
+              except OSError as exc:
+                  raise SystemExit("durable one-shot ledger lock is unavailable") from exc
+              lock_info = os.fstat(lock_fd)
+              if (
+                  not stat.S_ISREG(lock_info.st_mode)
+                  or lock_info.st_uid != os.geteuid()
+                  or stat.S_IMODE(lock_info.st_mode) != 0o600
+              ):
+                  raise SystemExit("durable one-shot ledger lock violates the private boundary")
+              fcntl.flock(lock_fd, fcntl.LOCK_EX)
+              os.fsync(lock_fd)
+              os.fsync(directory_fd)
+
+              for entry_name in sorted(os.listdir(directory_fd)):
+                  if entry_name == "ledger.lock":
+                      continue
+                  if re.fullmatch(
+                      r"(?:claim|authorization|run-identity)-[0-9a-f]{64}\.json",
+                      entry_name,
+                  ) is None:
+                      raise SystemExit("durable one-shot ledger contains an unexpected entry")
+                  existing = read_ledger_claim(entry_name)
+                  if existing["authorization_id"] == run_ready["authorization_id"]:
+                      raise SystemExit("one-shot authorization was already consumed")
+                  if existing["run_identity_sha256"] == run_identity_digest:
+                      raise SystemExit("R1b run identity was already consumed")
+
+              # The canonical claim record is the authoritative transaction. It is
+              # durably committed before either lookup index is linked. Any crash or
+              # collision after this point therefore leaves a record whose body
+              # consumes both identities during the next locked recovery scan.
+              try:
+                  claim_fd = os.open(claim_record, flags, 0o600, dir_fd=directory_fd)
+              except FileExistsError as exc:
+                  raise SystemExit("durable one-shot claim transaction already exists") from exc
+              with os.fdopen(claim_fd, "wb") as handle:
+                  os.fchmod(handle.fileno(), 0o600)
+                  handle.write(claim_bytes)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.fsync(directory_fd)
+
+              for claim_name, replay_error in (
+                  (authorization_index, "one-shot authorization was already consumed"),
+                  (run_identity_index, "R1b run identity was already consumed"),
+              ):
+                  try:
+                      os.link(
+                          claim_record,
+                          claim_name,
+                          src_dir_fd=directory_fd,
+                          dst_dir_fd=directory_fd,
+                          follow_symlinks=False,
+                      )
+                  except FileExistsError as exc:
+                      raise SystemExit(replay_error) from exc
+                  os.fsync(directory_fd)
+
+              record_info = os.stat(claim_record, dir_fd=directory_fd, follow_symlinks=False)
+              for claim_name in (authorization_index, run_identity_index):
+                  index_info = os.stat(claim_name, dir_fd=directory_fd, follow_symlinks=False)
+                  if (
+                      index_info.st_dev != record_info.st_dev
+                      or index_info.st_ino != record_info.st_ino
+                  ):
+                      raise SystemExit("durable one-shot claim indexes are not authoritative links")
+          finally:
+              if lock_fd is not None:
+                  try:
+                      fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                  finally:
+                      os.close(lock_fd)
+              os.close(directory_fd)
+
+          bound = {
+              "BOUND_AUTHORIZATION_ID": run_ready["authorization_id"],
+              "BOUND_BRIDGE_MAIN_SHA": run_ready["bridge_main_sha"],
+              "BOUND_CONTEXT_BYTES": run_ready["context_bytes"],
+              "BOUND_CONTEXT_SHA256": run_ready["context_sha256"],
+              "BOUND_EVALUATION_RUN_ID": run_ready["evaluation_run_id"],
+              "BOUND_EXECUTION_HEAD_SHA": run_ready["execution_head_sha"],
+              "BOUND_HANDOFF_TTL_SECONDS": run_ready["handoff_ttl_seconds"],
+              "BOUND_PROMPT_BYTES": run_ready["prompt_bytes"],
+              "BOUND_PROMPT_SHA256": run_ready["prompt_sha256"],
+              "BOUND_RUN_ID": run_ready["run_id"],
+              "BOUND_WORKFLOW_RUN_ATTEMPT": workflow_run_attempt,
+              "BOUND_WORKFLOW_RUN_ID": workflow_run_id,
+              "HANDOFF_ID": run_ready["handoff_id"],
+              "ONE_SHOT_CLAIM_SHA256": claim_digest,
+          }
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="ascii") as handle:
+              for name, value in bound.items():
+                  handle.write(f"{name}={value}\n")
+          print("durable one-shot authorization claim consumed")
+          PY
+
+      - name: Check out the exact authorized execution head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Bind execution head to the accepted v5.2 bridge
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BOUND_EXECUTION_HEAD_SHA"
+          git merge-base --is-ancestor "$BOUND_BRIDGE_MAIN_SHA" "$BOUND_EXECUTION_HEAD_SHA"
+          test "$(git rev-parse "$BOUND_BRIDGE_MAIN_SHA:b2/blind_eval.py")" = "$(git hash-object b2/blind_eval.py)"
+          test "$(git rev-parse "$BOUND_BRIDGE_MAIN_SHA:b2/blind_handoff.py")" = "$(git hash-object b2/blind_handoff.py)"
+
+      - name: Verify the preprovisioned reviewed handoff runtime
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from importlib.metadata import version
+
+          from b2.blind_eval import AUTOMATIC_RETRIES
+          from b2.blind_handoff import PROTOCOL_VERSION
+
+          cryptography_major = int(version("cryptography").split(".", 1)[0])
+          if not 42 <= cryptography_major < 47:
+              raise SystemExit("preprovisioned cryptography version is outside the reviewed range")
+          if PROTOCOL_VERSION != "b2-blind-handoff/v5.2" or AUTOMATIC_RETRIES != 0:
+              raise SystemExit("checked-out runtime is not the reviewed zero-retry v5.2 bridge")
+          PY
+
+      - name: Create isolated run-scoped exchange roots
+        run: |
+          set -euo pipefail
+          test -n "${B2_R1B_EXCHANGE_BASE:-}"
+          printf '::add-mask::%s\n' "$B2_R1B_EXCHANGE_BASE"
+          python - <<'PY'
+          import os
+          import stat
+          from pathlib import Path
+
+          base = Path(os.environ["B2_R1B_EXCHANGE_BASE"]).expanduser()
+          runner_temp = Path(os.environ["RUNNER_TEMP"]).expanduser()
+          for path, label in ((base, "private exchange base"), (runner_temp, "runner temp")):
+              if (
+                  any(ord(character) < 32 or ord(character) == 127 for character in str(path))
+                  or any(item.is_symlink() for item in (path, *path.parents))
+                  or not path.is_absolute()
+                  or not path.is_dir()
+                  or path != path.resolve(strict=True)
+                  or len(path.parts) < 3
+              ):
+                  raise SystemExit(f"{label} is not a real absolute directory")
+          base_mode = base.stat().st_mode
+          if (
+              not base_mode & stat.S_ISGID
+              or base_mode & 0o007
+              or base_mode & 0o070 != 0o070
+          ):
+              raise SystemExit("private exchange base lacks the dedicated setgid-group boundary")
+          suffix = "-".join((
+              os.environ["BOUND_WORKFLOW_RUN_ID"],
+              os.environ["BOUND_WORKFLOW_RUN_ATTEMPT"],
+              os.environ["BOUND_EXECUTION_HEAD_SHA"],
+          ))
+          exchange_root = base / suffix
+          runner_root = runner_temp / f"b2-r1b-{suffix}"
+          for root in (exchange_root, runner_root):
+              if root.exists() or root.is_symlink():
+                  raise SystemExit("run-scoped root already exists")
+          exchange_root.mkdir(mode=0o750)
+          exchange_root.chmod(0o2750)
+          runner_root.mkdir(mode=0o700)
+          runner_root.chmod(0o700)
+          (exchange_root / "runner").mkdir(mode=0o750)
+          (exchange_root / "runner").chmod(0o2750)
+          (exchange_root / "private").mkdir(mode=0o770)
+          (exchange_root / "private").chmod(0o2770)
+          if exchange_root.stat().st_gid != base.stat().st_gid:
+              raise SystemExit("run-scoped exchange root did not inherit the private group")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"EXCHANGE_ROOT={exchange_root}\n")
+              handle.write(f"RUNNER_ROOT={runner_root}\n")
+          print(f"::add-mask::{exchange_root}")
+          PY
+
+      - name: Generate the run-unique input key and request
+        run: |
+          set -euo pipefail
+          issued_at_unix="$(date +%s)"
+          expires_at_unix="$((issued_at_unix + BOUND_HANDOFF_TTL_SECONDS))"
+          python -m b2.blind_handoff generate-input-key \
+            --private-key "$RUNNER_ROOT/input-private.pem" \
+            --public-key "$RUNNER_ROOT/input-public.pem" \
+            --fingerprint-output "$RUNNER_ROOT/input-public.sha256" \
+            > "$RUNNER_ROOT/input-key-receipt.json"
+          input_key_sha="$(tr -d '\n' < "$RUNNER_ROOT/input-public.sha256")"
+          test "${#input_key_sha}" -eq 64
+          {
+            printf 'INPUT_KEY_SHA=%s\n' "$input_key_sha"
+            printf 'ISSUED_AT_UNIX=%s\n' "$issued_at_unix"
+            printf 'EXPIRES_AT_UNIX=%s\n' "$expires_at_unix"
+          } >> "$GITHUB_ENV"
+          python - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          runner_root = Path(os.environ["RUNNER_ROOT"])
+          exchange_runner = Path(os.environ["EXCHANGE_ROOT"]) / "runner"
+          public_key = (runner_root / "input-public.pem").read_bytes()
+          receipt_bytes = base64.b64decode(
+              os.environ["RUN_READY_RECEIPT_B64"], validate=True
+          )
+          if hashlib.sha256(receipt_bytes).hexdigest() != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("RUN-READY receipt changed after preflight")
+          run_ready = json.loads(receipt_bytes.decode("ascii"))
+          if json.dumps(
+              run_ready,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii") != receipt_bytes:
+              raise SystemExit("RUN-READY receipt lost canonical form after preflight")
+          authorization_index = "authorization-" + hashlib.sha256(
+              ("b2-r1b-one-shot/v1\0" + run_ready["authorization_id"]).encode("ascii")
+          ).hexdigest() + ".json"
+          run_identity_digest = hashlib.sha256(
+              json.dumps(
+                  {
+                      "evaluation_run_id": run_ready["evaluation_run_id"],
+                      "handoff_id": run_ready["handoff_id"],
+                      "run_id": run_ready["run_id"],
+                  },
+                  ensure_ascii=True,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("ascii")
+          ).hexdigest()
+          run_identity_index = "run-identity-" + run_identity_digest + ".json"
+          claim_base = Path(os.environ["B2_R1B_ONE_SHOT_CLAIM_BASE"])
+          claim_record = "claim-" + os.environ["ONE_SHOT_CLAIM_SHA256"] + ".json"
+          claim_bytes = (claim_base / claim_record).read_bytes()
+          if (
+              (claim_base / authorization_index).read_bytes() != claim_bytes
+              or (claim_base / run_identity_index).read_bytes() != claim_bytes
+          ):
+              raise SystemExit("durable one-shot claim indexes disagree")
+          if hashlib.sha256(claim_bytes).hexdigest() != os.environ["ONE_SHOT_CLAIM_SHA256"]:
+              raise SystemExit("durable one-shot claim changed after consumption")
+          claim = json.loads(claim_bytes.decode("ascii"))
+          if (
+              claim.get("authorization_id") != run_ready["authorization_id"]
+              or claim.get("run_id") != run_ready["run_id"]
+              or claim.get("evaluation_run_id") != run_ready["evaluation_run_id"]
+              or claim.get("handoff_id") != run_ready["handoff_id"]
+              or claim.get("run_identity_sha256") != run_identity_digest
+              or claim.get("workflow_run_id") != os.environ["BOUND_WORKFLOW_RUN_ID"]
+              or claim.get("workflow_run_attempt") != 1
+              or claim.get("run_ready_receipt_sha256")
+              != os.environ["RUN_READY_RECEIPT_SHA256"]
+          ):
+              raise SystemExit("durable one-shot claim is not bound to this request")
+          request = {
+              "schema_version": "b2-r1b-live-request/v3",
+              "protocol": "b2-blind-handoff/v5.2",
+              "run_id": run_ready["run_id"],
+              "handoff_id": run_ready["handoff_id"],
+              "workflow_run_id": claim["workflow_run_id"],
+              "workflow_run_attempt": claim["workflow_run_attempt"],
+              "execution_head_sha": run_ready["execution_head_sha"],
+              "bridge_main_sha": run_ready["bridge_main_sha"],
+              "input_public_key_sha256": hashlib.sha256(public_key).hexdigest(),
+              "context_sha256": run_ready["context_sha256"],
+              "context_bytes": run_ready["context_bytes"],
+              "prompt_sha256": run_ready["prompt_sha256"],
+              "prompt_bytes": run_ready["prompt_bytes"],
+              "mode": run_ready["mode"],
+              "evaluation_run_id": run_ready["evaluation_run_id"],
+              "issued_at_unix": int(os.environ["ISSUED_AT_UNIX"]),
+              "expires_at_unix": int(os.environ["EXPIRES_AT_UNIX"]),
+              "run_ready_receipt": run_ready,
+              "run_ready_receipt_sha256": os.environ["RUN_READY_RECEIPT_SHA256"],
+              "one_shot_claim": claim,
+              "one_shot_claim_sha256": os.environ["ONE_SHOT_CLAIM_SHA256"],
+              "authorization_id": run_ready["authorization_id"],
+          }
+
+          def create(path: Path, data: bytes, mode: int) -> None:
+              flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+              fd = os.open(path, flags, mode)
+              with os.fdopen(fd, "wb") as handle:
+                  os.fchmod(handle.fileno(), mode)
+                  handle.write(data)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+
+          create(runner_root / "run-ready.json", receipt_bytes, 0o600)
+          create(exchange_runner / "input-public.pem", public_key, 0o640)
+          create(
+              exchange_runner / "request.json",
+              (json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+              0o640,
+          )
+          PY
+
+      - name: Wait for and accept the exact encrypted input payload
+        run: |
+          set -euo pipefail
+          python - "$EXCHANGE_ROOT/private/payload.json" "$EXPIRES_AT_UNIX" <<'PY'
+          import os
+          import stat
+          import sys
+          import time
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          deadline = int(sys.argv[2])
+          while time.time() <= deadline:
+              try:
+                  info = path.lstat()
+              except FileNotFoundError:
+                  time.sleep(5)
+                  continue
+              if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                  raise SystemExit("payload publication is not a regular file")
+              if info.st_size <= 0 or info.st_size > 4 * 1024 * 1024:
+                  raise SystemExit("payload publication has an invalid size")
+              break
+          else:
+              raise SystemExit("run-scoped payload did not arrive before expiry")
+          PY
+          python -m b2.blind_handoff accept-input \
+            --input-private-key "$RUNNER_ROOT/input-private.pem" \
+            --payload "$EXCHANGE_ROOT/private/payload.json" \
+            --state-dir "$RUNNER_ROOT/runner-state" \
+            --handoff-id "$HANDOFF_ID" \
+            --workflow-run-id "$BOUND_WORKFLOW_RUN_ID" \
+            --execution-head-sha "$BOUND_EXECUTION_HEAD_SHA" \
+            --bridge-main-sha "$BOUND_BRIDGE_MAIN_SHA" \
+            --input-public-key-sha256 "$INPUT_KEY_SHA" \
+            --context-sha256 "$BOUND_CONTEXT_SHA256" \
+            --context-bytes "$BOUND_CONTEXT_BYTES" \
+            --prompt-sha256 "$BOUND_PROMPT_SHA256" \
+            --prompt-bytes "$BOUND_PROMPT_BYTES" \
+            --mode live \
+            --evaluation-run-id "$BOUND_EVALUATION_RUN_ID" \
+            --issued-at-unix "$ISSUED_AT_UNIX" \
+            --expires-at-unix "$EXPIRES_AT_UNIX" \
+            > "$RUNNER_ROOT/input-accept-receipt.json"
+
+      - name: Publish a runner-generated return-key possession challenge
+        run: |
+          set -euo pipefail
+          python -m b2.blind_handoff encrypt-challenge \
+            --state-dir "$RUNNER_ROOT/runner-state" \
+            --output "$RUNNER_ROOT/challenge.enc.json" \
+            > "$RUNNER_ROOT/challenge-receipt.json"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          source = Path(os.environ["RUNNER_ROOT"]) / "challenge.enc.json"
+          target = Path(os.environ["EXCHANGE_ROOT"]) / "runner" / "challenge.enc.json"
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          fd = os.open(target, flags, 0o640)
+          with os.fdopen(fd, "wb") as handle:
+              os.fchmod(handle.fileno(), 0o640)
+              handle.write(source.read_bytes())
+              handle.flush()
+              os.fsync(handle.fileno())
+          PY
+
+      - name: Verify the one-time private-key acknowledgement
+        run: |
+          set -euo pipefail
+          python - "$EXCHANGE_ROOT/private/challenge-ack.json" "$EXPIRES_AT_UNIX" <<'PY'
+          import stat
+          import sys
+          import time
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          deadline = int(sys.argv[2])
+          while time.time() <= deadline:
+              try:
+                  info = path.lstat()
+              except FileNotFoundError:
+                  time.sleep(5)
+                  continue
+              if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                  raise SystemExit("acknowledgement publication is not a regular file")
+              if info.st_size <= 0 or info.st_size > 4 * 1024 * 1024:
+                  raise SystemExit("acknowledgement publication has an invalid size")
+              break
+          else:
+              raise SystemExit("run-scoped acknowledgement did not arrive before expiry")
+          PY
+          python -m b2.blind_handoff verify-ack \
+            --state-dir "$RUNNER_ROOT/runner-state" \
+            --challenge-envelope "$RUNNER_ROOT/challenge.enc.json" \
+            --acknowledgement "$EXCHANGE_ROOT/private/challenge-ack.json" \
+            > "$RUNNER_ROOT/ack-receipt.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = json.loads((Path(os.environ["RUNNER_ROOT"]) / "ack-receipt.json").read_text())
+          if receipt != {"status": "PROVIDER_GATE_OPEN"}:
+              raise SystemExit("provider gate did not open exactly once")
+          PY
+
+      - name: Execute exactly one authorized provider attempt
+        env:
+          B2_R1B_PROVIDER_API_KEY: ${{ secrets.B2_R1B_PROVIDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${B2_R1B_PROVIDER_API_KEY:-}"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          runner_root = Path(os.environ["RUNNER_ROOT"])
+          receipt_bytes = (runner_root / "run-ready.json").read_bytes()
+          if hashlib.sha256(receipt_bytes).hexdigest() != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("provider gate lost the approved RUN-READY binding")
+          run_ready = json.loads(receipt_bytes.decode("ascii"))
+          canonical = json.dumps(
+              run_ready,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii")
+          if canonical != receipt_bytes:
+              raise SystemExit("provider gate received a non-canonical RUN-READY receipt")
+
+          command = [
+              sys.executable,
+              "-m", "b2.blind_eval",
+              "--context-file", str(runner_root / "runner-state" / "context.txt"),
+              "--prompt-file", str(runner_root / "runner-state" / "prompt.txt"),
+              "--provider", run_ready["provider_label"],
+              "--protocol", run_ready["provider_protocol"],
+              "--model", run_ready["requested_model_id"],
+              "--endpoint", run_ready["provider_endpoint"],
+              "--api-key-env", "B2_R1B_PROVIDER_API_KEY",
+              "--run-id", run_ready["evaluation_run_id"],
+              "--git-commit", run_ready["bridge_main_sha"],
+              "--timeout", str(run_ready["provider_timeout_seconds"]),
+              "--temperature", str(run_ready["provider_temperature"]),
+              "--max-tokens", str(run_ready["provider_max_tokens"]),
+              "--raw-output", str(runner_root / "run.raw.txt"),
+              "--receipt-output", str(runner_root / "run.receipt.json"),
+              "--authorize-live-call",
+          ]
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          stdout_fd = os.open(runner_root / "bridge-stdout.json", flags, 0o600)
+          with os.fdopen(stdout_fd, "wb") as stdout:
+              os.fchmod(stdout.fileno(), 0o600)
+              completed = subprocess.run(command, stdout=stdout, check=False)
+              stdout.flush()
+              os.fsync(stdout.fileno())
+          if completed.returncode not in {0, 2, 3}:
+              raise SystemExit(76)
+          (runner_root / "bridge-exit-code.txt").write_text(
+              f"{completed.returncode}\n", encoding="ascii"
+          )
+          PY
+          test -s "$RUNNER_ROOT/run.receipt.json"
+
+      - name: Validate the body-free bridge receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          runner_root = Path(os.environ["RUNNER_ROOT"])
+          run_ready_bytes = (runner_root / "run-ready.json").read_bytes()
+          if hashlib.sha256(run_ready_bytes).hexdigest() != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("bridge receipt gate lost the approved RUN-READY binding")
+          run_ready = json.loads(run_ready_bytes.decode("ascii"))
+          receipt = json.loads((runner_root / "run.receipt.json").read_text())
+          exact = {
+              "run_id": run_ready["evaluation_run_id"],
+              "provider_label": run_ready["provider_label"],
+              "provider_protocol": run_ready["provider_protocol"],
+              "requested_model_id": run_ready["requested_model_id"],
+              "context_sha256": "sha256:" + run_ready["context_sha256"],
+              "context_bytes": run_ready["context_bytes"],
+              "prompt_sha256": "sha256:" + run_ready["prompt_sha256"],
+              "prompt_bytes": run_ready["prompt_bytes"],
+              "git_commit": run_ready["bridge_main_sha"],
+              "provider_attempts": 1,
+              "automatic_retries": 0,
+              "quality_score": None,
+          }
+          if any(receipt.get(key) != value for key, value in exact.items()):
+              raise SystemExit("bridge receipt does not match the authorized one-shot run")
+          if receipt.get("terminal_status") not in {"PASS", "NOT_EVALUABLE", "ERROR"}:
+              raise SystemExit("bridge receipt has an invalid terminal status")
+          forbidden = {
+              "context", "prompt", "reasoning", "reasoning_content", "analysis",
+              "content", "raw_answer", "authorization", "api_key", "endpoint",
+              "signed_locator",
+          }
+          if forbidden.intersection(receipt):
+              raise SystemExit("bridge receipt contains a private or secret-bearing field")
+          PY
+
+      - name: Encrypt and publish the complete private result evidence
+        run: |
+          set -euo pipefail
+          python -m b2.blind_handoff make-live-result \
+            --state-dir "$RUNNER_ROOT/runner-state" \
+            --receipt "$RUNNER_ROOT/run.receipt.json" \
+            --raw-answer "$RUNNER_ROOT/run.raw.txt" \
+            --bridge-stdout "$RUNNER_ROOT/bridge-stdout.json" \
+            --bridge-exit-code "$RUNNER_ROOT/bridge-exit-code.txt" \
+            --output "$RUNNER_ROOT/result.enc.json" \
+            > "$RUNNER_ROOT/result-encryption-receipt.json"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          source = Path(os.environ["RUNNER_ROOT"]) / "result.enc.json"
+          target = Path(os.environ["EXCHANGE_ROOT"]) / "runner" / "result.enc.json"
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          fd = os.open(target, flags, 0o640)
+          with os.fdopen(fd, "wb") as handle:
+              os.fchmod(handle.fileno(), 0o640)
+              handle.write(source.read_bytes())
+              handle.flush()
+              os.fsync(handle.fileno())
+          PY
+
+      - name: Require private result verification, atomic publication, and cleanup
+        run: |
+          set -euo pipefail
+          python - "$EXCHANGE_ROOT/private/private-cleanup-receipt.json" "$EXPIRES_AT_UNIX" <<'PY'
+          import stat
+          import sys
+          import time
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          deadline = int(sys.argv[2])
+          while time.time() <= deadline:
+              try:
+                  info = path.lstat()
+              except FileNotFoundError:
+                  time.sleep(5)
+                  continue
+              if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                  raise SystemExit("private finalization marker is not a regular file")
+              if info.st_size <= 0 or info.st_size > 4096:
+                  raise SystemExit("private finalization marker has an invalid size")
+              break
+          else:
+              raise SystemExit("private result finalization did not complete before expiry")
+          PY
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          exchange = Path(os.environ["EXCHANGE_ROOT"])
+          runner = Path(os.environ["RUNNER_ROOT"])
+          private = exchange / "private"
+          result = (runner / "result.enc.json").read_bytes()
+          binding = json.loads((runner / "runner-state" / "binding.json").read_text())
+          binding_hash = hashlib.sha256(
+              json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+          ).hexdigest()
+          result_hash = hashlib.sha256(result).hexdigest()
+
+          accepted = json.loads((private / "result-accepted.json").read_text())
+          if set(accepted) != {"protocol", "claim", "binding_sha256", "artifact_sha256"}:
+              raise SystemExit("private result-accept marker contains unexpected fields")
+          if accepted != {
+              "protocol": "b2-blind-handoff/v5.2",
+              "claim": "result-accepted",
+              "binding_sha256": binding_hash,
+              "artifact_sha256": result_hash,
+          }:
+              raise SystemExit("private result-accept marker is not bound to this run")
+
+          verified = json.loads((private / "result-verification-receipt.json").read_text())
+          if set(verified) != {
+              "status", "mode", "terminal_status", "provider_attempts",
+              "result_envelope_sha256",
+          }:
+              raise SystemExit("private result receipt contains unexpected fields")
+          if (
+              verified["status"] != "RESULT_VERIFIED"
+              or verified["mode"] != "live"
+              or verified["terminal_status"] not in {"PASS", "NOT_EVALUABLE", "ERROR"}
+              or verified["provider_attempts"] != 1
+              or verified["result_envelope_sha256"] != result_hash
+          ):
+              raise SystemExit("private result verification does not match this run")
+
+          cleanup = json.loads((private / "private-cleanup-receipt.json").read_text())
+          if cleanup != {"status": "EPHEMERAL_CLEANUP_COMPLETE"}:
+              raise SystemExit("private ephemeral state cleanup is not verified")
+          (runner / "terminal-status.txt").write_text(verified["terminal_status"] + "\n")
+          PY
+
+      - name: Emit a body-free run receipt
+        run: |
+          set -euo pipefail
+          terminal_status="$(tr -d '\n' < "$RUNNER_ROOT/terminal-status.txt")"
+          {
+            printf '## B2 R1b one-shot handoff\n\n'
+            printf -- '- R1b run: `%s`\n' "$BOUND_RUN_ID"
+            printf -- '- evaluation run: `%s`\n' "$BOUND_EVALUATION_RUN_ID"
+            printf -- '- handoff: `%s`\n' "$HANDOFF_ID"
+            printf -- '- workflow run: `%s`\n' "$BOUND_WORKFLOW_RUN_ID"
+            printf -- '- execution head: `%s`\n' "$BOUND_EXECUTION_HEAD_SHA"
+            printf -- '- one-shot authorization claim: `CONSUMED`\n'
+            printf -- '- terminal status: `%s`\n' "$terminal_status"
+            printf -- '- provider attempts: `1`\n'
+            printf -- '- automatic retries: `0`\n'
+            printf -- '- private result decryptability/publication: `VERIFIED`\n'
+            printf -- '- private ephemeral state cleanup: `VERIFIED`\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify-clean all runner and exchange objects
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          runner_root="${RUNNER_TEMP}/b2-r1b-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          cleanup_failed=0
+          python -m b2.blind_handoff cleanup --ephemeral-root "$runner_root" \
+            > /dev/null || cleanup_failed=1
+          test ! -e "$runner_root" || cleanup_failed=1
+          if test -n "${B2_R1B_EXCHANGE_BASE:-}"; then
+            exchange_root="${B2_R1B_EXCHANGE_BASE}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+            printf '::add-mask::%s\n' "$exchange_root"
+            python -m b2.blind_handoff cleanup --ephemeral-root "$exchange_root" \
+              > /dev/null || cleanup_failed=1
+            test ! -e "$exchange_root" || cleanup_failed=1
+          else
+            cleanup_failed=1
+          fi
+          exit "$cleanup_failed"

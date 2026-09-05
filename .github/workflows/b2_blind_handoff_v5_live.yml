@@ -7,6 +7,18 @@ on:
         description: Exact SHA-256 of the separately approved R1B-RUN-READY receipt
         required: true
         type: string
+      run_id:
+        description: Exact predeclared R1b run identifier in the approved receipt
+        required: true
+        type: string
+      evaluation_run_id:
+        description: Exact evaluation identifier in the approved receipt
+        required: true
+        type: string
+      handoff_id:
+        description: Exact predeclared v5.2 handoff identifier in the approved receipt
+        required: true
+        type: string
       authorization_id:
         description: Exact one-shot authorization identifier frozen for this run
         required: true
@@ -36,14 +48,18 @@ jobs:
     timeout-minutes: 180
     env:
       DISPATCH_RUN_READY_RECEIPT_SHA256: ${{ inputs.run_ready_receipt_sha256 }}
+      DISPATCH_RUN_ID: ${{ inputs.run_id }}
+      DISPATCH_EVALUATION_RUN_ID: ${{ inputs.evaluation_run_id }}
+      DISPATCH_HANDOFF_ID: ${{ inputs.handoff_id }}
       DISPATCH_AUTHORIZATION_ID: ${{ inputs.authorization_id }}
       DISPATCH_CONFIRM_ONE_SHOT: ${{ inputs.confirm_one_shot }}
       EXECUTION_HEAD_SHA: ${{ vars.B2_R1B_EXECUTION_HEAD_SHA }}
       BRIDGE_MAIN_SHA: ${{ vars.B2_R1B_BRIDGE_MAIN_SHA }}
-      EXPECTED_WORKFLOW_RUN_ID: ${{ vars.B2_R1B_WORKFLOW_RUN_ID }}
       RUN_READY_RECEIPT_SHA256: ${{ vars.B2_R1B_RUN_READY_RECEIPT_SHA256 }}
       RUN_READY_RECEIPT_B64: ${{ vars.B2_R1B_RUN_READY_RECEIPT_B64 }}
       AUTHORIZATION_ID: ${{ vars.B2_R1B_AUTHORIZATION_ID }}
+      RUN_ID: ${{ vars.B2_R1B_RUN_ID }}
+      APPROVED_HANDOFF_ID: ${{ vars.B2_R1B_HANDOFF_ID }}
       EVALUATION_RUN_ID: ${{ vars.B2_R1B_EVALUATION_RUN_ID }}
       EXPECTED_CONTEXT_SHA256: ${{ vars.B2_R1B_CONTEXT_SHA256 }}
       EXPECTED_CONTEXT_BYTES: ${{ vars.B2_R1B_CONTEXT_BYTES }}
@@ -75,10 +91,11 @@ jobs:
           required = (
               "EXECUTION_HEAD_SHA",
               "BRIDGE_MAIN_SHA",
-              "EXPECTED_WORKFLOW_RUN_ID",
               "RUN_READY_RECEIPT_SHA256",
               "RUN_READY_RECEIPT_B64",
               "AUTHORIZATION_ID",
+              "RUN_ID",
+              "APPROVED_HANDOFF_ID",
               "EVALUATION_RUN_ID",
               "EXPECTED_CONTEXT_SHA256",
               "EXPECTED_CONTEXT_BYTES",
@@ -109,13 +126,11 @@ jobs:
           if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
               raise SystemExit("workflow reruns are disabled for the one-shot lane")
           if (
-              not os.environ["EXPECTED_WORKFLOW_RUN_ID"].isdigit()
-              or int(os.environ["EXPECTED_WORKFLOW_RUN_ID"]) <= 0
-              or str(int(os.environ["EXPECTED_WORKFLOW_RUN_ID"]))
-              != os.environ["EXPECTED_WORKFLOW_RUN_ID"]
-              or os.environ.get("GITHUB_RUN_ID") != os.environ["EXPECTED_WORKFLOW_RUN_ID"]
+              not os.environ.get("GITHUB_RUN_ID", "").isdigit()
+              or int(os.environ["GITHUB_RUN_ID"]) <= 0
+              or str(int(os.environ["GITHUB_RUN_ID"])) != os.environ["GITHUB_RUN_ID"]
           ):
-              raise SystemExit("workflow run is not the protected one-shot run")
+              raise SystemExit("workflow run ID is not a canonical positive decimal")
           if os.environ.get("DISPATCH_CONFIRM_ONE_SHOT", "").lower() != "true":
               raise SystemExit("one-shot confirmation is absent")
 
@@ -170,7 +185,13 @@ jobs:
           ):
               if hex64.fullmatch(os.environ[name]) is None:
                   raise SystemExit("an exact SHA-256 preflight binding is invalid")
-          for name in ("AUTHORIZATION_ID", "EVALUATION_RUN_ID", "PROVIDER_LABEL"):
+          for name in (
+              "AUTHORIZATION_ID",
+              "RUN_ID",
+              "APPROVED_HANDOFF_ID",
+              "EVALUATION_RUN_ID",
+              "PROVIDER_LABEL",
+          ):
               if run_id.fullmatch(os.environ[name]) is None:
                   raise SystemExit("a preflight identifier is invalid")
           if token.fullmatch(os.environ["REQUESTED_MODEL_ID"]) is None:
@@ -227,6 +248,9 @@ jobs:
 
           exact_pairs = (
               ("DISPATCH_RUN_READY_RECEIPT_SHA256", "RUN_READY_RECEIPT_SHA256"),
+              ("DISPATCH_RUN_ID", "RUN_ID"),
+              ("DISPATCH_EVALUATION_RUN_ID", "EVALUATION_RUN_ID"),
+              ("DISPATCH_HANDOFF_ID", "APPROVED_HANDOFF_ID"),
               ("DISPATCH_AUTHORIZATION_ID", "AUTHORIZATION_ID"),
           )
           if any(os.environ.get(left) != os.environ.get(right) for left, right in exact_pairs):
@@ -252,6 +276,7 @@ jobs:
               "evaluation_run_id": os.environ["EVALUATION_RUN_ID"],
               "execution_head_sha": os.environ["EXECUTION_HEAD_SHA"],
               "git_ref": "refs/heads/main",
+              "handoff_id": os.environ["APPROVED_HANDOFF_ID"],
               "handoff_ttl_seconds": ttl,
               "max_provider_attempts": 1,
               "mode": "live",
@@ -266,7 +291,8 @@ jobs:
               "receipt_type": "R1B-RUN-READY",
               "repository": os.environ["GITHUB_REPOSITORY"],
               "requested_model_id": os.environ["REQUESTED_MODEL_ID"],
-              "schema_version": "b2-r1b-run-ready/v1",
+              "run_id": os.environ["RUN_ID"],
+              "schema_version": "b2-r1b-run-ready/v2",
               "trigger_event": "workflow_dispatch",
               "workflow_path": workflow_path,
               "workflow_run_attempt": 1,
@@ -284,6 +310,156 @@ jobs:
               )
           PY
 
+      - name: Atomically consume the durable one-shot authorization claim
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import stat
+          from pathlib import Path
+
+          claim_base_value = os.environ.get("B2_R1B_ONE_SHOT_CLAIM_BASE", "")
+          if (
+              not claim_base_value
+              or any(ord(character) < 32 or ord(character) == 127 for character in claim_base_value)
+          ):
+              raise SystemExit("durable one-shot claim base is unavailable")
+          claim_base = Path(claim_base_value).expanduser()
+          try:
+              claim_base_info = claim_base.lstat()
+              resolved_claim_base = claim_base.resolve(strict=True)
+              runner_temp = Path(os.environ["RUNNER_TEMP"]).expanduser().resolve(strict=True)
+              exchange_base = Path(os.environ["B2_R1B_EXCHANGE_BASE"]).expanduser().resolve(strict=True)
+          except (FileNotFoundError, OSError, RuntimeError) as exc:
+              raise SystemExit("durable one-shot claim base is unavailable") from exc
+          if (
+              not claim_base.is_absolute()
+              or stat.S_ISLNK(claim_base_info.st_mode)
+              or not stat.S_ISDIR(claim_base_info.st_mode)
+              or any(item.is_symlink() for item in claim_base.parents)
+              or claim_base != resolved_claim_base
+              or len(claim_base.parts) < 3
+              or claim_base_info.st_uid != os.geteuid()
+              or claim_base_info.st_mode & 0o077
+              or claim_base_info.st_mode & 0o700 != 0o700
+          ):
+              raise SystemExit("durable one-shot claim base violates the private 0700 boundary")
+          if any(
+              claim_base == transient_root
+              or claim_base.is_relative_to(transient_root)
+              or transient_root.is_relative_to(claim_base)
+              for transient_root in (runner_temp, exchange_base)
+          ):
+              raise SystemExit("durable one-shot claim base overlaps an ephemeral root")
+
+          receipt_bytes = base64.b64decode(
+              os.environ["RUN_READY_RECEIPT_B64"], validate=True
+          )
+          receipt_digest = hashlib.sha256(receipt_bytes).hexdigest()
+          if receipt_digest != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("RUN-READY receipt changed before authorization claim")
+          run_ready = json.loads(receipt_bytes.decode("ascii"))
+          if json.dumps(
+              run_ready,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii") != receipt_bytes:
+              raise SystemExit("RUN-READY receipt lost canonical form before authorization claim")
+
+          workflow_run_id = os.environ["GITHUB_RUN_ID"]
+          workflow_run_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+          run_identity = {
+              "evaluation_run_id": run_ready["evaluation_run_id"],
+              "handoff_id": run_ready["handoff_id"],
+              "run_id": run_ready["run_id"],
+          }
+          run_identity_digest = hashlib.sha256(
+              json.dumps(
+                  run_identity,
+                  ensure_ascii=True,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("ascii")
+          ).hexdigest()
+          claim = {
+              "authorization_id": run_ready["authorization_id"],
+              "bridge_main_sha": run_ready["bridge_main_sha"],
+              "evaluation_run_id": run_ready["evaluation_run_id"],
+              "execution_head_sha": run_ready["execution_head_sha"],
+              "handoff_id": run_ready["handoff_id"],
+              "receipt_type": "R1B-ONE-SHOT-AUTHORIZATION-CLAIM",
+              "repository": run_ready["repository"],
+              "run_id": run_ready["run_id"],
+              "run_identity_sha256": run_identity_digest,
+              "run_ready_receipt_sha256": receipt_digest,
+              "schema_version": "b2-r1b-one-shot-claim/v1",
+              "workflow_path": run_ready["workflow_path"],
+              "workflow_run_attempt": workflow_run_attempt,
+              "workflow_run_id": workflow_run_id,
+          }
+          claim_bytes = json.dumps(
+              claim,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii")
+          authorization_index = "authorization-" + hashlib.sha256(
+              ("b2-r1b-one-shot/v1\0" + run_ready["authorization_id"]).encode("ascii")
+          ).hexdigest() + ".json"
+          run_identity_index = "run-identity-" + run_identity_digest + ".json"
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+          directory_fd = os.open(claim_base, directory_flags)
+          try:
+              opened_info = os.fstat(directory_fd)
+              if (
+                  opened_info.st_dev != claim_base_info.st_dev
+                  or opened_info.st_ino != claim_base_info.st_ino
+              ):
+                  raise SystemExit("durable one-shot claim base changed during validation")
+              for claim_name, replay_error in (
+                  (authorization_index, "one-shot authorization was already consumed"),
+                  (run_identity_index, "R1b run identity was already consumed"),
+              ):
+                  try:
+                      claim_fd = os.open(claim_name, flags, 0o600, dir_fd=directory_fd)
+                  except FileExistsError as exc:
+                      raise SystemExit(replay_error) from exc
+                  with os.fdopen(claim_fd, "wb") as handle:
+                      os.fchmod(handle.fileno(), 0o600)
+                      handle.write(claim_bytes)
+                      handle.flush()
+                      os.fsync(handle.fileno())
+              os.fsync(directory_fd)
+          finally:
+              os.close(directory_fd)
+
+          bound = {
+              "BOUND_AUTHORIZATION_ID": run_ready["authorization_id"],
+              "BOUND_BRIDGE_MAIN_SHA": run_ready["bridge_main_sha"],
+              "BOUND_CONTEXT_BYTES": run_ready["context_bytes"],
+              "BOUND_CONTEXT_SHA256": run_ready["context_sha256"],
+              "BOUND_EVALUATION_RUN_ID": run_ready["evaluation_run_id"],
+              "BOUND_EXECUTION_HEAD_SHA": run_ready["execution_head_sha"],
+              "BOUND_HANDOFF_TTL_SECONDS": run_ready["handoff_ttl_seconds"],
+              "BOUND_PROMPT_BYTES": run_ready["prompt_bytes"],
+              "BOUND_PROMPT_SHA256": run_ready["prompt_sha256"],
+              "BOUND_RUN_ID": run_ready["run_id"],
+              "BOUND_WORKFLOW_RUN_ATTEMPT": workflow_run_attempt,
+              "BOUND_WORKFLOW_RUN_ID": workflow_run_id,
+              "HANDOFF_ID": run_ready["handoff_id"],
+              "ONE_SHOT_CLAIM_SHA256": hashlib.sha256(claim_bytes).hexdigest(),
+          }
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="ascii") as handle:
+              for name, value in bound.items():
+                  handle.write(f"{name}={value}\n")
+          print("durable one-shot authorization claim consumed")
+          PY
+
       - name: Check out the exact authorized execution head
         uses: actions/checkout@v4
         with:
@@ -294,10 +470,10 @@ jobs:
       - name: Bind execution head to the accepted v5.2 bridge
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD_SHA"
-          git merge-base --is-ancestor "$BRIDGE_MAIN_SHA" "$EXECUTION_HEAD_SHA"
-          test "$(git rev-parse "$BRIDGE_MAIN_SHA:b2/blind_eval.py")" = "$(git hash-object b2/blind_eval.py)"
-          test "$(git rev-parse "$BRIDGE_MAIN_SHA:b2/blind_handoff.py")" = "$(git hash-object b2/blind_handoff.py)"
+          test "$(git rev-parse HEAD)" = "$BOUND_EXECUTION_HEAD_SHA"
+          git merge-base --is-ancestor "$BOUND_BRIDGE_MAIN_SHA" "$BOUND_EXECUTION_HEAD_SHA"
+          test "$(git rev-parse "$BOUND_BRIDGE_MAIN_SHA:b2/blind_eval.py")" = "$(git hash-object b2/blind_eval.py)"
+          test "$(git rev-parse "$BOUND_BRIDGE_MAIN_SHA:b2/blind_handoff.py")" = "$(git hash-object b2/blind_handoff.py)"
 
       - name: Verify the preprovisioned reviewed handoff runtime
         run: |
@@ -345,9 +521,9 @@ jobs:
           ):
               raise SystemExit("private exchange base lacks the dedicated setgid-group boundary")
           suffix = "-".join((
-              os.environ["GITHUB_RUN_ID"],
-              os.environ["GITHUB_RUN_ATTEMPT"],
-              os.environ["GITHUB_SHA"],
+              os.environ["BOUND_WORKFLOW_RUN_ID"],
+              os.environ["BOUND_WORKFLOW_RUN_ATTEMPT"],
+              os.environ["BOUND_EXECUTION_HEAD_SHA"],
           ))
           exchange_root = base / suffix
           runner_root = runner_temp / f"b2-r1b-{suffix}"
@@ -364,11 +540,9 @@ jobs:
           (exchange_root / "private").chmod(0o2770)
           if exchange_root.stat().st_gid != base.stat().st_gid:
               raise SystemExit("run-scoped exchange root did not inherit the private group")
-          handoff_id = f"B2-R1B-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{os.environ['GITHUB_SHA'][:12]}"
           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
               handle.write(f"EXCHANGE_ROOT={exchange_root}\n")
               handle.write(f"RUNNER_ROOT={runner_root}\n")
-              handle.write(f"HANDOFF_ID={handoff_id}\n")
           print(f"::add-mask::{exchange_root}")
           PY
 
@@ -376,7 +550,7 @@ jobs:
         run: |
           set -euo pipefail
           issued_at_unix="$(date +%s)"
-          expires_at_unix="$((issued_at_unix + HANDOFF_TTL_SECONDS))"
+          expires_at_unix="$((issued_at_unix + BOUND_HANDOFF_TTL_SECONDS))"
           python -m b2.blind_handoff generate-input-key \
             --private-key "$RUNNER_ROOT/input-private.pem" \
             --public-key "$RUNNER_ROOT/input-public.pem" \
@@ -412,26 +586,64 @@ jobs:
               separators=(",", ":"),
           ).encode("ascii") != receipt_bytes:
               raise SystemExit("RUN-READY receipt lost canonical form after preflight")
+          authorization_index = "authorization-" + hashlib.sha256(
+              ("b2-r1b-one-shot/v1\0" + run_ready["authorization_id"]).encode("ascii")
+          ).hexdigest() + ".json"
+          run_identity_digest = hashlib.sha256(
+              json.dumps(
+                  {
+                      "evaluation_run_id": run_ready["evaluation_run_id"],
+                      "handoff_id": run_ready["handoff_id"],
+                      "run_id": run_ready["run_id"],
+                  },
+                  ensure_ascii=True,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("ascii")
+          ).hexdigest()
+          run_identity_index = "run-identity-" + run_identity_digest + ".json"
+          claim_base = Path(os.environ["B2_R1B_ONE_SHOT_CLAIM_BASE"])
+          claim_bytes = (claim_base / authorization_index).read_bytes()
+          if (claim_base / run_identity_index).read_bytes() != claim_bytes:
+              raise SystemExit("durable one-shot claim indexes disagree")
+          if hashlib.sha256(claim_bytes).hexdigest() != os.environ["ONE_SHOT_CLAIM_SHA256"]:
+              raise SystemExit("durable one-shot claim changed after consumption")
+          claim = json.loads(claim_bytes.decode("ascii"))
+          if (
+              claim.get("authorization_id") != run_ready["authorization_id"]
+              or claim.get("run_id") != run_ready["run_id"]
+              or claim.get("evaluation_run_id") != run_ready["evaluation_run_id"]
+              or claim.get("handoff_id") != run_ready["handoff_id"]
+              or claim.get("run_identity_sha256") != run_identity_digest
+              or claim.get("workflow_run_id") != os.environ["BOUND_WORKFLOW_RUN_ID"]
+              or claim.get("workflow_run_attempt") != 1
+              or claim.get("run_ready_receipt_sha256")
+              != os.environ["RUN_READY_RECEIPT_SHA256"]
+          ):
+              raise SystemExit("durable one-shot claim is not bound to this request")
           request = {
-              "schema_version": "b2-r1b-live-request/v2",
+              "schema_version": "b2-r1b-live-request/v3",
               "protocol": "b2-blind-handoff/v5.2",
-              "handoff_id": os.environ["HANDOFF_ID"],
-              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
-              "workflow_run_attempt": 1,
-              "execution_head_sha": os.environ["EXECUTION_HEAD_SHA"],
-              "bridge_main_sha": os.environ["BRIDGE_MAIN_SHA"],
+              "run_id": run_ready["run_id"],
+              "handoff_id": run_ready["handoff_id"],
+              "workflow_run_id": claim["workflow_run_id"],
+              "workflow_run_attempt": claim["workflow_run_attempt"],
+              "execution_head_sha": run_ready["execution_head_sha"],
+              "bridge_main_sha": run_ready["bridge_main_sha"],
               "input_public_key_sha256": hashlib.sha256(public_key).hexdigest(),
-              "context_sha256": os.environ["EXPECTED_CONTEXT_SHA256"],
-              "context_bytes": int(os.environ["EXPECTED_CONTEXT_BYTES"]),
-              "prompt_sha256": os.environ["EXPECTED_PROMPT_SHA256"],
-              "prompt_bytes": int(os.environ["EXPECTED_PROMPT_BYTES"]),
-              "mode": "live",
-              "evaluation_run_id": os.environ["EVALUATION_RUN_ID"],
+              "context_sha256": run_ready["context_sha256"],
+              "context_bytes": run_ready["context_bytes"],
+              "prompt_sha256": run_ready["prompt_sha256"],
+              "prompt_bytes": run_ready["prompt_bytes"],
+              "mode": run_ready["mode"],
+              "evaluation_run_id": run_ready["evaluation_run_id"],
               "issued_at_unix": int(os.environ["ISSUED_AT_UNIX"]),
               "expires_at_unix": int(os.environ["EXPIRES_AT_UNIX"]),
               "run_ready_receipt": run_ready,
               "run_ready_receipt_sha256": os.environ["RUN_READY_RECEIPT_SHA256"],
-              "authorization_id": os.environ["AUTHORIZATION_ID"],
+              "one_shot_claim": claim,
+              "one_shot_claim_sha256": os.environ["ONE_SHOT_CLAIM_SHA256"],
+              "authorization_id": run_ready["authorization_id"],
           }
 
           def create(path: Path, data: bytes, mode: int) -> None:
@@ -483,16 +695,16 @@ jobs:
             --payload "$EXCHANGE_ROOT/private/payload.json" \
             --state-dir "$RUNNER_ROOT/runner-state" \
             --handoff-id "$HANDOFF_ID" \
-            --workflow-run-id "$GITHUB_RUN_ID" \
-            --execution-head-sha "$EXECUTION_HEAD_SHA" \
-            --bridge-main-sha "$BRIDGE_MAIN_SHA" \
+            --workflow-run-id "$BOUND_WORKFLOW_RUN_ID" \
+            --execution-head-sha "$BOUND_EXECUTION_HEAD_SHA" \
+            --bridge-main-sha "$BOUND_BRIDGE_MAIN_SHA" \
             --input-public-key-sha256 "$INPUT_KEY_SHA" \
-            --context-sha256 "$EXPECTED_CONTEXT_SHA256" \
-            --context-bytes "$EXPECTED_CONTEXT_BYTES" \
-            --prompt-sha256 "$EXPECTED_PROMPT_SHA256" \
-            --prompt-bytes "$EXPECTED_PROMPT_BYTES" \
+            --context-sha256 "$BOUND_CONTEXT_SHA256" \
+            --context-bytes "$BOUND_CONTEXT_BYTES" \
+            --prompt-sha256 "$BOUND_PROMPT_SHA256" \
+            --prompt-bytes "$BOUND_PROMPT_BYTES" \
             --mode live \
-            --evaluation-run-id "$EVALUATION_RUN_ID" \
+            --evaluation-run-id "$BOUND_EVALUATION_RUN_ID" \
             --issued-at-unix "$ISSUED_AT_UNIX" \
             --expires-at-unix "$EXPIRES_AT_UNIX" \
             > "$RUNNER_ROOT/input-accept-receipt.json"
@@ -768,8 +980,12 @@ jobs:
           terminal_status="$(tr -d '\n' < "$RUNNER_ROOT/terminal-status.txt")"
           {
             printf '## B2 R1b one-shot handoff\n\n'
-            printf -- '- workflow run: `%s`\n' "$GITHUB_RUN_ID"
-            printf -- '- execution head: `%s`\n' "$EXECUTION_HEAD_SHA"
+            printf -- '- R1b run: `%s`\n' "$BOUND_RUN_ID"
+            printf -- '- evaluation run: `%s`\n' "$BOUND_EVALUATION_RUN_ID"
+            printf -- '- handoff: `%s`\n' "$HANDOFF_ID"
+            printf -- '- workflow run: `%s`\n' "$BOUND_WORKFLOW_RUN_ID"
+            printf -- '- execution head: `%s`\n' "$BOUND_EXECUTION_HEAD_SHA"
+            printf -- '- one-shot authorization claim: `CONSUMED`\n'
             printf -- '- terminal status: `%s`\n' "$terminal_status"
             printf -- '- provider attempts: `1`\n'
             printf -- '- automatic retries: `0`\n'

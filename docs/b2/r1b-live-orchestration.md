@@ -55,6 +55,18 @@ directory and its own private state/output roots, and have no access to the
 runner's `RUNNER_TEMP` state. Its process must use `umask 0027` so its exchange
 objects are never world-readable.
 
+The dedicated runner must also provision `B2_R1B_ONE_SHOT_CLAIM_BASE` as a
+real absolute, non-symlink, runner-owned mode-0700 directory. It is a durable,
+private authorization-claim ledger, not an exchange directory. After all
+canonical receipt and dispatch-identity checks pass, but before checkout or
+any exchange, secret, or provider step, the workflow atomically creates one
+mode-0600 body-free claim under two `O_EXCL` indexes: one keyed by the SHA-256
+of the authorization ID and one by the SHA-256 of the canonical
+run/evaluation/handoff identity triple. Those identical claim records are
+deliberately never removed by per-run cleanup: their continued existence makes
+both the authorization and the complete predeclared run identity
+non-replayable across dispatches.
+
 The `b2-r1b-live` protected environment is the human approval boundary. Its
 non-secret variables freeze only public-safe exact metadata:
 
@@ -62,10 +74,11 @@ non-secret variables freeze only public-safe exact metadata:
 |---|---|
 | `B2_R1B_EXECUTION_HEAD_SHA` | exact merged execution commit |
 | `B2_R1B_BRIDGE_MAIN_SHA` | exact accepted v5.2 bridge commit |
-| `B2_R1B_WORKFLOW_RUN_ID` | exact queued workflow run selected for the one-shot authorization |
 | `B2_R1B_RUN_READY_RECEIPT_SHA256` | lowercase SHA-256 of the exact canonical run-ready receipt bytes |
 | `B2_R1B_RUN_READY_RECEIPT_B64` | strict standard-base64 encoding of those exact public-safe canonical bytes |
 | `B2_R1B_AUTHORIZATION_ID` | unique one-shot authorization identifier |
+| `B2_R1B_RUN_ID` | exact predeclared R1b run identifier |
+| `B2_R1B_HANDOFF_ID` | exact predeclared v5.2 handoff identifier |
 | `B2_R1B_EVALUATION_RUN_ID` | exact R1b evaluation run identifier |
 | `B2_R1B_CONTEXT_SHA256`, `B2_R1B_CONTEXT_BYTES` | frozen private context fingerprint and size |
 | `B2_R1B_PROMPT_SHA256`, `B2_R1B_PROMPT_BYTES` | frozen private prompt fingerprint and size |
@@ -81,7 +94,7 @@ non-secret variables freeze only public-safe exact metadata:
 ### Canonical RUN-READY machine binding
 
 `R1B-RUN-READY` is an exact public-safe JSON object, not a prose approval and
-not a digest standing alone. Its closed `b2-r1b-run-ready/v1` schema is:
+not a digest standing alone. Its closed `b2-r1b-run-ready/v2` schema is:
 
 ```json
 {
@@ -93,6 +106,7 @@ not a digest standing alone. Its closed `b2-r1b-run-ready/v1` schema is:
   "evaluation_run_id": "<evaluation ID>",
   "execution_head_sha": "<40 lowercase hex>",
   "git_ref": "refs/heads/main",
+  "handoff_id": "<predeclared handoff ID>",
   "handoff_ttl_seconds": 3600,
   "max_provider_attempts": 1,
   "mode": "live",
@@ -107,7 +121,8 @@ not a digest standing alone. Its closed `b2-r1b-run-ready/v1` schema is:
   "receipt_type": "R1B-RUN-READY",
   "repository": "aerenkolstein-code/llm-evaluation-lab",
   "requested_model_id": "<exact requested model ID>",
-  "schema_version": "b2-r1b-run-ready/v1",
+  "run_id": "<predeclared R1b run ID>",
+  "schema_version": "b2-r1b-run-ready/v2",
   "trigger_event": "workflow_dispatch",
   "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
   "workflow_run_attempt": 1,
@@ -132,8 +147,49 @@ workflow, ref, mode, one-attempt, and zero-retry constants, and compares the
 canonical bytes byte-for-byte. Consequently a stale receipt cannot authorize a
 different provider label, requested model, endpoint, timeout, temperature,
 maximum token count, TTL, input identity, bridge commit, execution head,
-evaluation-run identity, or authorization ID. All of these checks finish before checkout,
-exchange-directory access, secret injection, or provider execution.
+R1b run identity, evaluation-run identity, handoff identity, or authorization
+ID. All of these checks finish before checkout, exchange-directory access,
+secret injection, or provider execution.
+
+The next step consumes the approved authorization exactly once. It atomically
+creates `b2-r1b-one-shot-claim/v1` under both persistent claim-ledger indexes
+with `O_EXCL`, mode 0600, and file-plus-directory `fsync`. The claim binds the
+approved receipt digest and its run/evaluation/handoff/authorization/head
+identities to the first actual GitHub workflow run ID and attempt that reaches
+the gate. One index is derived from the authorization ID and the other from the
+canonical run/evaluation/handoff triple. A second dispatch therefore fails
+closed if it reuses either the authorization or the run identity—even if an
+operator changes both the fresh `GITHUB_RUN_ID` and any obsolete out-of-band
+expected-run value together. Claim consumption precedes checkout, exchange
+creation, provider-secret injection, and the provider process. If a later step
+fails, the authorization and run identity remain consumed; another attempt
+requires a new receipt, new authorization ID, and new run/evaluation/handoff
+identity.
+
+The exact closed claim object is canonical ASCII JSON with this shape:
+
+```json
+{
+  "authorization_id": "<approved authorization ID>",
+  "bridge_main_sha": "<40 lowercase hex>",
+  "evaluation_run_id": "<evaluation ID>",
+  "execution_head_sha": "<40 lowercase hex>",
+  "handoff_id": "<predeclared handoff ID>",
+  "receipt_type": "R1B-ONE-SHOT-AUTHORIZATION-CLAIM",
+  "repository": "aerenkolstein-code/llm-evaluation-lab",
+  "run_id": "<predeclared R1b run ID>",
+  "run_identity_sha256": "<SHA-256 of canonical run/evaluation/handoff triple>",
+  "run_ready_receipt_sha256": "<approved RUN-READY SHA-256>",
+  "schema_version": "b2-r1b-one-shot-claim/v1",
+  "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
+  "workflow_run_attempt": 1,
+  "workflow_run_id": "<first consuming GitHub run ID>"
+}
+```
+
+Both index files contain these identical bytes. The request carries the exact
+claim plus its SHA-256 so the private side can validate the actual workflow
+run binding without receiving the private ledger path.
 
 After that comparison, the runner writes those exact canonical bytes create-once
 as mode-0600 `run-ready.json` inside its mode-0700 root. Immediately before the
@@ -146,12 +202,12 @@ receipt gate also derives its expected provider/model/input/commit values from
 the same hashed canonical file.
 
 The GitHub-assigned workflow run ID does not exist when the immutable dispatch
-inputs are submitted, so it is intentionally not self-referenced by the
-pre-dispatch receipt. It remains a separate post-queue protected gate:
-`B2_R1B_WORKFLOW_RUN_ID` must be frozen to the newly assigned ID before the
-environment reviewer approves the job, and the workflow rejects every other
-ID or attempt. The request later carries that actual run ID alongside the exact
-receipt and digest.
+inputs are submitted, so the receipt does not pretend to predict it and there
+is no independently mutable `B2_R1B_WORKFLOW_RUN_ID`. Instead, the durable
+claim binds the already approved authorization and complete predeclared R1b
+identity to exactly the first actual GitHub run that consumes it. The request
+later carries that claimed workflow run ID, the exact receipt and digest, and
+the durable claim digest.
 
 The environment secret `B2_R1B_PROVIDER_API_KEY` is the sole provider
 credential slot. It is injected only into the one bridge step, after v5.2 has
@@ -162,28 +218,30 @@ publication-verification, summary, or cleanup steps.
 
 ## Manual authorization gates
 
-Before dispatch, an authorized operator must freeze the canonical receipt, its
-base64, its digest, every matching protected parameter except the not-yet-known
-GitHub workflow run ID, and the one-shot authorization ID. The operator then
-dispatches the workflow on `main` with exactly three inputs:
+Before dispatch, an authorized operator must freeze and review the canonical
+receipt, its base64, its digest, every matching protected parameter, and the
+unique one-shot authorization ID. The operator then dispatches the workflow on
+`main` with exactly six inputs:
 
 1. the SHA-256 of the already approved `R1B-RUN-READY` receipt;
-2. its exact one-shot authorization identifier;
-3. the explicit boolean one-shot confirmation.
+2. its exact predeclared R1b run ID;
+3. its exact evaluation run ID;
+4. its exact handoff ID;
+5. its exact one-shot authorization identifier;
+6. the explicit boolean one-shot confirmation.
 
-The first two inputs must byte-for-byte equal the protected environment values.
+The first five inputs must byte-for-byte equal the protected environment values.
 The receipt digest must also equal the digest recomputed from the protected
 canonical receipt bytes, and the parsed receipt must exactly equal all matching
-protected provider/runtime/input/head values.
+protected provider/runtime/input/head/run/evaluation/handoff values.
 The selected commit must equal `B2_R1B_EXECUTION_HEAD_SHA`; the run ref must be
-`refs/heads/main`; `GITHUB_RUN_ATTEMPT` must be `1`; and `GITHUB_RUN_ID` must
-equal `B2_R1B_WORKFLOW_RUN_ID`. The protected environment must require a human
-reviewer: after a dispatch is queued, its newly assigned run ID is frozen into
-that variable before the environment approval is granted. A rerun or a second
-dispatch therefore has the wrong attempt or run identity and is rejected before
-private-locator or provider-credential use. A new attempt requires a new
-run-ready receipt, new authorization identifier, newly frozen workflow run ID,
-and a fresh manual dispatch and environment approval.
+`refs/heads/main`; and `GITHUB_RUN_ATTEMPT` must be `1`. The protected
+environment must require a human reviewer. A rerun fails the attempt gate; a
+second dispatch with the same authorization fails the durable `O_EXCL` claim
+gate before checkout or exchange creation. A new attempt therefore requires a
+new run-ready receipt, new run/evaluation/handoff identities, a new
+authorization identifier, a fresh manual dispatch, and fresh environment
+approval.
 
 The checkout disables persisted Git credentials. Before any handoff object is
 created, the workflow proves that the accepted bridge commit is an ancestor of
@@ -210,19 +268,20 @@ claim, or an expired/not-yet-valid object fail closed.
 
 | Order | Side | Create-once object or gate | Provider credential present? |
 |---:|---|---|---:|
-| 1 | runner | verify canonical run-ready bytes/digest and exact provider/runtime/input/head binding; then validate dispatch | no |
-| 2 | runner | exact-head/core-blob checks; fresh input key | no |
-| 3 | runner → private | `runner/input-public.pem`, then v2 `runner/request.json` containing the exact run-ready object and digest | no |
-| 4 | private → runner | v5.2 `private/payload.json` | no |
-| 5 | runner | `accept-input`; exact binding/freshness/input verification | no |
-| 6 | runner → private | fresh `runner/challenge.enc.json` | no |
-| 7 | private → runner | v5.2 `private/challenge-ack.json` | no |
-| 8 | runner | `verify-ack` creates the exclusive `ack-accepted` claim | no |
-| 9 | runner | exactly one `b2.blind_eval --authorize-live-call` invocation | step-local only |
-| 10 | runner → private | v5.2 `runner/result.enc.json` | no |
-| 11 | private | decrypt, validate, and atomically publish the private result pair | no |
-| 12 | private → runner | result-accept marker, body-free verification receipt, cleanup receipt | no |
-| 13 | runner | verify exact marker schemas/bindings, emit body-free summary, clean both roots | no |
+| 1 | runner | verify canonical run-ready bytes/digest and exact provider/runtime/input/head/run/evaluation/handoff binding; validate dispatch | no |
+| 2 | runner | atomically consume the durable authorization claim and bind it to the first actual workflow run | no |
+| 3 | runner | exact-head/core-blob checks; fresh input key | no |
+| 4 | runner → private | `runner/input-public.pem`, then v3 `runner/request.json` containing the exact run-ready object, durable claim, and both digests | no |
+| 5 | private → runner | v5.2 `private/payload.json` | no |
+| 6 | runner | `accept-input`; exact binding/freshness/input verification | no |
+| 7 | runner → private | fresh `runner/challenge.enc.json` | no |
+| 8 | private → runner | v5.2 `private/challenge-ack.json` | no |
+| 9 | runner | `verify-ack` creates the exclusive `ack-accepted` claim | no |
+| 10 | runner | exactly one `b2.blind_eval --authorize-live-call` invocation | step-local only |
+| 11 | runner → private | v5.2 `runner/result.enc.json` | no |
+| 12 | private | decrypt, validate, and atomically publish the private result pair | no |
+| 13 | private → runner | result-accept marker, body-free verification receipt, cleanup receipt | no |
+| 14 | runner | verify exact marker schemas/bindings, emit body-free summary, clean both ephemeral roots | no |
 
 There is one bridge invocation and no loop around it. The bridge contract fixes
 `automatic_retries = 0`; the result bundle is rejected unless
@@ -235,14 +294,18 @@ not change that classification.
 
 The private side must use the same exact v5.2 source and treat
 `runner/request.json` as the publication commit marker. It must require
-`b2-r1b-live-request/v2`, canonicalize its nested `run_ready_receipt` by the
+`b2-r1b-live-request/v3`, canonicalize its nested `run_ready_receipt` by the
 rule above, recompute and compare `run_ready_receipt_sha256`, and compare both
-against its independently held approved receipt. It must then compare every
-overlapping top-level request identity—including execution/bridge commits,
-input hashes and sizes, mode, evaluation ID, and authorization ID—to that
-receipt, and compare the actual workflow run ID to the separately frozen
-post-queue run metadata, before using the context and prompt. A missing/extra
-receipt field or any provider,
+against its independently held approved receipt. It must also canonicalize the
+nested `one_shot_claim`, recompute `one_shot_claim_sha256`, require the exact
+closed `b2-r1b-one-shot-claim/v1` schema, and verify that its receipt digest,
+authorization/run/evaluation/handoff identities, execution/bridge heads,
+repository/workflow, actual workflow run ID, and attempt match the request.
+It must then compare every overlapping top-level request identity—including
+execution/bridge commits, input hashes and sizes, mode, R1b run ID, evaluation
+ID, handoff ID, workflow run ID, and authorization ID—to those two bound
+objects before using the context and prompt. A missing/extra receipt or claim
+field or any provider,
 model, endpoint, timeout, temperature, token, TTL, input, head, or
 authorization mismatch fails closed. It then performs these existing CLI
 operations with the exact arguments from the request:
@@ -282,11 +345,14 @@ one cleanup reports failure. Cleanup follows no
 symlinks, rejects broad roots, surfaces any removal failure, and is successful
 only when both exact roots no longer exist. No real payload, acknowledgement,
 challenge, result envelope, private input, key, raw answer, or temporary receipt
-is uploaded as an artifact or committed to Git.
+is uploaded as an artifact or committed to Git. The body-free durable
+authorization claim is outside both ephemeral roots and is intentionally
+retained; deleting it would reopen replay and is not part of run cleanup.
 
-The final GitHub step summary is body-free. It contains only workflow-run and
-execution-head identities, terminal status, the fixed one-attempt/zero-retry
-counters, and boolean verification labels for result publication and cleanup.
+The final GitHub step summary is body-free. It contains only R1b run,
+evaluation, handoff, workflow-run and execution-head identities, the consumed
+claim status, terminal status, the fixed one-attempt/zero-retry counters, and
+boolean verification labels for result publication and cleanup.
 It contains no context/prompt/reasoning/final body, key, credential,
 authorization header, endpoint, model response body, score, or private locator.
 
@@ -308,7 +374,12 @@ Engineering must bind its receipt to the exact PR head/tree and record:
   possession proof, result decryptability, and verified cleanup;
 - static manual-trigger/no-retry/post-ACK-secret ordering audits;
 - canonical receipt digest/parse/equality tests, including stale-digest and
-  valid-but-changed provider/model/endpoint/runtime adversarial cases;
+  valid-but-changed provider/model/endpoint/runtime/run/handoff adversarial
+  cases;
+- a two-dispatch replay test in which both the actual and legacy expected
+  workflow-run variables move together while the approved receipt/digest and
+  authorization stay unchanged; the second dispatch must fail at the durable
+  claim gate before checkout, exchange, secret, or provider;
 - repository leak and changed-path-envelope scans.
 
 Only after those checks may engineering emit

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -84,6 +85,7 @@ def canonical_run_ready(environment: dict[str, str]) -> dict[str, object]:
         "evaluation_run_id": environment["EVALUATION_RUN_ID"],
         "execution_head_sha": environment["EXECUTION_HEAD_SHA"],
         "git_ref": "refs/heads/main",
+        "handoff_id": environment["APPROVED_HANDOFF_ID"],
         "handoff_ttl_seconds": int(environment["HANDOFF_TTL_SECONDS"]),
         "max_provider_attempts": 1,
         "mode": "live",
@@ -98,7 +100,8 @@ def canonical_run_ready(environment: dict[str, str]) -> dict[str, object]:
         "receipt_type": "R1B-RUN-READY",
         "repository": environment["GITHUB_REPOSITORY"],
         "requested_model_id": environment["REQUESTED_MODEL_ID"],
-        "schema_version": "b2-r1b-run-ready/v1",
+        "run_id": environment["RUN_ID"],
+        "schema_version": "b2-r1b-run-ready/v2",
         "trigger_event": "workflow_dispatch",
         "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
         "workflow_run_attempt": 1,
@@ -131,8 +134,9 @@ def valid_preflight_environment() -> tuple[dict[str, str], bytes]:
     environment.update({
         "EXECUTION_HEAD_SHA": "a" * 40,
         "BRIDGE_MAIN_SHA": "b" * 40,
-        "EXPECTED_WORKFLOW_RUN_ID": "123456789",
         "AUTHORIZATION_ID": "R1B-AUTH-001",
+        "RUN_ID": "B2-R1B-RUN-001",
+        "APPROVED_HANDOFF_ID": "B2-R1B-HANDOFF-001",
         "EVALUATION_RUN_ID": "B2-R1B-001",
         "EXPECTED_CONTEXT_SHA256": "d" * 64,
         "EXPECTED_CONTEXT_BYTES": "108230",
@@ -146,6 +150,9 @@ def valid_preflight_environment() -> tuple[dict[str, str], bytes]:
         "PROVIDER_TEMPERATURE": "0",
         "PROVIDER_MAX_TOKENS": "8192",
         "HANDOFF_TTL_SECONDS": "3600",
+        "DISPATCH_RUN_ID": "B2-R1B-RUN-001",
+        "DISPATCH_EVALUATION_RUN_ID": "B2-R1B-001",
+        "DISPATCH_HANDOFF_ID": "B2-R1B-HANDOFF-001",
         "DISPATCH_AUTHORIZATION_ID": "R1B-AUTH-001",
         "DISPATCH_CONFIRM_ONE_SHOT": "true",
         "GITHUB_EVENT_NAME": "workflow_dispatch",
@@ -175,6 +182,9 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
         self.assertEqual(
             [
                 "run_ready_receipt_sha256",
+                "run_id",
+                "evaluation_run_id",
+                "handoff_id",
                 "authorization_id",
                 "confirm_one_shot",
             ],
@@ -256,14 +266,17 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             'GITHUB_REF") != "refs/heads/main"',
             'GITHUB_RUN_ATTEMPT") != "1"',
             'GITHUB_SHA") != os.environ["EXECUTION_HEAD_SHA"]',
-            'GITHUB_RUN_ID") != os.environ["EXPECTED_WORKFLOW_RUN_ID"]',
             "DISPATCH_RUN_READY_RECEIPT_SHA256",
+            "DISPATCH_RUN_ID",
+            "DISPATCH_EVALUATION_RUN_ID",
+            "DISPATCH_HANDOFF_ID",
             "DISPATCH_AUTHORIZATION_ID",
             "DISPATCH_CONFIRM_ONE_SHOT",
             "B2_R1B_RUN_READY_RECEIPT_SHA256",
             "B2_R1B_AUTHORIZATION_ID",
+            "B2_R1B_RUN_ID",
+            "B2_R1B_HANDOFF_ID",
             "B2_R1B_EXECUTION_HEAD_SHA",
-            "B2_R1B_WORKFLOW_RUN_ID",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, self.workflow)
@@ -282,9 +295,12 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "automatic event": ("GITHUB_EVENT_NAME", "push"),
             "non-main ref": ("GITHUB_REF", "refs/heads/review"),
             "rerun": ("GITHUB_RUN_ATTEMPT", "2"),
-            "second run": ("GITHUB_RUN_ID", "123456790"),
+            "invalid workflow run": ("GITHUB_RUN_ID", "not-a-run"),
             "wrong head": ("GITHUB_SHA", "f" * 40),
             "stale receipt": ("DISPATCH_RUN_READY_RECEIPT_SHA256", "f" * 64),
+            "wrong run ID": ("DISPATCH_RUN_ID", "B2-R1B-RUN-002"),
+            "wrong evaluation ID": ("DISPATCH_EVALUATION_RUN_ID", "B2-R1B-002"),
+            "wrong handoff ID": ("DISPATCH_HANDOFF_ID", "B2-R1B-HANDOFF-002"),
             "wrong authorization": ("DISPATCH_AUTHORIZATION_ID", "R1B-AUTH-002"),
             "missing confirmation": ("DISPATCH_CONFIRM_ONE_SHOT", "false"),
             "unsupported protocol": ("PROVIDER_PROTOCOL", "unsupported/v1"),
@@ -301,6 +317,105 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
                     env=candidate, check=False,
                 )
                 self.assertNotEqual(0, rejected.returncode)
+
+    def test_second_dispatch_cannot_rebind_a_consumed_receipt_and_authorization(self):
+        scripts = run_scripts(self.workflow)
+        preflight_script = scripts[0]
+        claim_script = scripts[1]
+        environment, receipt_bytes = valid_preflight_environment()
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            root = Path(temp_root)
+            claim_base = root / "claims"
+            runner_temp = root / "runner-temp"
+            exchange_base = root / "exchange"
+            for directory in (claim_base, runner_temp, exchange_base):
+                directory.mkdir(mode=0o700)
+                directory.chmod(0o700)
+            github_env = root / "github-env"
+            github_env.write_text("", encoding="ascii")
+            environment["B2_R1B_ONE_SHOT_CLAIM_BASE"] = str(claim_base)
+            environment["B2_R1B_EXCHANGE_BASE"] = str(exchange_base)
+            environment["RUNNER_TEMP"] = str(runner_temp)
+            environment["GITHUB_ENV"] = str(github_env)
+
+            accepted = subprocess.run(
+                ["bash"], input=preflight_script, text=True, capture_output=True,
+                env=environment, check=False,
+            )
+            self.assertEqual(0, accepted.returncode, accepted.stderr)
+            consumed = subprocess.run(
+                ["bash"], input=claim_script, text=True, capture_output=True,
+                env=environment, check=False,
+            )
+            self.assertEqual(0, consumed.returncode, consumed.stderr)
+
+            claim_files = list(claim_base.glob("*.json"))
+            self.assertEqual(2, len(claim_files))
+            first_claim = json.loads(claim_files[0].read_bytes())
+            self.assertEqual("123456789", first_claim["workflow_run_id"])
+            self.assertEqual(
+                hashlib.sha256(receipt_bytes).hexdigest(),
+                first_claim["run_ready_receipt_sha256"],
+            )
+
+            second_dispatch = dict(environment)
+            second_dispatch["GITHUB_RUN_ID"] = "123456790"
+            second_dispatch["EXPECTED_WORKFLOW_RUN_ID"] = "123456790"
+            second_github_env = root / "second-github-env"
+            second_github_env.write_text("", encoding="ascii")
+            second_dispatch["GITHUB_ENV"] = str(second_github_env)
+
+            legacy_pair_gate = subprocess.run(
+                ["bash"], input=preflight_script, text=True, capture_output=True,
+                env=second_dispatch, check=False,
+            )
+            self.assertEqual(0, legacy_pair_gate.returncode, legacy_pair_gate.stderr)
+            replay = subprocess.run(
+                ["bash"], input=claim_script, text=True, capture_output=True,
+                env=second_dispatch, check=False,
+            )
+            self.assertNotEqual(0, replay.returncode)
+            self.assertIn("one-shot authorization was already consumed", replay.stderr)
+            self.assertEqual(2, len(list(claim_base.glob("*.json"))))
+
+            reused_identity = dict(environment)
+            reused_identity["AUTHORIZATION_ID"] = "R1B-AUTH-002"
+            reused_identity["DISPATCH_AUTHORIZATION_ID"] = "R1B-AUTH-002"
+            reused_identity["GITHUB_RUN_ID"] = "123456791"
+            bind_run_ready(reused_identity)
+            third_github_env = root / "third-github-env"
+            third_github_env.write_text("", encoding="ascii")
+            reused_identity["GITHUB_ENV"] = str(third_github_env)
+            fresh_authorization_preflight = subprocess.run(
+                ["bash"], input=preflight_script, text=True, capture_output=True,
+                env=reused_identity, check=False,
+            )
+            self.assertEqual(
+                0, fresh_authorization_preflight.returncode,
+                fresh_authorization_preflight.stderr,
+            )
+            run_replay = subprocess.run(
+                ["bash"], input=claim_script, text=True, capture_output=True,
+                env=reused_identity, check=False,
+            )
+            self.assertNotEqual(0, run_replay.returncode)
+            self.assertIn("R1b run identity was already consumed", run_replay.stderr)
+            self.assertEqual(3, len(list(claim_base.glob("*.json"))))
+
+        claim_position = self.workflow.index(
+            "Atomically consume the durable one-shot authorization claim"
+        )
+        for later_gate in (
+            "Check out the exact authorized execution head",
+            "Create isolated run-scoped exchange roots",
+            "${{ secrets.B2_R1B_PROVIDER_API_KEY }}",
+            '"-m", "b2.blind_eval"',
+        ):
+            with self.subTest(later_gate=later_gate):
+                self.assertLess(claim_position, self.workflow.index(later_gate))
+        self.assertNotIn("EXPECTED_WORKFLOW_RUN_ID", self.workflow)
+        self.assertNotIn("B2_R1B_WORKFLOW_RUN_ID", self.workflow)
 
     def test_stale_receipt_rejects_changed_provider_model_endpoint_and_runtime(self):
         script = run_scripts(self.workflow)[0]
@@ -319,12 +434,21 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "context size": ("EXPECTED_CONTEXT_BYTES", "108231"),
             "prompt digest": ("EXPECTED_PROMPT_SHA256", "1" * 64),
             "prompt size": ("EXPECTED_PROMPT_BYTES", "2309"),
+            "R1b run": ("RUN_ID", "B2-R1B-RUN-002"),
+            "handoff": ("APPROVED_HANDOFF_ID", "B2-R1B-HANDOFF-002"),
             "evaluation run": ("EVALUATION_RUN_ID", "B2-R1B-002"),
             "bridge main": ("BRIDGE_MAIN_SHA", "2" * 40),
+        }
+        dispatch_pair = {
+            "RUN_ID": "DISPATCH_RUN_ID",
+            "APPROVED_HANDOFF_ID": "DISPATCH_HANDOFF_ID",
+            "EVALUATION_RUN_ID": "DISPATCH_EVALUATION_RUN_ID",
         }
         for label, (name, value) in receipt_bound_adversarial.items():
             candidate = dict(environment)
             candidate[name] = value
+            if name in dispatch_pair:
+                candidate[dispatch_pair[name]] = value
             with self.subTest(stale_receipt_changed_parameter=label):
                 rejected = subprocess.run(
                     ["bash"], input=script, text=True, capture_output=True,
@@ -335,6 +459,75 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
                     "canonical RUN-READY receipt does not match protected execution parameters",
                     rejected.stderr,
                 )
+
+    def test_complete_predeclared_run_and_handoff_identity_is_receipt_bound(self):
+        script = run_scripts(self.workflow)[0]
+        environment, receipt_bytes = valid_preflight_environment()
+        receipt = json.loads(receipt_bytes)
+        self.assertEqual("b2-r1b-run-ready/v2", receipt["schema_version"])
+        self.assertEqual("B2-R1B-RUN-001", receipt["run_id"])
+        self.assertEqual("B2-R1B-001", receipt["evaluation_run_id"])
+        self.assertEqual("B2-R1B-HANDOFF-001", receipt["handoff_id"])
+
+        for name, value in (
+            ("RUN_ID", "B2-R1B-RUN-002"),
+            ("EVALUATION_RUN_ID", "B2-R1B-002"),
+            ("APPROVED_HANDOFF_ID", "B2-R1B-HANDOFF-002"),
+        ):
+            candidate = dict(environment)
+            candidate[name] = value
+            candidate[{
+                "RUN_ID": "DISPATCH_RUN_ID",
+                "EVALUATION_RUN_ID": "DISPATCH_EVALUATION_RUN_ID",
+                "APPROVED_HANDOFF_ID": "DISPATCH_HANDOFF_ID",
+            }[name]] = value
+            with self.subTest(changed_protected_identity=name):
+                rejected = subprocess.run(
+                    ["bash"], input=script, text=True, capture_output=True,
+                    env=candidate, check=False,
+                )
+                self.assertNotEqual(0, rejected.returncode)
+                self.assertIn(
+                    "canonical RUN-READY receipt does not match protected execution parameters",
+                    rejected.stderr,
+                )
+
+    def test_one_shot_claim_is_atomic_durable_and_body_free(self):
+        claim_step = self.workflow[
+            self.workflow.index(
+                "Atomically consume the durable one-shot authorization claim"
+            ) : self.workflow.index("Check out the exact authorized execution head")
+        ]
+        for required in (
+            "B2_R1B_ONE_SHOT_CLAIM_BASE",
+            "b2-r1b-one-shot-claim/v1",
+            "R1B-ONE-SHOT-AUTHORIZATION-CLAIM",
+            "os.O_EXCL",
+            "O_NOFOLLOW",
+            "os.fchmod(handle.fileno(), 0o600)",
+            "os.fsync(handle.fileno())",
+            "os.fsync(directory_fd)",
+            "dir_fd=directory_fd",
+            "durable one-shot claim base overlaps an ephemeral root",
+            '"workflow_run_id": workflow_run_id',
+            '"run_identity_sha256": run_identity_digest',
+            '"run_ready_receipt_sha256": receipt_digest',
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, claim_step)
+        for forbidden in (
+            "context.txt",
+            "prompt.txt",
+            "reasoning",
+            "raw_answer",
+            "B2_R1B_PROVIDER_API_KEY",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, claim_step)
+        cleanup = self.workflow[
+            self.workflow.index("Verify-clean all runner and exchange objects") :
+        ]
+        self.assertNotIn("B2_R1B_ONE_SHOT_CLAIM_BASE", cleanup)
 
     def test_tampered_receipt_rejects_stale_and_recomputed_digest(self):
         script = run_scripts(self.workflow)[0]
@@ -410,11 +603,23 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             self.workflow.index("Generate the run-unique input key and request") :
             self.workflow.index("Wait for and accept the exact encrypted input payload")
         ]
-        self.assertIn('"schema_version": "b2-r1b-live-request/v2"', request_step)
+        self.assertIn('"schema_version": "b2-r1b-live-request/v3"', request_step)
         self.assertIn('"run_ready_receipt": run_ready', request_step)
         self.assertIn('"run_ready_receipt_sha256":', request_step)
+        self.assertIn('"one_shot_claim": claim', request_step)
+        self.assertIn('"one_shot_claim_sha256":', request_step)
         self.assertIn("hashlib.sha256(receipt_bytes).hexdigest()", request_step)
         self.assertIn("RUN-READY receipt changed after preflight", request_step)
+        for exact_identity in (
+            '"run_id": run_ready["run_id"]',
+            '"handoff_id": run_ready["handoff_id"]',
+            '"workflow_run_id": claim["workflow_run_id"]',
+            '"workflow_run_attempt": claim["workflow_run_attempt"]',
+            '"evaluation_run_id": run_ready["evaluation_run_id"]',
+            '"authorization_id": run_ready["authorization_id"]',
+        ):
+            with self.subTest(exact_identity=exact_identity):
+                self.assertIn(exact_identity, request_step)
         for field in (
             "provider_label",
             "requested_model_id",
@@ -437,11 +642,11 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
         )
         self.assertLess(binding_step, handoff_step)
         self.assertIn(
-            'git merge-base --is-ancestor "$BRIDGE_MAIN_SHA" "$EXECUTION_HEAD_SHA"',
+            'git merge-base --is-ancestor "$BOUND_BRIDGE_MAIN_SHA" "$BOUND_EXECUTION_HEAD_SHA"',
             self.workflow,
         )
-        self.assertIn('$BRIDGE_MAIN_SHA:b2/blind_eval.py', self.workflow)
-        self.assertIn('$BRIDGE_MAIN_SHA:b2/blind_handoff.py', self.workflow)
+        self.assertIn('$BOUND_BRIDGE_MAIN_SHA:b2/blind_eval.py', self.workflow)
+        self.assertIn('$BOUND_BRIDGE_MAIN_SHA:b2/blind_handoff.py', self.workflow)
 
     def test_v52_possession_proof_precedes_secret_and_provider(self):
         commands = (
@@ -528,9 +733,11 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
 
     def test_exchange_is_run_scoped_create_once_and_not_an_artifact(self):
         self.assertIn(
-            'os.environ["GITHUB_RUN_ID"],\n              os.environ["GITHUB_RUN_ATTEMPT"],\n              os.environ["GITHUB_SHA"]',
+            'os.environ["BOUND_WORKFLOW_RUN_ID"],\n              os.environ["BOUND_WORKFLOW_RUN_ATTEMPT"],\n              os.environ["BOUND_EXECUTION_HEAD_SHA"]',
             self.workflow,
         )
+        self.assertIn('"HANDOFF_ID": run_ready["handoff_id"]', self.workflow)
+        self.assertNotIn("handoff_id = f\"B2-R1B-", self.workflow)
         self.assertIn("os.O_EXCL", self.workflow)
         for name in (
             "input-public.pem",
@@ -608,8 +815,12 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "workflow_dispatch",
             "B2_R1B_RUN_READY_RECEIPT_SHA256",
             "B2_R1B_RUN_READY_RECEIPT_B64",
-            "b2-r1b-run-ready/v1",
-            "b2-r1b-live-request/v2",
+            "B2_R1B_ONE_SHOT_CLAIM_BASE",
+            "B2_R1B_RUN_ID",
+            "B2_R1B_HANDOFF_ID",
+            "b2-r1b-run-ready/v2",
+            "b2-r1b-one-shot-claim/v1",
+            "b2-r1b-live-request/v3",
             "B2_R1B_PROVIDER_API_KEY",
             "provider_attempts = 1",
             "automatic_retries = 0",

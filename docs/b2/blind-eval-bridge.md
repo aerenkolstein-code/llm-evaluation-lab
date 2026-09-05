@@ -1,7 +1,8 @@
 # B2 Generic Blind Eval Bridge v0.1
 
-Status: accepted generic bridge plus `WO-B2-BLIND-02` observability hardening;
-pre-Independent-QA review and not live-authorized.
+Status: accepted generic bridge plus `WO-B2-BLIND-02` observability hardening
+and `WO-B2-BLIND-R1B-COMPAT-01 v0.1` explicit reasoning controls;
+implementation/offline review only and not live-authorized.
 
 This bridge is a thin private-lane-friendly invocation layer for B2 continuous evaluation. It exists because B2 already has case/rubric/oracle, typed terminal semantics, evidence receipts, regression infrastructure, and quality projection, but `main` previously had no generic way to send one byte-frozen long context plus one byte-frozen prompt to a live model.
 
@@ -26,6 +27,14 @@ v0.1 implements one generic protocol:
 
 The provider label, endpoint, requested model ID, and API-key environment variable are supplied at runtime. The code does not make a brand capability claim. Other provider protocols require a later amendment/Work Order.
 
+The bridge v3 request API also accepts optional, explicit reasoning controls:
+`--thinking-mode enabled|disabled` and `--reasoning-effort low|high|max`.
+Omitting both preserves the pre-v3 wire request for existing non-R1b callers.
+When thinking is explicit, the OpenAI-compatible JSON payload carries
+`thinking.type`. A reasoning effort is sent only when thinking is explicitly
+enabled; an effort without `thinking=enabled`, including any non-null effort
+with disabled thinking, fails before credential lookup or transport.
+
 ## Hard gates
 
 - `--authorize-live-call` is mandatory before credential lookup or network access.
@@ -37,6 +46,7 @@ The provider label, endpoint, requested model ID, and API-key environment variab
 - provider-controlled metadata is not trusted verbatim: requested/resolved model IDs, response IDs, and finish reasons are retained only when they satisfy strict short ASCII token policies; otherwise they are omitted or rejected before credential lookup.
 - provider HTTP error bodies are never copied into receipts because a provider may echo private request content.
 - API keys are environment-only and never rendered into receipts.
+- unsupported or contradictory thinking/reasoning controls fail before credential lookup and network access.
 - raw-output and receipt-output must resolve to distinct paths; aliasing is rejected before execution.
 - output publication is fail closed: both artifacts are staged before PASS publication, raw is published before receipt, a receipt-publication failure rolls back raw, and a non-PASS run removes any stale raw from a previous run.
 - CI uses deterministic fake transports only; no live or paid call is allowed in CI.
@@ -70,6 +80,7 @@ Public-safe receipt may retain only metadata/fingerprints such as:
 - protocol/envelope versions
 - provider label/protocol
 - requested model ID plus sanitized/validated resolved model ID when safe
+- requested thinking mode and reasoning effort as bounded public-safe values or `null`
 - SHA-256 fingerprints and byte counts
 - timestamps/duration
 - HTTP status plus sanitized/validated response ID and finish reason when safe
@@ -83,16 +94,32 @@ Public-safe receipt may retain only metadata/fingerprints such as:
 
 Do not commit private inputs or answers into this public repository.
 
-The hardened receipt schema is `b2-blind-eval-bridge/v2`. HTTP 200 alone is not
+The current hardened receipt protocol/schema version is
+`b2-blind-eval-bridge/v3`. It adds `requested_thinking_mode` and
+`requested_reasoning_effort`; both are explicit `null` for an unchanged legacy
+request. The repository's no-touch
+`schemas/blind_eval_receipt.schema.json` remains the closed historical v2
+contract rather than being silently reinterpreted as v3. HTTP 200 alone is not
 PASS: a null, empty, or whitespace-only final remains
 `NOT_EVALUABLE / EMPTY_FINAL_CONTENT`, even when reasoning metadata is present.
 Only a non-empty final may produce bridge-level PASS, which still does not score
 answer quality.
 
 The transport boundary is separately specified in
-[B2 Blind Handoff v5.2](blind-handoff-v5.md). The durable review tree contains
-no live workflow; any future provider run requires separate authorization and a
-new reviewed exact-head orchestration change.
+[B2 Blind Handoff v5.2](blind-handoff-v5.md). The R1b orchestration workflow is
+manual-only and protected; this compatibility implementation does not configure
+it or authorize a provider run.
+
+## A063 non-thinking R1b compatibility
+
+`WO-B2-BLIND-R1B-COMPAT-01 v0.1` freezes only the future R1b recovery lane as
+non-thinking. Its canonical approval state is
+`provider_thinking_mode = "disabled"` and
+`provider_reasoning_effort = null`. The resulting provider payload contains
+exactly `"thinking":{"type":"disabled"}` for the reasoning control and omits
+`reasoning_effort`. The body-free v3 receipt records the same requested pair.
+This is a prospective compatibility choice; it makes no retrospective claim
+about the effective defaults of historical Q1-R1.
 
 ## Private output-pair semantics
 
@@ -132,6 +159,7 @@ python -m b2.blind_eval \
   --model exact-model-id \
   --endpoint https://provider.example/v1/chat/completions \
   --api-key-env PROVIDER_API_KEY \
+  --thinking-mode disabled \
   --raw-output /private/run-001.raw.txt \
   --receipt-output /private/run-001.receipt.json \
   --authorize-live-call
@@ -147,4 +175,8 @@ This bridge is B2 infrastructure, not a formal Evaluation Family. It therefore d
 
 ## Merge boundary
 
-Draft PR only until Independent QA reviews the exact repaired head/tree, verifies privacy/secret/redirect/output-commit/terminal semantics and full regression CI, and returns PASS. Merge additionally requires explicit authorization.
+Draft PR only until Independent QA reviews the exact repaired head/tree,
+verifies privacy/secret/reasoning/redirect/output-commit/terminal semantics and
+full offline regression CI, and returns PASS. Merge additionally requires
+separate explicit authorization; neither review nor merge authorizes a live
+provider request.

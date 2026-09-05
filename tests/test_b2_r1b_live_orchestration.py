@@ -95,17 +95,21 @@ def canonical_run_ready(environment: dict[str, str]) -> dict[str, object]:
         "provider_label": environment["PROVIDER_LABEL"],
         "provider_max_tokens": int(environment["PROVIDER_MAX_TOKENS"]),
         "provider_protocol": environment["PROVIDER_PROTOCOL"],
+        "provider_reasoning_effort": json.loads(
+            environment["PROVIDER_REASONING_EFFORT_JSON"]
+        ),
         "provider_temperature": 0,
+        "provider_thinking_mode": environment["PROVIDER_THINKING_MODE"],
         "provider_timeout_seconds": int(environment["PROVIDER_TIMEOUT_SECONDS"]),
         "receipt_type": "R1B-RUN-READY",
         "repository": environment["GITHUB_REPOSITORY"],
         "requested_model_id": environment["REQUESTED_MODEL_ID"],
         "run_id": environment["RUN_ID"],
-        "schema_version": "b2-r1b-run-ready/v2",
+        "schema_version": "b2-r1b-run-ready/v3",
         "trigger_event": "workflow_dispatch",
         "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
         "workflow_run_attempt": 1,
-        "work_order": "WO-B2-BLIND-R1B-01 v0.1",
+        "work_order": "WO-B2-BLIND-R1B-COMPAT-01 v0.1",
     }
 
 
@@ -149,6 +153,8 @@ def valid_preflight_environment() -> tuple[dict[str, str], bytes]:
         "PROVIDER_TIMEOUT_SECONDS": "180",
         "PROVIDER_TEMPERATURE": "0",
         "PROVIDER_MAX_TOKENS": "8192",
+        "PROVIDER_THINKING_MODE": "disabled",
+        "PROVIDER_REASONING_EFFORT_JSON": "null",
         "HANDOFF_TTL_SECONDS": "3600",
         "DISPATCH_RUN_ID": "B2-R1B-RUN-001",
         "DISPATCH_EVALUATION_RUN_ID": "B2-R1B-001",
@@ -327,6 +333,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "B2_R1B_RUN_ID",
             "B2_R1B_HANDOFF_ID",
             "B2_R1B_EXECUTION_HEAD_SHA",
+            "B2_R1B_THINKING_MODE",
+            "B2_R1B_REASONING_EFFORT_JSON",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, self.workflow)
@@ -356,6 +364,10 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "unsupported protocol": ("PROVIDER_PROTOCOL", "unsupported/v1"),
             "unsafe endpoint": ("PROVIDER_ENDPOINT", "http://provider.example/v1"),
             "nonzero temperature": ("PROVIDER_TEMPERATURE", "0.1"),
+            "implicit thinking": ("PROVIDER_THINKING_MODE", "enabled"),
+            "non-null reasoning effort": (
+                "PROVIDER_REASONING_EFFORT_JSON", '"high"'
+            ),
             "oversize ttl": ("HANDOFF_TTL_SECONDS", "21601"),
         }
         for label, (name, value) in adversarial.items():
@@ -612,6 +624,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "handoff": ("APPROVED_HANDOFF_ID", "B2-R1B-HANDOFF-002"),
             "evaluation run": ("EVALUATION_RUN_ID", "B2-R1B-002"),
             "bridge main": ("BRIDGE_MAIN_SHA", "2" * 40),
+            "thinking mode": ("PROVIDER_THINKING_MODE", "enabled"),
+            "reasoning effort": ("PROVIDER_REASONING_EFFORT_JSON", '"high"'),
         }
         dispatch_pair = {
             "RUN_ID": "DISPATCH_RUN_ID",
@@ -638,10 +652,12 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
         script = run_scripts(self.workflow)[0]
         environment, receipt_bytes = valid_preflight_environment()
         receipt = json.loads(receipt_bytes)
-        self.assertEqual("b2-r1b-run-ready/v2", receipt["schema_version"])
+        self.assertEqual("b2-r1b-run-ready/v3", receipt["schema_version"])
         self.assertEqual("B2-R1B-RUN-001", receipt["run_id"])
         self.assertEqual("B2-R1B-001", receipt["evaluation_run_id"])
         self.assertEqual("B2-R1B-HANDOFF-001", receipt["handoff_id"])
+        self.assertEqual("disabled", receipt["provider_thinking_mode"])
+        self.assertIsNone(receipt["provider_reasoning_effort"])
 
         for name, value in (
             ("RUN_ID", "B2-R1B-RUN-002"),
@@ -665,6 +681,39 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
                     "canonical RUN-READY receipt does not match protected execution parameters",
                     rejected.stderr,
                 )
+
+    def test_disabled_thinking_effort_pair_and_old_v2_fail_closed(self):
+        script = run_scripts(self.workflow)[0]
+        environment, receipt_bytes = valid_preflight_environment()
+
+        non_null = dict(environment)
+        non_null["PROVIDER_REASONING_EFFORT_JSON"] = '"high"'
+        bind_run_ready(non_null)
+        rejected = subprocess.run(
+            ["bash"], input=script, text=True, capture_output=True,
+            env=non_null, check=False,
+        )
+        self.assertNotEqual(0, rejected.returncode)
+        self.assertIn(
+            "disabled thinking requires null reasoning effort", rejected.stderr
+        )
+
+        old_v2 = json.loads(receipt_bytes)
+        old_v2.pop("provider_thinking_mode")
+        old_v2.pop("provider_reasoning_effort")
+        old_v2["schema_version"] = "b2-r1b-run-ready/v2"
+        old_v2["work_order"] = "WO-B2-BLIND-R1B-01 v0.1"
+        v2_environment = dict(environment)
+        bind_run_ready(v2_environment, old_v2)
+        rejected = subprocess.run(
+            ["bash"], input=script, text=True, capture_output=True,
+            env=v2_environment, check=False,
+        )
+        self.assertNotEqual(0, rejected.returncode)
+        self.assertIn(
+            "canonical RUN-READY receipt does not match protected execution parameters",
+            rejected.stderr,
+        )
 
     def test_one_shot_claim_is_atomic_durable_and_body_free(self):
         claim_step = self.workflow[
@@ -806,6 +855,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "provider_timeout_seconds",
             "provider_temperature",
             "provider_max_tokens",
+            "provider_thinking_mode",
+            "provider_reasoning_effort",
             "max_provider_attempts",
             "automatic_retries",
         ):
@@ -862,6 +913,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             'run_ready["provider_timeout_seconds"]',
             'run_ready["provider_temperature"]',
             'run_ready["provider_max_tokens"]',
+            'run_ready["provider_thinking_mode"]',
+            'run_ready["provider_reasoning_effort"]',
         ):
             with self.subTest(runtime_value=runtime_value):
                 self.assertIn(runtime_value, provider_step)
@@ -873,6 +926,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "PROVIDER_TIMEOUT_SECONDS",
             "PROVIDER_TEMPERATURE",
             "PROVIDER_MAX_TOKENS",
+            "PROVIDER_THINKING_MODE",
+            "PROVIDER_REASONING_EFFORT_JSON",
             "EVALUATION_RUN_ID",
             "BRIDGE_MAIN_SHA",
         ):
@@ -894,6 +949,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "provider gate lost the approved RUN-READY binding", provider_step
         )
         self.assertIn("subprocess.run(command, stdout=stdout, check=False)", provider_step)
+        self.assertIn('"--thinking-mode", run_ready["provider_thinking_mode"]', provider_step)
+        self.assertNotIn('"--reasoning-effort"', provider_step)
         receipt_gate = self.workflow[
             self.workflow.index("Validate the body-free bridge receipt") :
             self.workflow.index("Encrypt and publish the complete private result evidence")
@@ -902,6 +959,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "bridge receipt gate lost the approved RUN-READY binding", receipt_gate
         )
         self.assertIn('run_ready["provider_label"]', receipt_gate)
+        self.assertIn('run_ready["provider_thinking_mode"]', receipt_gate)
+        self.assertIn('run_ready["provider_reasoning_effort"]', receipt_gate)
         self.assertNotIn('os.environ["PROVIDER_LABEL"]', receipt_gate)
         self.assertNotIn('os.environ["REQUESTED_MODEL_ID"]', receipt_gate)
         self.assertNotIn('os.environ["PROVIDER_ENDPOINT"]', receipt_gate)
@@ -988,23 +1047,26 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
 
     def test_contract_records_authority_and_hard_stops(self):
         for required in (
-            "WO-B2-BLIND-R1B-01 v0.1",
-            "0ba7c2572762afe38ccf6a71b012d9d8a6dae3a5",
-            "f88f3f77429a52639c0fa5b5444a9d10b01235d9",
+            "WO-B2-BLIND-R1B-COMPAT-01 v0.1",
+            "74304a23d7e542b28dcd519f9b58d394447fc696",
+            "84f5bc1a56f8c93c92717cf928dc928a63ab118f",
             "workflow_dispatch",
             "B2_R1B_RUN_READY_RECEIPT_SHA256",
             "B2_R1B_RUN_READY_RECEIPT_B64",
             "B2_R1B_ONE_SHOT_CLAIM_BASE",
             "B2_R1B_RUN_ID",
             "B2_R1B_HANDOFF_ID",
-            "b2-r1b-run-ready/v2",
+            "b2-r1b-run-ready/v3",
+            "b2-blind-eval-bridge/v3",
+            'provider_thinking_mode = "disabled"',
+            "provider_reasoning_effort = null",
             "b2-r1b-one-shot-claim/v1",
             "b2-r1b-live-request/v3",
             "B2_R1B_PROVIDER_API_KEY",
             "provider_attempts = 1",
             "automatic_retries = 0",
             "EMPTY_FINAL_CONTENT",
-            "READY FOR B2-BLIND-R1B INDEPENDENT QA",
+            "READY FOR B2-BLIND-R1B-COMPAT INDEPENDENT QA",
             "no live execution authority",
             "Historical Q1-R1 remains exactly",
         ):

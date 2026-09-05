@@ -6,16 +6,18 @@ Authority:
 
 - `PLAN-B2-BLIND-R1b v0.1` — Drive `1fR125gjS2WqSJaedAuQAxw2pcvXK8WJN00v8Rd_gOh0`;
 - `WO-B2-BLIND-R1B-01 v0.1` — Drive `1v2X3H9Ke2Z1Veic7ZNMQRv09M12ix-7Ps1L0byFVzwg`;
-- implementation issue `#36` and Draft PR `#37`;
+- `WO-B2-BLIND-R1B-COMPAT-01 v0.1` — Drive `1rZaLiVZVqE5Sb1GGcBelg1m4UHrOincM5H1unp3MMvU`;
+- compatibility implementation issue `#44`;
 - P0 baseline receipt — Drive `12GHMbw6jrAbF5A9bNo_KXpaxMqCpCfe5OYVy1iPYUjA`;
-- construction baseline `main@0ba7c2572762afe38ccf6a71b012d9d8a6dae3a5`, tree
-  `f88f3f77429a52639c0fa5b5444a9d10b01235d9`.
+- compatibility construction baseline
+  `main@74304a23d7e542b28dcd519f9b58d394447fc696`, tree
+  `84f5bc1a56f8c93c92717cf928dc928a63ab118f`.
 
-The A053 scope-expansion receipt authorizes exactly four changed paths: the new
-live workflow, this contract, its new orchestration test, and the narrow legacy
-assertion migration in `tests/test_b2_blind_handoff.py`. Core v5.2 protocol and
-bridge code, schemas, dependencies, ordinary CI, and the deterministic smoke
-workflow remain untouched.
+The A053 orchestration was accepted and merged through PR `#37`. A063 now
+authorizes a compatibility-only six-path repair covering the generic bridge,
+its tests/doc, and this workflow/test/doc. Core v5.2 handoff code, schemas,
+dependencies, ordinary CI, the deterministic smoke workflow, and BM0/BM1
+remain untouched.
 
 ## What this change does and does not do
 
@@ -94,12 +96,15 @@ non-secret variables freeze only public-safe exact metadata:
 | `B2_R1B_TIMEOUT_SECONDS` | one-attempt timeout in `[1, 600]` |
 | `B2_R1B_TEMPERATURE` | exactly `0` |
 | `B2_R1B_MAX_TOKENS` | positive frozen maximum, at most `262144` |
+| `B2_R1B_THINKING_MODE` | exactly `disabled` |
+| `B2_R1B_REASONING_EFFORT_JSON` | exact canonical JSON literal `null` |
 | `B2_R1B_HANDOFF_TTL_SECONDS` | freshness window in `[300, 21600]` |
 
 ### Canonical RUN-READY machine binding
 
 `R1B-RUN-READY` is an exact public-safe JSON object, not a prose approval and
-not a digest standing alone. Its closed `b2-r1b-run-ready/v2` schema is:
+not a digest standing alone. A063 replaces the unrepaired v2 semantics with the
+closed `b2-r1b-run-ready/v3` schema:
 
 ```json
 {
@@ -121,17 +126,19 @@ not a digest standing alone. Its closed `b2-r1b-run-ready/v2` schema is:
   "provider_label": "<public-safe provider label>",
   "provider_max_tokens": 8192,
   "provider_protocol": "openai-compatible-chat-completions/v1",
+  "provider_reasoning_effort": null,
   "provider_temperature": 0,
+  "provider_thinking_mode": "disabled",
   "provider_timeout_seconds": 180,
   "receipt_type": "R1B-RUN-READY",
   "repository": "aerenkolstein-code/llm-evaluation-lab",
   "requested_model_id": "<exact requested model ID>",
   "run_id": "<predeclared R1b run ID>",
-  "schema_version": "b2-r1b-run-ready/v2",
+  "schema_version": "b2-r1b-run-ready/v3",
   "trigger_event": "workflow_dispatch",
   "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
   "workflow_run_attempt": 1,
-  "work_order": "WO-B2-BLIND-R1B-01 v0.1"
+  "work_order": "WO-B2-BLIND-R1B-COMPAT-01 v0.1"
 }
 ```
 
@@ -151,10 +158,17 @@ entire expected object from the protected variables plus fixed repository,
 workflow, ref, mode, one-attempt, and zero-retry constants, and compares the
 canonical bytes byte-for-byte. Consequently a stale receipt cannot authorize a
 different provider label, requested model, endpoint, timeout, temperature,
-maximum token count, TTL, input identity, bridge commit, execution head,
+maximum token count, thinking mode, reasoning effort, TTL, input identity,
+bridge commit, execution head,
 R1b run identity, evaluation-run identity, handoff identity, or authorization
 ID. All of these checks finish before checkout, exchange-directory access,
 secret injection, or provider execution.
+
+For this recovery lane, `provider_thinking_mode = "disabled"` and
+`provider_reasoning_effort = null` are fixed policy, not provider defaults.
+The protected effort variable must be the exact JSON bytes `null`; a non-null
+effort with disabled thinking fails closed. A canonical v2 receipt lacks these
+fields and cannot byte-match v3, even if its digest is freshly recomputed.
 
 The next step consumes the approved authorization exactly once. Under the
 exclusive ledger lock it validates every existing canonical
@@ -212,11 +226,13 @@ After that comparison, the runner writes those exact canonical bytes create-once
 as mode-0600 `run-ready.json` inside its mode-0700 root. Immediately before the
 single provider attempt, the provider step rehashes and reparses that file and
 constructs the bridge argument vector exclusively from its provider, model,
-endpoint, timeout, temperature, maximum-token, evaluation-ID, and bridge-commit
-fields. It does not take those execution arguments from independently mutable
-shell variables after the initial binding check. The following body-free bridge
-receipt gate also derives its expected provider/model/input/commit values from
-the same hashed canonical file.
+endpoint, timeout, temperature, maximum-token, thinking-mode, null-effort,
+evaluation-ID, and bridge-commit fields. It passes `--thinking-mode disabled`,
+derives omission of `--reasoning-effort` from the approved null, and does not
+take those execution arguments from independently mutable shell variables after
+the initial binding check. The following body-free v3 bridge receipt gate also
+derives its expected provider/model/reasoning/input/commit values from the same
+hashed canonical file.
 
 The GitHub-assigned workflow run ID does not exist when the immutable dispatch
 inputs are submitted, so the receipt does not pretend to predict it and there
@@ -294,7 +310,7 @@ claim, or an expired/not-yet-valid object fail closed.
 | 7 | runner → private | fresh `runner/challenge.enc.json` | no |
 | 8 | private → runner | v5.2 `private/challenge-ack.json` | no |
 | 9 | runner | `verify-ack` creates the exclusive `ack-accepted` claim | no |
-| 10 | runner | exactly one `b2.blind_eval --authorize-live-call` invocation | step-local only |
+| 10 | runner | exactly one `b2.blind_eval --thinking-mode disabled --authorize-live-call` invocation; reasoning effort omitted | step-local only |
 | 11 | runner → private | v5.2 `runner/result.enc.json` | no |
 | 12 | private | decrypt, validate, and atomically publish the private result pair | no |
 | 13 | private → runner | result-accept marker, body-free verification receipt, cleanup receipt | no |
@@ -303,7 +319,9 @@ claim, or an expired/not-yet-valid object fail closed.
 There is one bridge invocation and no loop around it. The bridge contract fixes
 `automatic_retries = 0`; the result bundle is rejected unless
 `provider_attempts = 1`, all frozen input identities match, and
-`quality_score = null`. HTTP 200 with null, empty, or whitespace-only final
+`quality_score = null`. The body-free `b2-blind-eval-bridge/v3` receipt must
+also report `requested_thinking_mode = "disabled"` and
+`requested_reasoning_effort = null`. HTTP 200 with null, empty, or whitespace-only final
 content remains `NOT_EVALUABLE / EMPTY_FINAL_CONTENT`; reasoning presence does
 not change that classification.
 
@@ -323,7 +341,8 @@ execution/bridge commits, input hashes and sizes, mode, R1b run ID, evaluation
 ID, handoff ID, workflow run ID, and authorization ID—to those two bound
 objects before using the context and prompt. A missing/extra receipt or claim
 field or any provider,
-model, endpoint, timeout, temperature, token, TTL, input, head, or
+model, endpoint, timeout, temperature, token, thinking mode, reasoning effort,
+TTL, input, head, or
 authorization mismatch fails closed. It then performs these existing CLI
 operations with the exact arguments from the request:
 
@@ -392,8 +411,9 @@ Engineering must bind its receipt to the exact PR head/tree and record:
   possession proof, result decryptability, and verified cleanup;
 - static manual-trigger/no-retry/post-ACK-secret ordering audits;
 - canonical receipt digest/parse/equality tests, including stale-digest and
-  valid-but-changed provider/model/endpoint/runtime/run/handoff adversarial
-  cases;
+  valid-but-changed provider/model/endpoint/runtime/thinking/effort/run/handoff
+  adversarial cases, non-null effort with disabled thinking, and rejection of
+  the unrepaired v2 RUN-READY shape;
 - a two-dispatch replay test in which both the actual and legacy expected
   workflow-run variables move together while the approved receipt/digest and
   authorization stay unchanged; the second dispatch must fail at the durable
@@ -407,7 +427,7 @@ Engineering must bind its receipt to the exact PR head/tree and record:
 - repository leak and changed-path-envelope scans.
 
 Only after those checks may engineering emit
-`READY FOR B2-BLIND-R1B INDEPENDENT QA` and stop. Distinct exact-head IQA PASS is
+`READY FOR B2-BLIND-R1B-COMPAT INDEPENDENT QA` and stop. Distinct exact-head IQA PASS is
 required before a separate merge decision. Merge would still not authorize a
 provider run; fresh provider/model/endpoint/runtime preflight, exact
 `R1B-RUN-READY`, protected-environment approval, and separate one-shot live

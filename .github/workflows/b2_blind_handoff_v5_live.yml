@@ -315,9 +315,11 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import base64
+          import fcntl
           import hashlib
           import json
           import os
+          import re
           import stat
           from pathlib import Path
 
@@ -411,9 +413,110 @@ jobs:
               ("b2-r1b-one-shot/v1\0" + run_ready["authorization_id"]).encode("ascii")
           ).hexdigest() + ".json"
           run_identity_index = "run-identity-" + run_identity_digest + ".json"
+          claim_digest = hashlib.sha256(claim_bytes).hexdigest()
+          claim_record = "claim-" + claim_digest + ".json"
           flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          read_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
           directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
           directory_fd = os.open(claim_base, directory_flags)
+          lock_fd = None
+
+          claim_keys = {
+              "authorization_id",
+              "bridge_main_sha",
+              "evaluation_run_id",
+              "execution_head_sha",
+              "handoff_id",
+              "receipt_type",
+              "repository",
+              "run_id",
+              "run_identity_sha256",
+              "run_ready_receipt_sha256",
+              "schema_version",
+              "workflow_path",
+              "workflow_run_attempt",
+              "workflow_run_id",
+          }
+
+          def reject_duplicate_keys(pairs):
+              parsed = {}
+              for key, value in pairs:
+                  if key in parsed:
+                      raise ValueError("duplicate claim key")
+                  parsed[key] = value
+              return parsed
+
+          def reject_nonfinite(value):
+              raise ValueError(f"non-finite claim value: {value}")
+
+          def read_ledger_claim(entry_name):
+              try:
+                  entry_fd = os.open(entry_name, read_flags, dir_fd=directory_fd)
+              except OSError as exc:
+                  raise SystemExit("durable one-shot ledger entry is unreadable") from exc
+              with os.fdopen(entry_fd, "rb") as handle:
+                  entry_info = os.fstat(handle.fileno())
+                  if (
+                      not stat.S_ISREG(entry_info.st_mode)
+                      or entry_info.st_uid != os.geteuid()
+                      or stat.S_IMODE(entry_info.st_mode) != 0o600
+                      or entry_info.st_size < 2
+                      or entry_info.st_size > 65536
+                  ):
+                      raise SystemExit("durable one-shot ledger entry violates the private boundary")
+                  entry_bytes = handle.read(65537)
+              try:
+                  existing = json.loads(
+                      entry_bytes.decode("ascii"),
+                      object_pairs_hook=reject_duplicate_keys,
+                      parse_constant=reject_nonfinite,
+                  )
+              except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                  raise SystemExit("durable one-shot ledger contains an invalid claim") from exc
+              if (
+                  not isinstance(existing, dict)
+                  or set(existing) != claim_keys
+                  or json.dumps(
+                      existing,
+                      ensure_ascii=True,
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  ).encode("ascii") != entry_bytes
+                  or existing.get("schema_version") != "b2-r1b-one-shot-claim/v1"
+                  or existing.get("receipt_type") != "R1B-ONE-SHOT-AUTHORIZATION-CLAIM"
+                  or existing.get("workflow_run_attempt") != 1
+                  or not isinstance(existing.get("workflow_run_id"), str)
+                  or re.fullmatch(r"[1-9][0-9]*", existing["workflow_run_id"]) is None
+              ):
+                  raise SystemExit("durable one-shot ledger contains an invalid claim")
+              existing_run_identity = {
+                  "evaluation_run_id": existing["evaluation_run_id"],
+                  "handoff_id": existing["handoff_id"],
+                  "run_id": existing["run_id"],
+              }
+              existing_run_digest = hashlib.sha256(
+                  json.dumps(
+                      existing_run_identity,
+                      ensure_ascii=True,
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  ).encode("ascii")
+              ).hexdigest()
+              if existing.get("run_identity_sha256") != existing_run_digest:
+                  raise SystemExit("durable one-shot ledger contains an invalid claim")
+              existing_claim_digest = hashlib.sha256(entry_bytes).hexdigest()
+              expected_authorization_index = "authorization-" + hashlib.sha256(
+                  ("b2-r1b-one-shot/v1\0" + existing["authorization_id"]).encode("ascii")
+              ).hexdigest() + ".json"
+              valid_entry_names = {
+                  "claim-" + existing_claim_digest + ".json",
+                  expected_authorization_index,
+                  "run-identity-" + existing_run_digest + ".json",
+              }
+              if entry_name not in valid_entry_names:
+                  raise SystemExit("durable one-shot ledger index disagrees with its claim")
+              return existing
+
           try:
               opened_info = os.fstat(directory_fd)
               if (
@@ -421,21 +524,82 @@ jobs:
                   or opened_info.st_ino != claim_base_info.st_ino
               ):
                   raise SystemExit("durable one-shot claim base changed during validation")
+
+              lock_flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+              try:
+                  lock_fd = os.open("ledger.lock", lock_flags, 0o600, dir_fd=directory_fd)
+              except OSError as exc:
+                  raise SystemExit("durable one-shot ledger lock is unavailable") from exc
+              lock_info = os.fstat(lock_fd)
+              if (
+                  not stat.S_ISREG(lock_info.st_mode)
+                  or lock_info.st_uid != os.geteuid()
+                  or stat.S_IMODE(lock_info.st_mode) != 0o600
+              ):
+                  raise SystemExit("durable one-shot ledger lock violates the private boundary")
+              fcntl.flock(lock_fd, fcntl.LOCK_EX)
+              os.fsync(lock_fd)
+              os.fsync(directory_fd)
+
+              for entry_name in sorted(os.listdir(directory_fd)):
+                  if entry_name == "ledger.lock":
+                      continue
+                  if re.fullmatch(
+                      r"(?:claim|authorization|run-identity)-[0-9a-f]{64}\.json",
+                      entry_name,
+                  ) is None:
+                      raise SystemExit("durable one-shot ledger contains an unexpected entry")
+                  existing = read_ledger_claim(entry_name)
+                  if existing["authorization_id"] == run_ready["authorization_id"]:
+                      raise SystemExit("one-shot authorization was already consumed")
+                  if existing["run_identity_sha256"] == run_identity_digest:
+                      raise SystemExit("R1b run identity was already consumed")
+
+              # The canonical claim record is the authoritative transaction. It is
+              # durably committed before either lookup index is linked. Any crash or
+              # collision after this point therefore leaves a record whose body
+              # consumes both identities during the next locked recovery scan.
+              try:
+                  claim_fd = os.open(claim_record, flags, 0o600, dir_fd=directory_fd)
+              except FileExistsError as exc:
+                  raise SystemExit("durable one-shot claim transaction already exists") from exc
+              with os.fdopen(claim_fd, "wb") as handle:
+                  os.fchmod(handle.fileno(), 0o600)
+                  handle.write(claim_bytes)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.fsync(directory_fd)
+
               for claim_name, replay_error in (
                   (authorization_index, "one-shot authorization was already consumed"),
                   (run_identity_index, "R1b run identity was already consumed"),
               ):
                   try:
-                      claim_fd = os.open(claim_name, flags, 0o600, dir_fd=directory_fd)
+                      os.link(
+                          claim_record,
+                          claim_name,
+                          src_dir_fd=directory_fd,
+                          dst_dir_fd=directory_fd,
+                          follow_symlinks=False,
+                      )
                   except FileExistsError as exc:
                       raise SystemExit(replay_error) from exc
-                  with os.fdopen(claim_fd, "wb") as handle:
-                      os.fchmod(handle.fileno(), 0o600)
-                      handle.write(claim_bytes)
-                      handle.flush()
-                      os.fsync(handle.fileno())
-              os.fsync(directory_fd)
+                  os.fsync(directory_fd)
+
+              record_info = os.stat(claim_record, dir_fd=directory_fd, follow_symlinks=False)
+              for claim_name in (authorization_index, run_identity_index):
+                  index_info = os.stat(claim_name, dir_fd=directory_fd, follow_symlinks=False)
+                  if (
+                      index_info.st_dev != record_info.st_dev
+                      or index_info.st_ino != record_info.st_ino
+                  ):
+                      raise SystemExit("durable one-shot claim indexes are not authoritative links")
           finally:
+              if lock_fd is not None:
+                  try:
+                      fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                  finally:
+                      os.close(lock_fd)
               os.close(directory_fd)
 
           bound = {
@@ -452,7 +616,7 @@ jobs:
               "BOUND_WORKFLOW_RUN_ATTEMPT": workflow_run_attempt,
               "BOUND_WORKFLOW_RUN_ID": workflow_run_id,
               "HANDOFF_ID": run_ready["handoff_id"],
-              "ONE_SHOT_CLAIM_SHA256": hashlib.sha256(claim_bytes).hexdigest(),
+              "ONE_SHOT_CLAIM_SHA256": claim_digest,
           }
           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="ascii") as handle:
               for name, value in bound.items():
@@ -603,8 +767,12 @@ jobs:
           ).hexdigest()
           run_identity_index = "run-identity-" + run_identity_digest + ".json"
           claim_base = Path(os.environ["B2_R1B_ONE_SHOT_CLAIM_BASE"])
-          claim_bytes = (claim_base / authorization_index).read_bytes()
-          if (claim_base / run_identity_index).read_bytes() != claim_bytes:
+          claim_record = "claim-" + os.environ["ONE_SHOT_CLAIM_SHA256"] + ".json"
+          claim_bytes = (claim_base / claim_record).read_bytes()
+          if (
+              (claim_base / authorization_index).read_bytes() != claim_bytes
+              or (claim_base / run_identity_index).read_bytes() != claim_bytes
+          ):
               raise SystemExit("durable one-shot claim indexes disagree")
           if hashlib.sha256(claim_bytes).hexdigest() != os.environ["ONE_SHOT_CLAIM_SHA256"]:
               raise SystemExit("durable one-shot claim changed after consumption")

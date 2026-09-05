@@ -59,13 +59,18 @@ The dedicated runner must also provision `B2_R1B_ONE_SHOT_CLAIM_BASE` as a
 real absolute, non-symlink, runner-owned mode-0700 directory. It is a durable,
 private authorization-claim ledger, not an exchange directory. After all
 canonical receipt and dispatch-identity checks pass, but before checkout or
-any exchange, secret, or provider step, the workflow atomically creates one
-mode-0600 body-free claim under two `O_EXCL` indexes: one keyed by the SHA-256
-of the authorization ID and one by the SHA-256 of the canonical
-run/evaluation/handoff identity triple. Those identical claim records are
-deliberately never removed by per-run cleanup: their continued existence makes
-both the authorization and the complete predeclared run identity
-non-replayable across dispatches.
+any exchange, secret, or provider step, the workflow takes an exclusive
+`ledger.lock`, scans every durable entry, and transactionally consumes one
+mode-0600 body-free claim. It first writes and file-plus-directory-fsyncs a
+canonical authoritative `claim-<claim-sha256>.json` record. Only after that
+commit does it create and directory-fsync two `O_EXCL` hard-link indexes: one
+keyed by the SHA-256 of the authorization ID and one by the SHA-256 of the
+canonical run/evaluation/handoff identity triple. The record and any indexes
+are deliberately never removed by per-run cleanup. A valid record or index
+body independently consumes both identities, so a crash after the first index
+cannot leave the run identity reusable. A malformed, unreadable, wrongly
+named, or unexpected ledger entry fails the whole claim gate closed pending
+manual forensic repair; it is never ignored or automatically deleted.
 
 The `b2-r1b-live` protected environment is the human approval boundary. Its
 non-secret variables freeze only public-safe exact metadata:
@@ -151,20 +156,30 @@ R1b run identity, evaluation-run identity, handoff identity, or authorization
 ID. All of these checks finish before checkout, exchange-directory access,
 secret injection, or provider execution.
 
-The next step consumes the approved authorization exactly once. It atomically
-creates `b2-r1b-one-shot-claim/v1` under both persistent claim-ledger indexes
-with `O_EXCL`, mode 0600, and file-plus-directory `fsync`. The claim binds the
-approved receipt digest and its run/evaluation/handoff/authorization/head
-identities to the first actual GitHub workflow run ID and attempt that reaches
-the gate. One index is derived from the authorization ID and the other from the
-canonical run/evaluation/handoff triple. A second dispatch therefore fails
-closed if it reuses either the authorization or the run identity—even if an
-operator changes both the fresh `GITHUB_RUN_ID` and any obsolete out-of-band
-expected-run value together. Claim consumption precedes checkout, exchange
-creation, provider-secret injection, and the provider process. If a later step
-fails, the authorization and run identity remain consumed; another attempt
-requires a new receipt, new authorization ID, and new run/evaluation/handoff
-identity.
+The next step consumes the approved authorization exactly once. Under the
+exclusive ledger lock it validates every existing canonical
+`b2-r1b-one-shot-claim/v1` record or index and treats the body of any valid
+entry as consuming both its authorization and run identity, even when a prior
+crash left only a subset of the expected names. It then commits one
+authoritative claim record with `O_EXCL`, mode 0600, file `fsync`, and directory
+`fsync`, before creating either identity index as a hard link to that same
+inode. Each index link is followed by another directory `fsync`. The claim
+binds the approved receipt digest and its
+run/evaluation/handoff/authorization/head identities to the first actual
+GitHub workflow run ID and attempt that reaches the gate.
+
+A second dispatch therefore fails closed if it reuses either the authorization
+or the run identity—even if an operator changes both the fresh
+`GITHUB_RUN_ID` and any obsolete out-of-band expected-run value together. If
+the process stops after the authoritative record or first index, the next
+locked scan recovers that valid body and keeps both identities consumed. If
+either index collides after the authoritative commit, the attempt fails and the
+retained authoritative record likewise burns both identities. Incomplete
+noncanonical bytes cannot be safely attributed, so their presence quarantines
+the entire ledger fail-closed rather than reopening either identity. Claim
+consumption precedes checkout, exchange creation, provider-secret injection,
+and the provider process. If a later step fails, another attempt requires a new
+receipt, new authorization ID, and new run/evaluation/handoff identity.
 
 The exact closed claim object is canonical ASCII JSON with this shape:
 
@@ -187,9 +202,11 @@ The exact closed claim object is canonical ASCII JSON with this shape:
 }
 ```
 
-Both index files contain these identical bytes. The request carries the exact
-claim plus its SHA-256 so the private side can validate the actual workflow
-run binding without receiving the private ledger path.
+The authoritative record and both indexes expose these identical bytes and,
+after a successful transaction, are three hard links to the same inode. The
+request reads the authoritative record, verifies both indexes against it, and
+carries the exact claim plus its SHA-256 so the private side can validate the
+actual workflow-run binding without receiving the private ledger path.
 
 After that comparison, the runner writes those exact canonical bytes create-once
 as mode-0600 `run-ready.json` inside its mode-0700 root. Immediately before the
@@ -269,7 +286,7 @@ claim, or an expired/not-yet-valid object fail closed.
 | Order | Side | Create-once object or gate | Provider credential present? |
 |---:|---|---|---:|
 | 1 | runner | verify canonical run-ready bytes/digest and exact provider/runtime/input/head/run/evaluation/handoff binding; validate dispatch | no |
-| 2 | runner | atomically consume the durable authorization claim and bind it to the first actual workflow run | no |
+| 2 | runner | lock and recover the durable ledger, then commit one authoritative claim plus both identity indexes | no |
 | 3 | runner | exact-head/core-blob checks; fresh input key | no |
 | 4 | runner → private | `runner/input-public.pem`, then v3 `runner/request.json` containing the exact run-ready object, durable claim, and both digests | no |
 | 5 | private → runner | v5.2 `private/payload.json` | no |
@@ -346,8 +363,9 @@ symlinks, rejects broad roots, surfaces any removal failure, and is successful
 only when both exact roots no longer exist. No real payload, acknowledgement,
 challenge, result envelope, private input, key, raw answer, or temporary receipt
 is uploaded as an artifact or committed to Git. The body-free durable
-authorization claim is outside both ephemeral roots and is intentionally
-retained; deleting it would reopen replay and is not part of run cleanup.
+authorization record, its identity indexes, and ledger lock are outside both
+ephemeral roots and are intentionally retained; deleting any of them would
+weaken replay evidence and is not part of run cleanup.
 
 The final GitHub step summary is body-free. It contains only R1b run,
 evaluation, handoff, workflow-run and execution-head identities, the consumed
@@ -380,6 +398,12 @@ Engineering must bind its receipt to the exact PR head/tree and record:
   workflow-run variables move together while the approved receipt/digest and
   authorization stay unchanged; the second dispatch must fail at the durable
   claim gate before checkout, exchange, secret, or provider;
+- crash/restart injection immediately after the first identity index becomes
+  durable, proving that a fresh authorization cannot reuse the recorded
+  run/evaluation/handoff identity;
+- injected second-index collision after the authoritative claim commit,
+  proving that the failed attempt leaves both identities fail-closed and does
+  not create a rollback/reuse window;
 - repository leak and changed-path-envelope scans.
 
 Only after those checks may engineering emit

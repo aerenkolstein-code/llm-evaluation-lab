@@ -169,6 +169,56 @@ def valid_preflight_environment() -> tuple[dict[str, str], bytes]:
     return environment, bind_run_ready(environment)
 
 
+def write_claim_fault_shim(directory: Path) -> None:
+    directory.mkdir(mode=0o700)
+    (directory / "sitecustomize.py").write_text(
+        """import os
+
+_fault = os.environ.get("B2_R1B_TEST_LEDGER_FAULT", "")
+_original_fsync = os.fsync
+_original_link = os.link
+_link_count = 0
+_exit_after_directory_fsync = False
+
+
+def _faulting_link(source, destination, *args, **kwargs):
+    global _exit_after_directory_fsync, _link_count
+    _link_count += 1
+    if _fault == "second-index-collision" and _link_count == 2:
+        destination_directory = kwargs.get("dst_dir_fd")
+        collision_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        collision_flags |= getattr(os, "O_NOFOLLOW", 0)
+        collision_fd = os.open(
+            destination, collision_flags, 0o600, dir_fd=destination_directory
+        )
+        with os.fdopen(collision_fd, "wb") as collision:
+            collision.write(b'{"collision":true}')
+            collision.flush()
+            _original_fsync(collision.fileno())
+        _original_fsync(destination_directory)
+        return _original_link(source, destination, *args, **kwargs)
+    result = _original_link(source, destination, *args, **kwargs)
+    if _fault == "crash-after-first-index" and _link_count == 1:
+        _exit_after_directory_fsync = True
+    return result
+
+
+def _faulting_fsync(file_descriptor):
+    global _exit_after_directory_fsync
+    result = _original_fsync(file_descriptor)
+    if _exit_after_directory_fsync:
+        _exit_after_directory_fsync = False
+        os._exit(91)
+    return result
+
+
+os.link = _faulting_link
+os.fsync = _faulting_fsync
+""",
+        encoding="ascii",
+    )
+
+
 class R1bLiveOrchestrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -351,7 +401,11 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             self.assertEqual(0, consumed.returncode, consumed.stderr)
 
             claim_files = list(claim_base.glob("*.json"))
-            self.assertEqual(2, len(claim_files))
+            self.assertEqual(3, len(claim_files))
+            self.assertEqual(
+                1,
+                len({(path.stat().st_dev, path.stat().st_ino) for path in claim_files}),
+            )
             first_claim = json.loads(claim_files[0].read_bytes())
             self.assertEqual("123456789", first_claim["workflow_run_id"])
             self.assertEqual(
@@ -377,7 +431,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             )
             self.assertNotEqual(0, replay.returncode)
             self.assertIn("one-shot authorization was already consumed", replay.stderr)
-            self.assertEqual(2, len(list(claim_base.glob("*.json"))))
+            self.assertEqual(3, len(list(claim_base.glob("*.json"))))
 
             reused_identity = dict(environment)
             reused_identity["AUTHORIZATION_ID"] = "R1B-AUTH-002"
@@ -402,6 +456,126 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             self.assertNotEqual(0, run_replay.returncode)
             self.assertIn("R1b run identity was already consumed", run_replay.stderr)
             self.assertEqual(3, len(list(claim_base.glob("*.json"))))
+
+    def test_partial_claim_crash_and_second_index_collision_fail_closed(self):
+        scripts = run_scripts(self.workflow)
+        preflight_script = scripts[0]
+        claim_script = scripts[1]
+
+        for fault_mode in ("crash-after-first-index", "second-index-collision"):
+            with self.subTest(fault_mode=fault_mode), tempfile.TemporaryDirectory() as temp_root:
+                environment, _ = valid_preflight_environment()
+                root = Path(temp_root)
+                claim_base = root / "claims"
+                runner_temp = root / "runner-temp"
+                exchange_base = root / "exchange"
+                for directory in (claim_base, runner_temp, exchange_base):
+                    directory.mkdir(mode=0o700)
+                    directory.chmod(0o700)
+                github_env = root / "github-env"
+                github_env.write_text("", encoding="ascii")
+                environment["B2_R1B_ONE_SHOT_CLAIM_BASE"] = str(claim_base)
+                environment["B2_R1B_EXCHANGE_BASE"] = str(exchange_base)
+                environment["RUNNER_TEMP"] = str(runner_temp)
+                environment["GITHUB_ENV"] = str(github_env)
+
+                accepted = subprocess.run(
+                    ["bash"], input=preflight_script, text=True, capture_output=True,
+                    env=environment, check=False,
+                )
+                self.assertEqual(0, accepted.returncode, accepted.stderr)
+
+                shim = root / "fault-shim"
+                write_claim_fault_shim(shim)
+                faulted_environment = dict(environment)
+                faulted_environment["PYTHONPATH"] = str(shim)
+                faulted_environment["B2_R1B_TEST_LEDGER_FAULT"] = fault_mode
+                interrupted = subprocess.run(
+                    ["bash"], input=claim_script, text=True, capture_output=True,
+                    env=faulted_environment, check=False,
+                )
+                self.assertNotEqual(0, interrupted.returncode)
+                if fault_mode == "crash-after-first-index":
+                    self.assertEqual(91, interrupted.returncode)
+                else:
+                    self.assertIn("R1b run identity was already consumed", interrupted.stderr)
+
+                partial_files = sorted(claim_base.glob("*.json"))
+                expected_file_count = 2 if fault_mode == "crash-after-first-index" else 3
+                self.assertEqual(expected_file_count, len(partial_files))
+                self.assertTrue(any(path.name.startswith("claim-") for path in partial_files))
+                self.assertTrue(
+                    any(path.name.startswith("authorization-") for path in partial_files)
+                )
+                self.assertEqual(
+                    fault_mode == "second-index-collision",
+                    any(path.name.startswith("run-identity-") for path in partial_files),
+                )
+                self.assertEqual(
+                    1 if fault_mode == "crash-after-first-index" else 2,
+                    len({(path.stat().st_dev, path.stat().st_ino) for path in partial_files}),
+                )
+
+                recovered = dict(environment)
+                recovered["AUTHORIZATION_ID"] = "R1B-AUTH-RECOVERY-002"
+                recovered["DISPATCH_AUTHORIZATION_ID"] = "R1B-AUTH-RECOVERY-002"
+                recovered["GITHUB_RUN_ID"] = "123456790"
+                recovered_github_env = root / "recovered-github-env"
+                recovered_github_env.write_text("", encoding="ascii")
+                recovered["GITHUB_ENV"] = str(recovered_github_env)
+                bind_run_ready(recovered)
+
+                recovered_preflight = subprocess.run(
+                    ["bash"], input=preflight_script, text=True, capture_output=True,
+                    env=recovered, check=False,
+                )
+                self.assertEqual(
+                    0, recovered_preflight.returncode, recovered_preflight.stderr
+                )
+                rejected_reuse = subprocess.run(
+                    ["bash"], input=claim_script, text=True, capture_output=True,
+                    env=recovered, check=False,
+                )
+                self.assertNotEqual(0, rejected_reuse.returncode)
+                self.assertIn("R1b run identity was already consumed", rejected_reuse.stderr)
+
+                if fault_mode == "second-index-collision":
+                    unrelated = dict(environment)
+                    unrelated.update({
+                        "AUTHORIZATION_ID": "R1B-AUTH-UNRELATED-003",
+                        "DISPATCH_AUTHORIZATION_ID": "R1B-AUTH-UNRELATED-003",
+                        "RUN_ID": "B2-R1B-RUN-UNRELATED-003",
+                        "DISPATCH_RUN_ID": "B2-R1B-RUN-UNRELATED-003",
+                        "EVALUATION_RUN_ID": "B2-R1B-UNRELATED-003",
+                        "DISPATCH_EVALUATION_RUN_ID": "B2-R1B-UNRELATED-003",
+                        "APPROVED_HANDOFF_ID": "B2-R1B-HANDOFF-UNRELATED-003",
+                        "DISPATCH_HANDOFF_ID": "B2-R1B-HANDOFF-UNRELATED-003",
+                        "GITHUB_RUN_ID": "123456791",
+                    })
+                    unrelated_github_env = root / "unrelated-github-env"
+                    unrelated_github_env.write_text("", encoding="ascii")
+                    unrelated["GITHUB_ENV"] = str(unrelated_github_env)
+                    bind_run_ready(unrelated)
+                    unrelated_preflight = subprocess.run(
+                        ["bash"], input=preflight_script, text=True,
+                        capture_output=True, env=unrelated, check=False,
+                    )
+                    self.assertEqual(
+                        0, unrelated_preflight.returncode, unrelated_preflight.stderr
+                    )
+                    quarantined = subprocess.run(
+                        ["bash"], input=claim_script, text=True, capture_output=True,
+                        env=unrelated, check=False,
+                    )
+                    self.assertNotEqual(0, quarantined.returncode)
+                    self.assertIn(
+                        "durable one-shot ledger contains an invalid claim",
+                        quarantined.stderr,
+                    )
+                self.assertEqual(
+                    [path.name for path in partial_files],
+                    sorted(path.name for path in claim_base.glob("*.json")),
+                )
 
         claim_position = self.workflow.index(
             "Atomically consume the durable one-shot authorization claim"
@@ -502,13 +676,18 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "B2_R1B_ONE_SHOT_CLAIM_BASE",
             "b2-r1b-one-shot-claim/v1",
             "R1B-ONE-SHOT-AUTHORIZATION-CLAIM",
+            "import fcntl",
+            "fcntl.flock(lock_fd, fcntl.LOCK_EX)",
             "os.O_EXCL",
             "O_NOFOLLOW",
+            "claim_record",
+            "os.link(",
             "os.fchmod(handle.fileno(), 0o600)",
             "os.fsync(handle.fileno())",
             "os.fsync(directory_fd)",
             "dir_fd=directory_fd",
             "durable one-shot claim base overlaps an ephemeral root",
+            "durable one-shot ledger contains an invalid claim",
             '"workflow_run_id": workflow_run_id',
             '"run_identity_sha256": run_identity_digest',
             '"run_ready_receipt_sha256": receipt_digest',

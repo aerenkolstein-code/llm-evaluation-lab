@@ -63,7 +63,8 @@ non-secret variables freeze only public-safe exact metadata:
 | `B2_R1B_EXECUTION_HEAD_SHA` | exact merged execution commit |
 | `B2_R1B_BRIDGE_MAIN_SHA` | exact accepted v5.2 bridge commit |
 | `B2_R1B_WORKFLOW_RUN_ID` | exact queued workflow run selected for the one-shot authorization |
-| `B2_R1B_RUN_READY_RECEIPT_SHA256` | SHA-256 of the fresh run-ready receipt |
+| `B2_R1B_RUN_READY_RECEIPT_SHA256` | lowercase SHA-256 of the exact canonical run-ready receipt bytes |
+| `B2_R1B_RUN_READY_RECEIPT_B64` | strict standard-base64 encoding of those exact public-safe canonical bytes |
 | `B2_R1B_AUTHORIZATION_ID` | unique one-shot authorization identifier |
 | `B2_R1B_EVALUATION_RUN_ID` | exact R1b evaluation run identifier |
 | `B2_R1B_CONTEXT_SHA256`, `B2_R1B_CONTEXT_BYTES` | frozen private context fingerprint and size |
@@ -77,6 +78,81 @@ non-secret variables freeze only public-safe exact metadata:
 | `B2_R1B_MAX_TOKENS` | positive frozen maximum, at most `262144` |
 | `B2_R1B_HANDOFF_TTL_SECONDS` | freshness window in `[300, 21600]` |
 
+### Canonical RUN-READY machine binding
+
+`R1B-RUN-READY` is an exact public-safe JSON object, not a prose approval and
+not a digest standing alone. Its closed `b2-r1b-run-ready/v1` schema is:
+
+```json
+{
+  "authorization_id": "<one-shot authorization ID>",
+  "automatic_retries": 0,
+  "bridge_main_sha": "<40 lowercase hex>",
+  "context_bytes": 1,
+  "context_sha256": "<64 lowercase hex>",
+  "evaluation_run_id": "<evaluation ID>",
+  "execution_head_sha": "<40 lowercase hex>",
+  "git_ref": "refs/heads/main",
+  "handoff_ttl_seconds": 3600,
+  "max_provider_attempts": 1,
+  "mode": "live",
+  "prompt_bytes": 1,
+  "prompt_sha256": "<64 lowercase hex>",
+  "provider_endpoint": "https://<approved-host>/<approved-path>",
+  "provider_label": "<public-safe provider label>",
+  "provider_max_tokens": 8192,
+  "provider_protocol": "openai-compatible-chat-completions/v1",
+  "provider_temperature": 0,
+  "provider_timeout_seconds": 180,
+  "receipt_type": "R1B-RUN-READY",
+  "repository": "aerenkolstein-code/llm-evaluation-lab",
+  "requested_model_id": "<exact requested model ID>",
+  "schema_version": "b2-r1b-run-ready/v1",
+  "trigger_event": "workflow_dispatch",
+  "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
+  "workflow_run_attempt": 1,
+  "work_order": "WO-B2-BLIND-R1B-01 v0.1"
+}
+```
+
+The displayed indentation is explanatory only. The approved byte form is
+exactly Python
+`json.dumps(receipt, ensure_ascii=True, sort_keys=True,
+separators=(",", ":")).encode("ascii")`, with no BOM, whitespace, duplicate
+key, non-finite number, or trailing newline. `B2_R1B_RUN_READY_RECEIPT_B64` is
+the standard padded base64 of those bytes, and
+`B2_R1B_RUN_READY_RECEIPT_SHA256` is their lowercase hexadecimal SHA-256.
+Neither value contains a credential, private locator, input body, or output
+body, but both remain protected approval state.
+
+The first workflow step strictly decodes the base64, re-encodes it to reject
+aliases, recomputes the SHA-256, parses strict ASCII JSON, reconstructs the
+entire expected object from the protected variables plus fixed repository,
+workflow, ref, mode, one-attempt, and zero-retry constants, and compares the
+canonical bytes byte-for-byte. Consequently a stale receipt cannot authorize a
+different provider label, requested model, endpoint, timeout, temperature,
+maximum token count, TTL, input identity, bridge commit, execution head,
+evaluation-run identity, or authorization ID. All of these checks finish before checkout,
+exchange-directory access, secret injection, or provider execution.
+
+After that comparison, the runner writes those exact canonical bytes create-once
+as mode-0600 `run-ready.json` inside its mode-0700 root. Immediately before the
+single provider attempt, the provider step rehashes and reparses that file and
+constructs the bridge argument vector exclusively from its provider, model,
+endpoint, timeout, temperature, maximum-token, evaluation-ID, and bridge-commit
+fields. It does not take those execution arguments from independently mutable
+shell variables after the initial binding check. The following body-free bridge
+receipt gate also derives its expected provider/model/input/commit values from
+the same hashed canonical file.
+
+The GitHub-assigned workflow run ID does not exist when the immutable dispatch
+inputs are submitted, so it is intentionally not self-referenced by the
+pre-dispatch receipt. It remains a separate post-queue protected gate:
+`B2_R1B_WORKFLOW_RUN_ID` must be frozen to the newly assigned ID before the
+environment reviewer approves the job, and the workflow rejects every other
+ID or attempt. The request later carries that actual run ID alongside the exact
+receipt and digest.
+
 The environment secret `B2_R1B_PROVIDER_API_KEY` is the sole provider
 credential slot. It is injected only into the one bridge step, after v5.2 has
 accepted the encrypted input, generated a fresh return-key challenge, and
@@ -86,14 +162,19 @@ publication-verification, summary, or cleanup steps.
 
 ## Manual authorization gates
 
-An authorized operator must dispatch the workflow on `main` with exactly three
-inputs:
+Before dispatch, an authorized operator must freeze the canonical receipt, its
+base64, its digest, every matching protected parameter except the not-yet-known
+GitHub workflow run ID, and the one-shot authorization ID. The operator then
+dispatches the workflow on `main` with exactly three inputs:
 
 1. the SHA-256 of the already approved `R1B-RUN-READY` receipt;
 2. its exact one-shot authorization identifier;
 3. the explicit boolean one-shot confirmation.
 
 The first two inputs must byte-for-byte equal the protected environment values.
+The receipt digest must also equal the digest recomputed from the protected
+canonical receipt bytes, and the parsed receipt must exactly equal all matching
+protected provider/runtime/input/head values.
 The selected commit must equal `B2_R1B_EXECUTION_HEAD_SHA`; the run ref must be
 `refs/heads/main`; `GITHUB_RUN_ATTEMPT` must be `1`; and `GITHUB_RUN_ID` must
 equal `B2_R1B_WORKFLOW_RUN_ID`. The protected environment must require a human
@@ -129,9 +210,9 @@ claim, or an expired/not-yet-valid object fail closed.
 
 | Order | Side | Create-once object or gate | Provider credential present? |
 |---:|---|---|---:|
-| 1 | runner | validate dispatch against protected fresh-preflight values | no |
+| 1 | runner | verify canonical run-ready bytes/digest and exact provider/runtime/input/head binding; then validate dispatch | no |
 | 2 | runner | exact-head/core-blob checks; fresh input key | no |
-| 3 | runner → private | `runner/input-public.pem`, then `runner/request.json` commit marker | no |
+| 3 | runner → private | `runner/input-public.pem`, then v2 `runner/request.json` containing the exact run-ready object and digest | no |
 | 4 | private → runner | v5.2 `private/payload.json` | no |
 | 5 | runner | `accept-input`; exact binding/freshness/input verification | no |
 | 6 | runner → private | fresh `runner/challenge.enc.json` | no |
@@ -153,10 +234,18 @@ not change that classification.
 ## Private-orchestrator contract
 
 The private side must use the same exact v5.2 source and treat
-`runner/request.json` as the publication commit marker. It must validate the
-request schema and all values against the approved run-ready receipt before
-using the separately frozen context and prompt. It then performs these existing
-CLI operations with the exact arguments from the request:
+`runner/request.json` as the publication commit marker. It must require
+`b2-r1b-live-request/v2`, canonicalize its nested `run_ready_receipt` by the
+rule above, recompute and compare `run_ready_receipt_sha256`, and compare both
+against its independently held approved receipt. It must then compare every
+overlapping top-level request identity—including execution/bridge commits,
+input hashes and sizes, mode, evaluation ID, and authorization ID—to that
+receipt, and compare the actual workflow run ID to the separately frozen
+post-queue run metadata, before using the context and prompt. A missing/extra
+receipt field or any provider,
+model, endpoint, timeout, temperature, token, TTL, input, head, or
+authorization mismatch fails closed. It then performs these existing CLI
+operations with the exact arguments from the request:
 
 1. `prepare-input`, using `runner/input-public.pem`, the frozen private input
    files, a fresh private state directory outside the exchange root, and
@@ -218,6 +307,8 @@ Engineering must bind its receipt to the exact PR head/tree and record:
   `provider_attempts = 0`, `credential_lookups = 0`, zero retries, return-key
   possession proof, result decryptability, and verified cleanup;
 - static manual-trigger/no-retry/post-ACK-secret ordering audits;
+- canonical receipt digest/parse/equality tests, including stale-digest and
+  valid-but-changed provider/model/endpoint/runtime adversarial cases;
 - repository leak and changed-path-envelope scans.
 
 Only after those checks may engineering emit

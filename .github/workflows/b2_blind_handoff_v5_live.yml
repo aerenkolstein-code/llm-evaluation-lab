@@ -42,6 +42,7 @@ jobs:
       BRIDGE_MAIN_SHA: ${{ vars.B2_R1B_BRIDGE_MAIN_SHA }}
       EXPECTED_WORKFLOW_RUN_ID: ${{ vars.B2_R1B_WORKFLOW_RUN_ID }}
       RUN_READY_RECEIPT_SHA256: ${{ vars.B2_R1B_RUN_READY_RECEIPT_SHA256 }}
+      RUN_READY_RECEIPT_B64: ${{ vars.B2_R1B_RUN_READY_RECEIPT_B64 }}
       AUTHORIZATION_ID: ${{ vars.B2_R1B_AUTHORIZATION_ID }}
       EVALUATION_RUN_ID: ${{ vars.B2_R1B_EVALUATION_RUN_ID }}
       EXPECTED_CONTEXT_SHA256: ${{ vars.B2_R1B_CONTEXT_SHA256 }}
@@ -62,6 +63,10 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import base64
+          import binascii
+          import hashlib
+          import json
           import os
           import re
           from decimal import Decimal, InvalidOperation
@@ -72,6 +77,7 @@ jobs:
               "BRIDGE_MAIN_SHA",
               "EXPECTED_WORKFLOW_RUN_ID",
               "RUN_READY_RECEIPT_SHA256",
+              "RUN_READY_RECEIPT_B64",
               "AUTHORIZATION_ID",
               "EVALUATION_RUN_ID",
               "EXPECTED_CONTEXT_SHA256",
@@ -89,6 +95,8 @@ jobs:
           )
           if any(not os.environ.get(name) for name in required):
               raise SystemExit("protected R1b preflight configuration is incomplete")
+          if len(os.environ["RUN_READY_RECEIPT_B64"]) > 16384:
+              raise SystemExit("canonical RUN-READY receipt is oversized")
           if any(
               any(ord(character) < 32 or ord(character) == 127 for character in os.environ[name])
               for name in required
@@ -110,6 +118,42 @@ jobs:
               raise SystemExit("workflow run is not the protected one-shot run")
           if os.environ.get("DISPATCH_CONFIRM_ONE_SHOT", "").lower() != "true":
               raise SystemExit("one-shot confirmation is absent")
+
+          encoded_receipt = os.environ["RUN_READY_RECEIPT_B64"]
+          try:
+              receipt_bytes = base64.b64decode(encoded_receipt, validate=True)
+          except (binascii.Error, ValueError) as exc:
+              raise SystemExit("canonical RUN-READY receipt is not strict base64") from exc
+          if (
+              not receipt_bytes
+              or len(receipt_bytes) > 8192
+              or base64.b64encode(receipt_bytes).decode("ascii") != encoded_receipt
+          ):
+              raise SystemExit("canonical RUN-READY receipt encoding is invalid")
+          if hashlib.sha256(receipt_bytes).hexdigest() != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("canonical RUN-READY receipt digest does not match its bytes")
+
+          def reject_duplicate_keys(pairs):
+              value = {}
+              for key, item in pairs:
+                  if key in value:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  value[key] = item
+              return value
+
+          def reject_nonfinite(value):
+              raise ValueError(f"non-finite JSON number: {value}")
+
+          try:
+              receipt = json.loads(
+                  receipt_bytes.decode("ascii"),
+                  object_pairs_hook=reject_duplicate_keys,
+                  parse_constant=reject_nonfinite,
+              )
+          except (UnicodeDecodeError, ValueError) as exc:
+              raise SystemExit("canonical RUN-READY receipt is not strict ASCII JSON") from exc
+          if not isinstance(receipt, dict):
+              raise SystemExit("canonical RUN-READY receipt root is not an object")
 
           hex40 = re.compile(r"[0-9a-f]{40}")
           hex64 = re.compile(r"[0-9a-f]{64}")
@@ -157,24 +201,29 @@ jobs:
               if value <= 0 or str(value) != os.environ[name]:
                   raise SystemExit("an input byte count is not canonical")
           try:
-              timeout = Decimal(os.environ["PROVIDER_TIMEOUT_SECONDS"])
+              timeout = int(os.environ["PROVIDER_TIMEOUT_SECONDS"])
               temperature = Decimal(os.environ["PROVIDER_TEMPERATURE"])
               max_tokens = int(os.environ["PROVIDER_MAX_TOKENS"])
               ttl = int(os.environ["HANDOFF_TTL_SECONDS"])
           except (InvalidOperation, ValueError) as exc:
               raise SystemExit("numeric preflight configuration is invalid") from exc
-          if not (Decimal("1") <= timeout <= Decimal("600")):
+          if not (1 <= timeout <= 600):
               raise SystemExit("provider timeout is outside the allowed range")
-          if temperature != Decimal("0"):
+          if temperature != Decimal("0") or os.environ["PROVIDER_TEMPERATURE"] != "0":
               raise SystemExit("R1b temperature must be exactly zero")
           if not (1 <= max_tokens <= 262144):
               raise SystemExit("max token count is outside the allowed range")
           if not (300 <= ttl <= 21600):
               raise SystemExit("handoff TTL is outside the v5.2 freshness range")
-          if str(max_tokens) != os.environ["PROVIDER_MAX_TOKENS"]:
-              raise SystemExit("max token count is not canonical")
-          if str(ttl) != os.environ["HANDOFF_TTL_SECONDS"]:
-              raise SystemExit("handoff TTL is not canonical")
+          if any(
+              str(value) != os.environ[name]
+              for name, value in (
+                  ("PROVIDER_TIMEOUT_SECONDS", timeout),
+                  ("PROVIDER_MAX_TOKENS", max_tokens),
+                  ("HANDOFF_TTL_SECONDS", ttl),
+              )
+          ):
+              raise SystemExit("a numeric provider or freshness value is not canonical")
 
           exact_pairs = (
               ("DISPATCH_RUN_READY_RECEIPT_SHA256", "RUN_READY_RECEIPT_SHA256"),
@@ -184,6 +233,55 @@ jobs:
               raise SystemExit("dispatch does not match the protected one-shot authorization")
           if os.environ.get("GITHUB_SHA") != os.environ["EXECUTION_HEAD_SHA"]:
               raise SystemExit("dispatch head does not match the fresh preflight")
+
+          workflow_path = ".github/workflows/b2_blind_handoff_v5_live.yml"
+          if os.environ.get("GITHUB_REPOSITORY") != "aerenkolstein-code/llm-evaluation-lab":
+              raise SystemExit("R1b execution is restricted to the reviewed repository")
+          expected_workflow_ref = (
+              f"{os.environ['GITHUB_REPOSITORY']}/{workflow_path}@refs/heads/main"
+          )
+          if os.environ.get("GITHUB_WORKFLOW_REF") != expected_workflow_ref:
+              raise SystemExit("R1b execution is not using the reviewed workflow on main")
+
+          expected_receipt = {
+              "authorization_id": os.environ["AUTHORIZATION_ID"],
+              "automatic_retries": 0,
+              "bridge_main_sha": os.environ["BRIDGE_MAIN_SHA"],
+              "context_bytes": int(os.environ["EXPECTED_CONTEXT_BYTES"]),
+              "context_sha256": os.environ["EXPECTED_CONTEXT_SHA256"],
+              "evaluation_run_id": os.environ["EVALUATION_RUN_ID"],
+              "execution_head_sha": os.environ["EXECUTION_HEAD_SHA"],
+              "git_ref": "refs/heads/main",
+              "handoff_ttl_seconds": ttl,
+              "max_provider_attempts": 1,
+              "mode": "live",
+              "prompt_bytes": int(os.environ["EXPECTED_PROMPT_BYTES"]),
+              "prompt_sha256": os.environ["EXPECTED_PROMPT_SHA256"],
+              "provider_endpoint": os.environ["PROVIDER_ENDPOINT"],
+              "provider_label": os.environ["PROVIDER_LABEL"],
+              "provider_max_tokens": max_tokens,
+              "provider_protocol": os.environ["PROVIDER_PROTOCOL"],
+              "provider_temperature": 0,
+              "provider_timeout_seconds": timeout,
+              "receipt_type": "R1B-RUN-READY",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "requested_model_id": os.environ["REQUESTED_MODEL_ID"],
+              "schema_version": "b2-r1b-run-ready/v1",
+              "trigger_event": "workflow_dispatch",
+              "workflow_path": workflow_path,
+              "workflow_run_attempt": 1,
+              "work_order": "WO-B2-BLIND-R1B-01 v0.1",
+          }
+          expected_receipt_bytes = json.dumps(
+              expected_receipt,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii")
+          if receipt_bytes != expected_receipt_bytes:
+              raise SystemExit(
+                  "canonical RUN-READY receipt does not match protected execution parameters"
+              )
           PY
 
       - name: Check out the exact authorized execution head
@@ -292,6 +390,7 @@ jobs:
             printf 'EXPIRES_AT_UNIX=%s\n' "$expires_at_unix"
           } >> "$GITHUB_ENV"
           python - <<'PY'
+          import base64
           import hashlib
           import json
           import os
@@ -300,8 +399,21 @@ jobs:
           runner_root = Path(os.environ["RUNNER_ROOT"])
           exchange_runner = Path(os.environ["EXCHANGE_ROOT"]) / "runner"
           public_key = (runner_root / "input-public.pem").read_bytes()
+          receipt_bytes = base64.b64decode(
+              os.environ["RUN_READY_RECEIPT_B64"], validate=True
+          )
+          if hashlib.sha256(receipt_bytes).hexdigest() != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("RUN-READY receipt changed after preflight")
+          run_ready = json.loads(receipt_bytes.decode("ascii"))
+          if json.dumps(
+              run_ready,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii") != receipt_bytes:
+              raise SystemExit("RUN-READY receipt lost canonical form after preflight")
           request = {
-              "schema_version": "b2-r1b-live-request/v1",
+              "schema_version": "b2-r1b-live-request/v2",
               "protocol": "b2-blind-handoff/v5.2",
               "handoff_id": os.environ["HANDOFF_ID"],
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
@@ -317,6 +429,7 @@ jobs:
               "evaluation_run_id": os.environ["EVALUATION_RUN_ID"],
               "issued_at_unix": int(os.environ["ISSUED_AT_UNIX"]),
               "expires_at_unix": int(os.environ["EXPIRES_AT_UNIX"]),
+              "run_ready_receipt": run_ready,
               "run_ready_receipt_sha256": os.environ["RUN_READY_RECEIPT_SHA256"],
               "authorization_id": os.environ["AUTHORIZATION_ID"],
           }
@@ -330,6 +443,7 @@ jobs:
                   handle.flush()
                   os.fsync(handle.fileno())
 
+          create(runner_root / "run-ready.json", receipt_bytes, 0o600)
           create(exchange_runner / "input-public.pem", public_key, 0o640)
           create(
               exchange_runner / "request.json",
@@ -451,52 +565,87 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${B2_R1B_PROVIDER_API_KEY:-}"
-          set +e
-          python -m b2.blind_eval \
-            --context-file "$RUNNER_ROOT/runner-state/context.txt" \
-            --prompt-file "$RUNNER_ROOT/runner-state/prompt.txt" \
-            --provider "$PROVIDER_LABEL" \
-            --protocol "$PROVIDER_PROTOCOL" \
-            --model "$REQUESTED_MODEL_ID" \
-            --endpoint "$PROVIDER_ENDPOINT" \
-            --api-key-env B2_R1B_PROVIDER_API_KEY \
-            --run-id "$EVALUATION_RUN_ID" \
-            --git-commit "$BRIDGE_MAIN_SHA" \
-            --timeout "$PROVIDER_TIMEOUT_SECONDS" \
-            --temperature "$PROVIDER_TEMPERATURE" \
-            --max-tokens "$PROVIDER_MAX_TOKENS" \
-            --raw-output "$RUNNER_ROOT/run.raw.txt" \
-            --receipt-output "$RUNNER_ROOT/run.receipt.json" \
-            --authorize-live-call \
-            > "$RUNNER_ROOT/bridge-stdout.json"
-          bridge_code=$?
-          set -e
-          case "$bridge_code" in
-            0|2|3) ;;
-            *) exit 76 ;;
-          esac
-          printf '%s\n' "$bridge_code" > "$RUNNER_ROOT/bridge-exit-code.txt"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          runner_root = Path(os.environ["RUNNER_ROOT"])
+          receipt_bytes = (runner_root / "run-ready.json").read_bytes()
+          if hashlib.sha256(receipt_bytes).hexdigest() != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("provider gate lost the approved RUN-READY binding")
+          run_ready = json.loads(receipt_bytes.decode("ascii"))
+          canonical = json.dumps(
+              run_ready,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii")
+          if canonical != receipt_bytes:
+              raise SystemExit("provider gate received a non-canonical RUN-READY receipt")
+
+          command = [
+              sys.executable,
+              "-m", "b2.blind_eval",
+              "--context-file", str(runner_root / "runner-state" / "context.txt"),
+              "--prompt-file", str(runner_root / "runner-state" / "prompt.txt"),
+              "--provider", run_ready["provider_label"],
+              "--protocol", run_ready["provider_protocol"],
+              "--model", run_ready["requested_model_id"],
+              "--endpoint", run_ready["provider_endpoint"],
+              "--api-key-env", "B2_R1B_PROVIDER_API_KEY",
+              "--run-id", run_ready["evaluation_run_id"],
+              "--git-commit", run_ready["bridge_main_sha"],
+              "--timeout", str(run_ready["provider_timeout_seconds"]),
+              "--temperature", str(run_ready["provider_temperature"]),
+              "--max-tokens", str(run_ready["provider_max_tokens"]),
+              "--raw-output", str(runner_root / "run.raw.txt"),
+              "--receipt-output", str(runner_root / "run.receipt.json"),
+              "--authorize-live-call",
+          ]
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          stdout_fd = os.open(runner_root / "bridge-stdout.json", flags, 0o600)
+          with os.fdopen(stdout_fd, "wb") as stdout:
+              os.fchmod(stdout.fileno(), 0o600)
+              completed = subprocess.run(command, stdout=stdout, check=False)
+              stdout.flush()
+              os.fsync(stdout.fileno())
+          if completed.returncode not in {0, 2, 3}:
+              raise SystemExit(76)
+          (runner_root / "bridge-exit-code.txt").write_text(
+              f"{completed.returncode}\n", encoding="ascii"
+          )
+          PY
           test -s "$RUNNER_ROOT/run.receipt.json"
 
       - name: Validate the body-free bridge receipt
         run: |
           set -euo pipefail
           python - <<'PY'
+          import hashlib
           import json
           import os
           from pathlib import Path
 
-          receipt = json.loads((Path(os.environ["RUNNER_ROOT"]) / "run.receipt.json").read_text())
+          runner_root = Path(os.environ["RUNNER_ROOT"])
+          run_ready_bytes = (runner_root / "run-ready.json").read_bytes()
+          if hashlib.sha256(run_ready_bytes).hexdigest() != os.environ["RUN_READY_RECEIPT_SHA256"]:
+              raise SystemExit("bridge receipt gate lost the approved RUN-READY binding")
+          run_ready = json.loads(run_ready_bytes.decode("ascii"))
+          receipt = json.loads((runner_root / "run.receipt.json").read_text())
           exact = {
-              "run_id": os.environ["EVALUATION_RUN_ID"],
-              "provider_label": os.environ["PROVIDER_LABEL"],
-              "provider_protocol": os.environ["PROVIDER_PROTOCOL"],
-              "requested_model_id": os.environ["REQUESTED_MODEL_ID"],
-              "context_sha256": "sha256:" + os.environ["EXPECTED_CONTEXT_SHA256"],
-              "context_bytes": int(os.environ["EXPECTED_CONTEXT_BYTES"]),
-              "prompt_sha256": "sha256:" + os.environ["EXPECTED_PROMPT_SHA256"],
-              "prompt_bytes": int(os.environ["EXPECTED_PROMPT_BYTES"]),
-              "git_commit": os.environ["BRIDGE_MAIN_SHA"],
+              "run_id": run_ready["evaluation_run_id"],
+              "provider_label": run_ready["provider_label"],
+              "provider_protocol": run_ready["provider_protocol"],
+              "requested_model_id": run_ready["requested_model_id"],
+              "context_sha256": "sha256:" + run_ready["context_sha256"],
+              "context_bytes": run_ready["context_bytes"],
+              "prompt_sha256": "sha256:" + run_ready["prompt_sha256"],
+              "prompt_bytes": run_ready["prompt_bytes"],
+              "git_commit": run_ready["bridge_main_sha"],
               "provider_attempts": 1,
               "automatic_retries": 0,
               "quality_score": None,

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 import copy
+import hashlib
+import hmac
 import json
 import os
 import subprocess
@@ -34,7 +36,16 @@ MODULE_PATH = Path("b2/bm1_live.py")
 DOC_PATH = Path("docs/b2/bm1-live-orchestration.md")
 ATT_FINGERPRINT = "sha256:" + "a" * 64
 RUN_READY_FINGERPRINT = "sha256:" + "b" * 64
+GEMINI_AUTH_BINDING_KEY = "synthetic-private-binding-key-at-least-32-bytes"
 FIXED_NOW = datetime(2026, 9, 5, 21, 20, tzinfo=timezone.utc)
+
+
+def gemini_identity_hmac(credential: str) -> str:
+    return "hmac-sha256:" + hmac.new(
+        GEMINI_AUTH_BINDING_KEY.encode("utf-8"),
+        credential.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def top_level_block(document: str, key: str) -> str:
@@ -155,6 +166,12 @@ def add_private_configuration(
         "OPENAI_API_KEY": "synthetic-openai-test-value",
         "GEMINI_API_KEY": "synthetic-gemini-test-value",
         "GOOGLE_API_KEY": "",
+    })
+    environment.update({
+        "B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY": GEMINI_AUTH_BINDING_KEY,
+        "B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC": gemini_identity_hmac(
+            environment["GEMINI_API_KEY"]
+        ),
     })
 
 
@@ -298,6 +315,12 @@ class WorkflowContractTests(unittest.TestCase):
             gate = job_block(document, "public-gate")
             private = job_block(document, private_job)
             for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+                self.assertNotIn(name, gate)
+                self.assertIn(name, private)
+            for name in (
+                "B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY",
+                "B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC",
+            ):
                 self.assertNotIn(name, gate)
                 self.assertIn(name, private)
             self.assertNotIn("B2_BM1_RAW_BUNDLE_DIR", gate)
@@ -481,13 +504,20 @@ class GitHubAuthorityTests(unittest.TestCase):
 
 class CredentialAndProviderTests(unittest.TestCase):
     def base(self) -> dict[str, str]:
-        return {
+        environment = {
             "OPENAI_API_KEY": "openai-test-value",
             "GEMINI_API_KEY": "gemini-test-value",
             "GOOGLE_API_KEY": "",
             "B2_BM1_GEMINI_KEY_AUTH_STATUS": "ROTATED_NEW_AI_STUDIO_AUTH_KEY",
             "B2_BM1_GEMINI_KEY_AUTH_ATTESTATION_FINGERPRINT": ATT_FINGERPRINT,
         }
+        environment.update({
+            "B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY": GEMINI_AUTH_BINDING_KEY,
+            "B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC": gemini_identity_hmac(
+                environment["GEMINI_API_KEY"]
+            ),
+        })
+        return environment
 
     def test_presence_only_decision_is_public_safe_and_value_free(self):
         environment = self.base()
@@ -495,8 +525,14 @@ class CredentialAndProviderTests(unittest.TestCase):
         encoded = json.dumps(public, sort_keys=True)
         self.assertNotIn(environment["OPENAI_API_KEY"], encoded)
         self.assertNotIn(environment["GEMINI_API_KEY"], encoded)
+        self.assertNotIn(environment["B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY"], encoded)
+        self.assertNotIn(environment["B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC"], encoded)
         self.assertTrue(public["openai_credential_present"])
         self.assertTrue(public["google_competing_credential_absent"])
+        self.assertRegex(
+            public["google_key_auth_identity_binding_fingerprint"],
+            r"^sha256:[0-9a-f]{64}$",
+        )
 
     def test_missing_or_ambiguous_credentials_fail_closed(self):
         mutations = (
@@ -522,6 +558,45 @@ class CredentialAndProviderTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 with self.assertRaises(BM1AuthorizationError):
                     bm1_live.credential_decision(environment)
+
+    def test_auth_key_identity_binding_rejects_missing_invalid_or_swapped_secret(self):
+        mutations = (
+            {"B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY": ""},
+            {"B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY": "too-short"},
+            {
+                "GEMINI_API_KEY": GEMINI_AUTH_BINDING_KEY,
+                "B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC": gemini_identity_hmac(
+                    GEMINI_AUTH_BINDING_KEY
+                ),
+            },
+            {"B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC": ""},
+            {"B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC": "hmac-sha256:bad"},
+            {"GEMINI_API_KEY": "post-run-ready-swapped-gemini-test-value"},
+        )
+        for mutation in mutations:
+            environment = self.base()
+            environment.update(mutation)
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(BM1AuthorizationError):
+                    bm1_live.credential_decision(environment)
+
+    def test_rebound_key_changes_public_safe_credential_decision(self):
+        before = self.base()
+        _, before_public = bm1_live.credential_decision(before)
+        after = self.base()
+        after["GEMINI_API_KEY"] = "rotated-gemini-test-value"
+        after["B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC"] = gemini_identity_hmac(
+            after["GEMINI_API_KEY"]
+        )
+        _, after_public = bm1_live.credential_decision(after)
+        self.assertNotEqual(
+            before_public["google_key_auth_identity_binding_fingerprint"],
+            after_public["google_key_auth_identity_binding_fingerprint"],
+        )
+        self.assertNotEqual(
+            before_public["credential_decision_fingerprint"],
+            after_public["credential_decision_fingerprint"],
+        )
 
     def test_provider_review_requires_exact_fingerprint_and_fresh_timestamp(self):
         environment = {
@@ -701,6 +776,8 @@ class RunReadyPreparationTests(unittest.TestCase):
         for forbidden in (
             self.environment["OPENAI_API_KEY"],
             self.environment["GEMINI_API_KEY"],
+            self.environment["B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY"],
+            self.environment["B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC"],
             str(self.raw),
             str(self.claims),
         ):
@@ -821,6 +898,74 @@ class RunReadyPreparationTests(unittest.TestCase):
             bm1_live.load_archived_run_ready(self.raw, fingerprint)
         with self.assertRaises(BM1AuthorizationError):
             bm1_live.load_archived_run_ready(self.raw, "sha256:" + "d" * 64)
+
+
+class LiveCredentialIdentityBindingTests(unittest.TestCase):
+    def test_post_run_ready_gemini_secret_swap_fails_before_transport_construction(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            raw = base / "raw"
+            claims = base / "claims"
+            raw.mkdir(mode=0o700)
+            claims.mkdir(mode=0o700)
+            os.chmod(raw, 0o700)
+            os.chmod(claims, 0o700)
+
+            run_ready_harness = EventHarness(base, live=False)
+            run_ready_environment = run_ready_harness.environment()
+            run_ready_snapshot = bm1_live.github_event_snapshot(
+                run_ready_environment,
+                workflow_path=bm1_live.RUN_READY_WORKFLOW_PATH,
+                repo_root=Path.cwd(),
+                comment_kind="run-ready",
+            )
+            add_guarded_binding(run_ready_environment, run_ready_snapshot)
+            add_private_configuration(run_ready_environment, raw, claims)
+            with mock.patch("b2.bm1_live._forbidden_storage_roots", return_value=()):
+                prepared = bm1_live.prepare_run_ready(
+                    run_ready_environment,
+                    repo_root=Path.cwd(),
+                    now=FIXED_NOW,
+                )
+
+            live_harness = EventHarness(base, live=True)
+            live_harness.comment["run_ready_receipt_fingerprint"] = prepared.receipt[
+                "receipt_fingerprint"
+            ]
+            live_harness.event["comment"]["body"] = bm1_live.canonical_ascii_json(
+                live_harness.comment
+            ).decode("ascii")
+            live_harness.write()
+            live_environment = live_harness.environment()
+            live_environment["B2_BM1_EXPECTED_RUN_READY_RECEIPT_FINGERPRINT"] = (
+                prepared.receipt["receipt_fingerprint"]
+            )
+            live_snapshot = bm1_live.github_event_snapshot(
+                live_environment,
+                workflow_path=bm1_live.LIVE_WORKFLOW_PATH,
+                repo_root=Path.cwd(),
+                comment_kind="live",
+            )
+            add_guarded_binding(live_environment, live_snapshot)
+            add_private_configuration(live_environment, raw, claims)
+            live_environment["GEMINI_API_KEY"] = "post-run-ready-swapped-gemini-value"
+
+            with mock.patch(
+                "b2.bm1_live.OpenAIResponsesHTTPTransport"
+            ) as openai_transport, mock.patch(
+                "b2.bm1_live.GoogleInteractionsHTTPTransport"
+            ) as google_transport:
+                with self.assertRaisesRegex(
+                    BM1AuthorizationError,
+                    "does not match the attested Auth-key identity",
+                ):
+                    bm1_live.execute_live(
+                        live_environment,
+                        repo_root=Path.cwd(),
+                        now=FIXED_NOW,
+                    )
+            openai_transport.assert_not_called()
+            google_transport.assert_not_called()
 
 
 class FrozenExecutionSemanticsTests(unittest.TestCase):

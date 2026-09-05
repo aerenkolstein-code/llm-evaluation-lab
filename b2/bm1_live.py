@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -68,8 +69,12 @@ GOOGLE_AUTH_STATUSES = {
 }
 _HEX40 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"sha256:[0-9a-f]{64}")
+_HMAC_SHA256 = re.compile(r"hmac-sha256:[0-9a-f]{64}")
 _POSITIVE_DECIMAL = re.compile(r"[1-9][0-9]*")
 _OPAQUE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+
+GEMINI_AUTH_BINDING_KEY_REFERENCE = "B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY"
+GEMINI_AUTH_IDENTITY_HMAC_REFERENCE = "B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC"
 
 
 class BM1LiveOrchestrationError(BM1AuthorizationError):
@@ -425,8 +430,34 @@ def credential_decision(
     attestation = environ.get("B2_BM1_GEMINI_KEY_AUTH_ATTESTATION_FINGERPRINT", "")
     if status not in GOOGLE_AUTH_STATUSES or _SHA256.fullmatch(attestation) is None:
         raise BM1LiveOrchestrationError("Gemini Auth-key evidence is missing or invalid")
+    binding_key = environ.get(GEMINI_AUTH_BINDING_KEY_REFERENCE, "")
+    expected_identity_hmac = environ.get(GEMINI_AUTH_IDENTITY_HMAC_REFERENCE, "")
+    gemini_credential = environ.get(GOOGLE_CREDENTIAL_REFERENCE, "")
+    binding_key_bytes = binding_key.encode("utf-8")
+    gemini_credential_bytes = gemini_credential.encode("utf-8")
+    if (
+        len(binding_key_bytes) < 32
+        or len(binding_key_bytes) > 4096
+        or hmac.compare_digest(binding_key_bytes, gemini_credential_bytes)
+        or _HMAC_SHA256.fullmatch(expected_identity_hmac) is None
+    ):
+        raise BM1LiveOrchestrationError("Gemini Auth-key identity binding is missing or invalid")
+    actual_identity_hmac = "hmac-sha256:" + hmac.new(
+        binding_key_bytes,
+        gemini_credential_bytes,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(actual_identity_hmac, expected_identity_hmac):
+        raise BM1LiveOrchestrationError(
+            "configured Gemini credential does not match the attested Auth-key identity"
+        )
+    identity_binding_fingerprint = sha256_json({
+        "schema_version": "b2-bm1-gemini-auth-evidence-binding/v1",
+        "google_key_auth_attestation_fingerprint": attestation,
+        "google_credential_identity_hmac": expected_identity_hmac,
+    })
     decision = {
-        "schema_version": "b2-bm1-credential-decision/v1",
+        "schema_version": "b2-bm1-credential-decision/v2",
         "openai_reference": OPENAI_CREDENTIAL_REFERENCE,
         "openai_present": True,
         "google_reference": GOOGLE_CREDENTIAL_REFERENCE,
@@ -435,6 +466,7 @@ def credential_decision(
         "google_competing_present": False,
         "google_key_auth_status": status,
         "google_key_auth_attestation_fingerprint": attestation,
+        "google_key_auth_identity_binding_fingerprint": identity_binding_fingerprint,
     }
     public = {
         "openai_credential_present": True,
@@ -442,6 +474,7 @@ def credential_decision(
         "google_competing_credential_absent": True,
         "google_key_auth_status": status,
         "google_key_auth_attestation_fingerprint": attestation,
+        "google_key_auth_identity_binding_fingerprint": identity_binding_fingerprint,
         "credential_decision_fingerprint": sha256_json(decision),
     }
     assert_public_safe(public)

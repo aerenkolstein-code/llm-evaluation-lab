@@ -126,6 +126,8 @@ Private secrets:
 | `OPENAI_API_KEY` | Present and non-empty |
 | `GEMINI_API_KEY` | Present and non-empty |
 | `GOOGLE_API_KEY` | Absent/empty; if present it creates forbidden ambiguity |
+| `B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY` | Independent private HMAC key, at least 32 UTF-8 bytes; never reuse the Gemini credential |
+| `B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC` | `hmac-sha256:<64hex>` computed from that HMAC key and the exact attested `GEMINI_API_KEY` value |
 
 No private path, credential value, authorization header, request body, response
 body, reasoning body, or final answer body is printed, placed in a comment,
@@ -139,11 +141,21 @@ manual rotation to a newly created AI Studio key, configured only as
 `GEMINI_API_KEY`. If an existing key is retained, the user must inspect AI
 Studio and attest that `Key Type=Auth`.
 
-The runtime checks the explicit status plus a public-safe attestation
-fingerprint. It never infers key type from a secret prefix. Credential presence,
-Google precedence, Auth-key status, and attestation are canonicalized into a
-body-free credential-decision fingerprint. Live execution recomputes that
-fingerprint and requires it to equal the RUN-READY binding.
+At the same manual attestation/rotation boundary, provision an independent
+private HMAC key and calculate `HMAC-SHA256(binding key, exact GEMINI_API_KEY)`.
+Store the key and the resulting `hmac-sha256:<64hex>` as the two private secrets
+above. They must be rotated/recomputed together whenever the Gemini credential
+changes. The HMAC key, expected HMAC, and credential value are never projected.
+
+The runtime checks the explicit status and attestation, recomputes the identity
+HMAC from the credential actually configured for that job, and compares it to
+the attested value with a constant-time comparison. It then binds only a second,
+public-safe SHA-256 fingerprint of the attestation/HMAC pair into credential
+decision v2. Live repeats the private comparison before either provider
+transport is constructed and also requires the resulting credential-decision
+fingerprint to equal the RUN-READY receipt. Replacing `GEMINI_API_KEY` while
+leaving its Auth evidence unchanged therefore fails closed before provider
+traffic. The runtime still never infers key type from a secret prefix.
 
 ## 6. Storage Authority and durability
 

@@ -530,10 +530,13 @@ class BlindHandoffV5Tests(unittest.TestCase):
         smoke_workflow = smoke_path.read_text()
         live_workflow = live_path.read_text()
         live_trigger = live_workflow.split("on:\n", 1)[1].split("\npermissions:", 1)[0]
-        self.assertRegex(live_trigger, r"^  workflow_dispatch:\n")
+        self.assertRegex(
+            live_trigger,
+            r"^  issue_comment:\n    types: \[created\]\n",
+        )
         for forbidden_trigger in (
-            "push:", "pull_request:", "schedule:", "repository_dispatch:",
-            "workflow_run:",
+            "workflow_dispatch:", "push:", "pull_request:", "schedule:",
+            "repository_dispatch:", "workflow_run:",
         ):
             self.assertNotIn(forbidden_trigger, live_trigger)
         self.assertNotIn("secrets.", smoke_workflow)

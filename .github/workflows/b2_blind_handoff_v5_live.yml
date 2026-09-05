@@ -72,6 +72,8 @@ jobs:
       PROVIDER_TIMEOUT_SECONDS: ${{ vars.B2_R1B_TIMEOUT_SECONDS }}
       PROVIDER_TEMPERATURE: ${{ vars.B2_R1B_TEMPERATURE }}
       PROVIDER_MAX_TOKENS: ${{ vars.B2_R1B_MAX_TOKENS }}
+      PROVIDER_THINKING_MODE: ${{ vars.B2_R1B_THINKING_MODE }}
+      PROVIDER_REASONING_EFFORT_JSON: ${{ vars.B2_R1B_REASONING_EFFORT_JSON }}
       HANDOFF_TTL_SECONDS: ${{ vars.B2_R1B_HANDOFF_TTL_SECONDS }}
 
     steps:
@@ -108,6 +110,8 @@ jobs:
               "PROVIDER_TIMEOUT_SECONDS",
               "PROVIDER_TEMPERATURE",
               "PROVIDER_MAX_TOKENS",
+              "PROVIDER_THINKING_MODE",
+              "PROVIDER_REASONING_EFFORT_JSON",
               "HANDOFF_TTL_SECONDS",
           )
           if any(not os.environ.get(name) for name in required):
@@ -198,6 +202,24 @@ jobs:
               raise SystemExit("requested model ID violates the strict token policy")
           if os.environ["PROVIDER_PROTOCOL"] != "openai-compatible-chat-completions/v1":
               raise SystemExit("provider protocol is not supported by this bridge")
+          if os.environ["PROVIDER_THINKING_MODE"] not in {"enabled", "disabled"}:
+              raise SystemExit("provider thinking mode is unsupported")
+          try:
+              reasoning_effort = json.loads(os.environ["PROVIDER_REASONING_EFFORT_JSON"])
+          except json.JSONDecodeError as exc:
+              raise SystemExit("R1b reasoning effort is not canonical JSON") from exc
+          if (
+              reasoning_effort is not None
+              and (
+                  not isinstance(reasoning_effort, str)
+                  or reasoning_effort not in {"low", "high", "max"}
+              )
+          ):
+              raise SystemExit("provider reasoning effort is unsupported")
+          if json.dumps(reasoning_effort, separators=(",", ":")) != os.environ[
+              "PROVIDER_REASONING_EFFORT_JSON"
+          ]:
+              raise SystemExit("R1b reasoning effort is not canonical JSON")
 
           endpoint = urlsplit(os.environ["PROVIDER_ENDPOINT"])
           if (
@@ -286,17 +308,19 @@ jobs:
               "provider_label": os.environ["PROVIDER_LABEL"],
               "provider_max_tokens": max_tokens,
               "provider_protocol": os.environ["PROVIDER_PROTOCOL"],
+              "provider_reasoning_effort": reasoning_effort,
               "provider_temperature": 0,
+              "provider_thinking_mode": os.environ["PROVIDER_THINKING_MODE"],
               "provider_timeout_seconds": timeout,
               "receipt_type": "R1B-RUN-READY",
               "repository": os.environ["GITHUB_REPOSITORY"],
               "requested_model_id": os.environ["REQUESTED_MODEL_ID"],
               "run_id": os.environ["RUN_ID"],
-              "schema_version": "b2-r1b-run-ready/v2",
+              "schema_version": "b2-r1b-run-ready/v3",
               "trigger_event": "workflow_dispatch",
               "workflow_path": workflow_path,
               "workflow_run_attempt": 1,
-              "work_order": "WO-B2-BLIND-R1B-01 v0.1",
+              "work_order": "WO-B2-BLIND-R1B-COMPAT-01 v0.1",
           }
           expected_receipt_bytes = json.dumps(
               expected_receipt,
@@ -308,6 +332,10 @@ jobs:
               raise SystemExit(
                   "canonical RUN-READY receipt does not match protected execution parameters"
               )
+          if os.environ["PROVIDER_THINKING_MODE"] != "disabled":
+              raise SystemExit("R1b thinking mode must be explicitly disabled")
+          if reasoning_effort is not None:
+              raise SystemExit("R1b disabled thinking requires null reasoning effort")
           PY
 
       - name: Atomically consume the durable one-shot authorization claim
@@ -645,13 +673,17 @@ jobs:
           python - <<'PY'
           from importlib.metadata import version
 
-          from b2.blind_eval import AUTOMATIC_RETRIES
+          from b2.blind_eval import AUTOMATIC_RETRIES, BLIND_EVAL_PROTOCOL_VERSION
           from b2.blind_handoff import PROTOCOL_VERSION
 
           cryptography_major = int(version("cryptography").split(".", 1)[0])
           if not 42 <= cryptography_major < 47:
               raise SystemExit("preprovisioned cryptography version is outside the reviewed range")
-          if PROTOCOL_VERSION != "b2-blind-handoff/v5.2" or AUTOMATIC_RETRIES != 0:
+          if (
+              PROTOCOL_VERSION != "b2-blind-handoff/v5.2"
+              or BLIND_EVAL_PROTOCOL_VERSION != "b2-blind-eval-bridge/v3"
+              or AUTOMATIC_RETRIES != 0
+          ):
               raise SystemExit("checked-out runtime is not the reviewed zero-retry v5.2 bridge")
           PY
 
@@ -966,6 +998,11 @@ jobs:
           ).encode("ascii")
           if canonical != receipt_bytes:
               raise SystemExit("provider gate received a non-canonical RUN-READY receipt")
+          if (
+              run_ready["provider_thinking_mode"] != "disabled"
+              or run_ready["provider_reasoning_effort"] is not None
+          ):
+              raise SystemExit("provider gate received unauthorized reasoning semantics")
 
           command = [
               sys.executable,
@@ -982,6 +1019,7 @@ jobs:
               "--timeout", str(run_ready["provider_timeout_seconds"]),
               "--temperature", str(run_ready["provider_temperature"]),
               "--max-tokens", str(run_ready["provider_max_tokens"]),
+              "--thinking-mode", run_ready["provider_thinking_mode"],
               "--raw-output", str(runner_root / "run.raw.txt"),
               "--receipt-output", str(runner_root / "run.receipt.json"),
               "--authorize-live-call",
@@ -1017,10 +1055,14 @@ jobs:
           run_ready = json.loads(run_ready_bytes.decode("ascii"))
           receipt = json.loads((runner_root / "run.receipt.json").read_text())
           exact = {
+              "schema_version": "b2-blind-eval-bridge/v3",
+              "protocol_version": "b2-blind-eval-bridge/v3",
               "run_id": run_ready["evaluation_run_id"],
               "provider_label": run_ready["provider_label"],
               "provider_protocol": run_ready["provider_protocol"],
               "requested_model_id": run_ready["requested_model_id"],
+              "requested_thinking_mode": run_ready["provider_thinking_mode"],
+              "requested_reasoning_effort": run_ready["provider_reasoning_effort"],
               "context_sha256": "sha256:" + run_ready["context_sha256"],
               "context_bytes": run_ready["context_bytes"],
               "prompt_sha256": "sha256:" + run_ready["prompt_sha256"],

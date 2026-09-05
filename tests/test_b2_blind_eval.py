@@ -12,6 +12,7 @@ from urllib import error, request
 
 from b2.blind_eval import (
     AUTOMATIC_RETRIES,
+    BLIND_EVAL_PROTOCOL_VERSION,
     BLIND_INPUT_ENVELOPE_VERSION,
     OPENAI_COMPATIBLE_PROTOCOL,
     BlindEvalRequest,
@@ -131,6 +132,9 @@ class BlindEvalBridgeTests(unittest.TestCase):
         )
         self.assertEqual("PASS", receipt.terminal_status)
         self.assertEqual(1, transport.calls)
+        self.assertEqual("b2-blind-eval-bridge/v3", BLIND_EVAL_PROTOCOL_VERSION)
+        self.assertEqual(BLIND_EVAL_PROTOCOL_VERSION, receipt.schema_version)
+        self.assertEqual(BLIND_EVAL_PROTOCOL_VERSION, receipt.protocol_version)
         self.assertEqual(AUTOMATIC_RETRIES, receipt.automatic_retries)
         self.assertEqual(1, receipt.provider_attempts)
         self.assertEqual("model answer", raw)
@@ -148,6 +152,10 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertEqual(len(b"model answer"), receipt.final_content_bytes)
         self.assertEqual(receipt.raw_output_sha256, receipt.final_content_sha256)
         self.assertIsNone(receipt.quality_score)
+        self.assertIsNone(receipt.requested_thinking_mode)
+        self.assertIsNone(receipt.requested_reasoning_effort)
+        self.assertNotIn("thinking", transport.last_payload)
+        self.assertNotIn("reasoning_effort", transport.last_payload)
         rendered = receipt.render_json()
         self.assertNotIn("private context body", rendered)
         self.assertNotIn("private prompt body", rendered)
@@ -178,7 +186,77 @@ class BlindEvalBridgeTests(unittest.TestCase):
         self.assertEqual(raw_a, raw_b)
         self.assertEqual(a.render_json(), b.render_json())
 
-    def test_v2_receipt_fields_match_closed_json_schema(self):
+    def test_explicit_reasoning_controls_are_body_free_and_wire_exact(self):
+        response = ProviderHTTPResponse(
+            200,
+            json.dumps({
+                "model": "fixture-model",
+                "choices": [{"message": {"content": "answer"}}],
+            }).encode(),
+        )
+
+        disabled = make_request()
+        object.__setattr__(disabled, "thinking_mode", "disabled")
+        disabled_transport = CountingTransport(response=response)
+        disabled_receipt, _ = run_blind_eval(
+            disabled,
+            authorize_live_call=True,
+            credential_lookup=lambda _: "fixture-key",
+            transport=disabled_transport,
+        )
+        self.assertEqual({"type": "disabled"}, disabled_transport.last_payload["thinking"])
+        self.assertNotIn("reasoning_effort", disabled_transport.last_payload)
+        self.assertEqual("disabled", disabled_receipt.requested_thinking_mode)
+        self.assertIsNone(disabled_receipt.requested_reasoning_effort)
+
+        enabled = make_request()
+        object.__setattr__(enabled, "thinking_mode", "enabled")
+        object.__setattr__(enabled, "reasoning_effort", "high")
+        enabled_transport = CountingTransport(response=response)
+        enabled_receipt, _ = run_blind_eval(
+            enabled,
+            authorize_live_call=True,
+            credential_lookup=lambda _: "fixture-key",
+            transport=enabled_transport,
+        )
+        self.assertEqual({"type": "enabled"}, enabled_transport.last_payload["thinking"])
+        self.assertEqual("high", enabled_transport.last_payload["reasoning_effort"])
+        self.assertEqual("enabled", enabled_receipt.requested_thinking_mode)
+        self.assertEqual("high", enabled_receipt.requested_reasoning_effort)
+
+    def test_invalid_reasoning_controls_fail_before_credential_and_network(self):
+        cases = (
+            ("disabled", "low", "INVALID_REASONING_CONFIGURATION"),
+            (None, "high", "INVALID_REASONING_CONFIGURATION"),
+            ("provider-default", None, "INVALID_THINKING_MODE"),
+            ("enabled", "medium", "INVALID_REASONING_EFFORT"),
+            (True, None, "INVALID_THINKING_MODE"),
+            ("enabled", 1, "INVALID_REASONING_EFFORT"),
+        )
+        for thinking_mode, reasoning_effort, error_code in cases:
+            req = make_request()
+            object.__setattr__(req, "thinking_mode", thinking_mode)
+            object.__setattr__(req, "reasoning_effort", reasoning_effort)
+            looked_up = []
+            transport = CountingTransport()
+            with self.subTest(
+                thinking_mode=thinking_mode,
+                reasoning_effort=reasoning_effort,
+            ):
+                receipt, raw = run_blind_eval(
+                    req,
+                    authorize_live_call=True,
+                    credential_lookup=lambda name: looked_up.append(name),
+                    transport=transport,
+                )
+                self.assertEqual("NOT_EVALUABLE", receipt.terminal_status)
+                self.assertEqual(error_code, receipt.error_code)
+                self.assertEqual(0, receipt.provider_attempts)
+                self.assertEqual([], looked_up)
+                self.assertEqual(0, transport.calls)
+                self.assertIsNone(raw)
+
+    def test_v3_receipt_is_explicit_and_v2_json_schema_remains_closed(self):
         receipt, _ = success_receipt()
         document = receipt.as_dict()
         schema = json.loads(
@@ -186,8 +264,12 @@ class BlindEvalBridgeTests(unittest.TestCase):
         )
         self.assertFalse(schema["additionalProperties"])
         self.assertEqual("b2-blind-eval-bridge/v2", schema["properties"]["schema_version"]["const"])
-        self.assertEqual(set(schema["required"]), set(document))
-        self.assertEqual(set(schema["properties"]), set(document))
+        self.assertEqual("b2-blind-eval-bridge/v3", document["schema_version"])
+        self.assertEqual("b2-blind-eval-bridge/v3", document["protocol_version"])
+        new_fields = {"requested_thinking_mode", "requested_reasoning_effort"}
+        self.assertEqual(set(schema["required"]) | new_fields, set(document))
+        self.assertEqual(set(schema["properties"]) | new_fields, set(document))
+        self.assertTrue(new_fields.isdisjoint(schema["properties"]))
 
     def test_http_error_body_is_never_copied_to_receipt(self):
         private_echo = "private context body echoed by provider"

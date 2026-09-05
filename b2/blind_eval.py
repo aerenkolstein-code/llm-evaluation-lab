@@ -22,11 +22,13 @@ from time import perf_counter
 from typing import Callable, Mapping, Sequence
 from urllib import error, request
 
-BLIND_EVAL_PROTOCOL_VERSION = "b2-blind-eval-bridge/v2"
+BLIND_EVAL_PROTOCOL_VERSION = "b2-blind-eval-bridge/v3"
 BLIND_INPUT_ENVELOPE_VERSION = "b2-blind-input-envelope/v1"
 OPENAI_COMPATIBLE_PROTOCOL = "openai-compatible-chat-completions/v1"
 AUTOMATIC_RETRIES = 0
 TERMINAL_STATUSES = {"PASS", "NOT_EVALUABLE", "ERROR"}
+THINKING_MODES = {"enabled", "disabled"}
+REASONING_EFFORTS = {"low", "high", "max"}
 _PROVIDER_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,127}$")
 _PROVIDER_RESPONSE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$")
 _PROVIDER_FINISH_REASON_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,63}$")
@@ -116,6 +118,8 @@ class BlindEvalRequest:
     timeout_seconds: float = 120.0
     temperature: float = 0.0
     max_tokens: int = 8192
+    thinking_mode: str | None = None
+    reasoning_effort: str | None = None
     git_commit: str | None = None
 
 
@@ -166,6 +170,8 @@ class BlindEvalReceipt:
     provider_label: str
     provider_protocol: str
     requested_model_id: str | None
+    requested_thinking_mode: str | None
+    requested_reasoning_effort: str | None
     resolved_model_id: str | None
     context_sha256: str
     prompt_sha256: str
@@ -346,6 +352,8 @@ def _invoke_openai_compatible(
     timeout_seconds: float,
     temperature: float,
     max_tokens: int,
+    thinking_mode: str | None,
+    reasoning_effort: str | None,
     transport: Transport,
 ) -> ProviderResult:
     payload: dict[str, object] = {
@@ -354,6 +362,10 @@ def _invoke_openai_compatible(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if thinking_mode is not None:
+        payload["thinking"] = {"type": thinking_mode}
+    if reasoning_effort is not None:
+        payload["reasoning_effort"] = reasoning_effort
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -500,6 +512,17 @@ def _receipt(
         provider_label=req.provider_label,
         provider_protocol=req.provider_protocol,
         requested_model_id=_safe_provider_metadata(req.requested_model_id, kind="model"),
+        requested_thinking_mode=(
+            req.thinking_mode
+            if isinstance(req.thinking_mode, str) and req.thinking_mode in THINKING_MODES
+            else None
+        ),
+        requested_reasoning_effort=(
+            req.reasoning_effort
+            if isinstance(req.reasoning_effort, str)
+            and req.reasoning_effort in REASONING_EFFORTS
+            else None
+        ),
         resolved_model_id=observed.resolved_model_id,
         context_sha256=_sha256_bytes(req.context_bytes),
         prompt_sha256=_sha256_bytes(req.prompt_bytes),
@@ -612,6 +635,62 @@ def run_blind_eval(
             None,
         )
 
+    if req.thinking_mode is not None and (
+        not isinstance(req.thinking_mode, str)
+        or req.thinking_mode not in THINKING_MODES
+    ):
+        return (
+            _receipt(
+                req=req,
+                terminal_status="NOT_EVALUABLE",
+                envelope=envelope,
+                started_at=started_at,
+                started_perf=started_perf,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
+                error_code="INVALID_THINKING_MODE",
+                safe_error_message="thinking mode is not supported by this bridge version",
+            ),
+            None,
+        )
+
+    if req.reasoning_effort is not None and (
+        not isinstance(req.reasoning_effort, str)
+        or req.reasoning_effort not in REASONING_EFFORTS
+    ):
+        return (
+            _receipt(
+                req=req,
+                terminal_status="NOT_EVALUABLE",
+                envelope=envelope,
+                started_at=started_at,
+                started_perf=started_perf,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
+                error_code="INVALID_REASONING_EFFORT",
+                safe_error_message="reasoning effort is not supported by this bridge version",
+            ),
+            None,
+        )
+
+    if req.reasoning_effort is not None and req.thinking_mode != "enabled":
+        return (
+            _receipt(
+                req=req,
+                terminal_status="NOT_EVALUABLE",
+                envelope=envelope,
+                started_at=started_at,
+                started_perf=started_perf,
+                now_fn=now_fn,
+                perf_fn=perf_fn,
+                error_code="INVALID_REASONING_CONFIGURATION",
+                safe_error_message=(
+                    "reasoning effort requires explicitly enabled thinking mode"
+                ),
+            ),
+            None,
+        )
+
     api_key = credential_lookup(req.api_key_env)
     if not isinstance(api_key, str) or not api_key:
         return (
@@ -638,6 +717,8 @@ def run_blind_eval(
             timeout_seconds=req.timeout_seconds,
             temperature=req.temperature,
             max_tokens=req.max_tokens,
+            thinking_mode=req.thinking_mode,
+            reasoning_effort=req.reasoning_effort,
             transport=transport,
         )
     except ProviderCallError as exc:
@@ -810,6 +891,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=8192)
+    parser.add_argument("--thinking-mode", choices=sorted(THINKING_MODES))
+    parser.add_argument("--reasoning-effort", choices=sorted(REASONING_EFFORTS))
     parser.add_argument("--raw-output", required=True)
     parser.add_argument("--receipt-output", required=True)
     parser.add_argument("--authorize-live-call", action="store_true")
@@ -837,6 +920,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         timeout_seconds=args.timeout,
         temperature=args.temperature,
         max_tokens=args.max_tokens,
+        thinking_mode=args.thinking_mode,
+        reasoning_effort=args.reasoning_effort,
         git_commit=args.git_commit,
     )
     receipt, raw_output = run_blind_eval(req, authorize_live_call=args.authorize_live_call)

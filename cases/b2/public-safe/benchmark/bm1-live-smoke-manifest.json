@@ -50,17 +50,18 @@
         "accepted_resolved_model_ids": ["gpt-5.6-terra"],
         "on_mismatch": "NOT_EVALUABLE"
       },
-      "reasoning_control": {"mode":"FIXED","effort":"low"},
+      "reasoning_control": {"mode": "FIXED", "effort": "low"},
       "sampling_control": {
-        "mode":"PROVIDER_DEFAULT",
-        "omitted_parameters":["temperature","top_p"],
-        "comparability_limit":"Provider-default sampling is intentionally not assumed numerically equivalent across providers."
+        "mode": "PROVIDER_DEFAULT",
+        "omitted_parameters": ["temperature", "top_p"],
+        "comparability_limit": "Provider-default sampling is intentionally not assumed numerically equivalent across providers."
       },
       "pricing": {
-        "currency":"USD","unit":"PER_1M_TOKENS",
-        "input_usd_per_million_tokens":2.0,
-        "output_usd_per_million_tokens":12.0,
-        "valid_through":null
+        "currency": "USD",
+        "unit": "PER_1M_TOKENS",
+        "input_usd_per_million_tokens": 2.0,
+        "output_usd_per_million_tokens": 12.0,
+        "valid_through": null
       }
     },
     {
@@ -74,64 +75,66 @@
         "accepted_resolved_model_ids": ["gemini-3.8-flash"],
         "on_mismatch": "NOT_EVALUABLE"
       },
-      "reasoning_control": {"mode":"FIXED","effort":"low"},
+      "reasoning_control": {"mode": "FIXED", "effort": "low"},
       "sampling_control": {
-        "mode":"PROVIDER_DEFAULT",
-        "omitted_parameters":["temperature","top_p","top_k"],
-        "comparability_limit":"Gemini 3.8 uses provider-default sampling; deprecated sampling parameters are omitted rather than emulated."
+        "mode": "PROVIDER_DEFAULT",
+        "omitted_parameters": ["temperature", "top_p", "top_k"],
+        "comparability_limit": "Gemini 3.8 uses provider-default sampling; deprecated sampling parameters are omitted rather than emulated."
       },
       "pricing": {
-        "currency":"USD","unit":"PER_1M_TOKENS",
-        "input_usd_per_million_tokens":0.75,
-        "output_usd_per_million_tokens":3.75,
-        "valid_through":"2026-12-31"
+        "currency": "USD",
+        "unit": "PER_1M_TOKENS",
+        "input_usd_per_million_tokens": 0.75,
+        "output_usd_per_million_tokens": 3.75,
+        "valid_through": "2026-12-31"
       }
     }
   ],
   "runtime_contract": {
-    "planned_provider_attempts":4,
-    "automatic_retries":0,
-    "max_provider_requests_per_attempt":1,
-    "max_input_tokens_per_attempt":8000,
-    "max_output_tokens_per_attempt":2000,
-    "timeout_seconds":120,
-    "max_total_smoke_spend_usd":0.2,
-    "max_provider_local_errors_before_global_stop":2,
-    "fallback_or_model_substitution":0
+    "planned_provider_attempts": 4,
+    "automatic_retries": 0,
+    "max_provider_requests_per_attempt": 1,
+    "max_input_tokens_per_attempt": 8000,
+    "max_output_tokens_per_attempt": 2000,
+    "timeout_seconds": 120,
+    "max_total_smoke_spend_usd": 0.2,
+    "max_provider_local_errors_before_global_stop": 2,
+    "fallback_or_model_substitution": 0,
+    "live_attempt_claim": "DURABLE_BEFORE_PROVIDER_CALL"
   },
   "attempt_plan": [
-    {"sequence":1,"attempt_id":"BM1-A01-OPENAI-TARGET","trial_id":"BM1-T01-OPENAI-TARGET","provider_id":"openai","requested_model_id":"gpt-5.6-terra","case_id":"B2-QA2-R-CONSTRAINT-KB-001","variant":"KNOWN_BAD","replicate_index":0},
-    {"sequence":2,"attempt_id":"BM1-A02-OPENAI-CONTROL","trial_id":"BM1-T02-OPENAI-CONTROL","provider_id":"openai","requested_model_id":"gpt-5.6-terra","case_id":"B2-QA2-R-CONSTRAINT-CTRL-001","variant":"CONTROL","replicate_index":0},
-    {"sequence":3,"attempt_id":"BM1-A03-GOOGLE-TARGET","trial_id":"BM1-T03-GOOGLE-TARGET","provider_id":"google","requested_model_id":"gemini-3.8-flash","case_id":"B2-QA2-R-CONSTRAINT-KB-001","variant":"KNOWN_BAD","replicate_index":0},
-    {"sequence":4,"attempt_id":"BM1-A04-GOOGLE-CONTROL","trial_id":"BM1-T04-GOOGLE-CONTROL","provider_id":"google","requested_model_id":"gemini-3.8-flash","case_id":"B2-QA2-R-CONSTRAINT-CTRL-001","variant":"CONTROL","replicate_index":0}
+    {"sequence": 1, "attempt_id": "BM1-A01-OPENAI-TARGET", "trial_id": "BM1-T01-OPENAI-TARGET", "provider_id": "openai", "requested_model_id": "gpt-5.6-terra", "case_id": "B2-QA2-R-CONSTRAINT-KB-001", "variant": "KNOWN_BAD", "replicate_index": 0},
+    {"sequence": 2, "attempt_id": "BM1-A02-OPENAI-CONTROL", "trial_id": "BM1-T02-OPENAI-CONTROL", "provider_id": "openai", "requested_model_id": "gpt-5.6-terra", "case_id": "B2-QA2-R-CONSTRAINT-CTRL-001", "variant": "CONTROL", "replicate_index": 0},
+    {"sequence": 3, "attempt_id": "BM1-A03-GOOGLE-TARGET", "trial_id": "BM1-T03-GOOGLE-TARGET", "provider_id": "google", "requested_model_id": "gemini-3.8-flash", "case_id": "B2-QA2-R-CONSTRAINT-KB-001", "variant": "KNOWN_BAD", "replicate_index": 0},
+    {"sequence": 4, "attempt_id": "BM1-A04-GOOGLE-CONTROL", "trial_id": "BM1-T04-GOOGLE-CONTROL", "provider_id": "google", "requested_model_id": "gemini-3.8-flash", "case_id": "B2-QA2-R-CONSTRAINT-CTRL-001", "variant": "CONTROL", "replicate_index": 0}
   ],
   "public_private_boundary": {
-    "public_receipt_bodies":"FINGERPRINTS_AND_TYPED_METADATA_ONLY",
-    "private_raw_bundle":"REQUIRED_FOR_CALLED_ATTEMPT",
-    "private_locator_in_public_receipt":false,
-    "reasoning_body_in_public_receipt":false,
-    "final_body_in_public_receipt":false,
-    "secret_value_in_public_receipt":false
+    "public_receipt_bodies": "FINGERPRINTS_AND_TYPED_METADATA_ONLY",
+    "private_raw_bundle": "REQUIRED_FOR_CALLED_ATTEMPT",
+    "private_locator_in_public_receipt": false,
+    "reasoning_body_in_public_receipt": false,
+    "final_body_in_public_receipt": false,
+    "secret_value_in_public_receipt": false
   },
   "implementation_scope": {
-    "approved_paths":[
+    "approved_paths": [
       "b2/bm1.py",
       "schemas/bm1_live_smoke_manifest.schema.json",
       "cases/b2/public-safe/benchmark/bm1-live-smoke-manifest.json",
       "tests/test_b2_bm1.py",
       "docs/b2/bm1-live-multi-model.md"
     ],
-    "sixth_path_requires_explicit_approval":true
+    "sixth_path_requires_explicit_approval": true
   },
   "authorization": {
-    "p2_offline_implementation":true,
-    "credential_presence_or_value_access":false,
-    "authenticated_provider_request":false,
-    "live_execution":false,
-    "spend":false,
-    "merge":false,
-    "run_ready":false,
-    "bm2":false
+    "p2_offline_implementation": true,
+    "credential_presence_or_value_access": false,
+    "authenticated_provider_request": false,
+    "live_execution": false,
+    "spend": false,
+    "merge": false,
+    "run_ready": false,
+    "bm2": false
   },
-  "manifest_fingerprint":"sha256:caab12a217ccbe0d744cd651049393c2a1b8d8a9ff6fef08a6e680433c0b29bd"
+  "manifest_fingerprint": "sha256:ef24bdbc5433699c964498cc80677ee19dee915a8ec374a4caf74569df23ee00"
 }

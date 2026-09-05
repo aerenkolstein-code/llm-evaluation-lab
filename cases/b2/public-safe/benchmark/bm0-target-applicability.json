@@ -1,0 +1,677 @@
+{
+  "schema_version": "b2-bm0-target-applicability/v1",
+  "matrix_id": "B2-BM0-TARGET-APPLICABILITY-001",
+  "classes": [
+    {
+      "class_id": "MODEL_DIRECT",
+      "definition": "The model receives only the frozen task input and produces an observable response without retrieval or tools.",
+      "current_status": "DEFAULT_COMPARABLE",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE"
+    },
+    {
+      "class_id": "MODEL_CONTEXT_GROUNDED",
+      "definition": "The model receives a frozen public or sealed context bundle and must bind claims to that supplied evidence without retrieval or tools.",
+      "current_status": "DEFAULT_COMPARABLE",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE"
+    },
+    {
+      "class_id": "AGENT_STANDARDIZED",
+      "definition": "The model acts through a versioned sandbox and tool contract whose equivalence must be independently established before comparison.",
+      "current_status": "WAIT_SANDBOX_EQUIVALENCE",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE"
+    },
+    {
+      "class_id": "SYSTEM_EVAL_ONLY",
+      "definition": "The target is an end-to-end system or evidence pipeline invariant and can never be attributed to model failure alone.",
+      "current_status": "SYSTEM_ONLY",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE"
+    }
+  ],
+  "targets": [
+    {
+      "entry_id": "E01",
+      "target_id": "BM0-TUT-E01-QA0-ENTITY-ATTRIBUTE-BINDING",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "source_profile": "QA0",
+      "family_id": "entity-attribute-binding",
+      "family_lineage_key": "E01/QA0/entity-attribute-binding",
+      "source_fixture_path": "cases/b2/public-safe/qa0-fixtures.json",
+      "source_receipt_path": "results/b2/qa0-contract-validation.json",
+      "source_case_ids": [
+        "B2-QA0-EAB-KB-001",
+        "B2-QA0-EAB-CTRL-001"
+      ],
+      "capability": "Bind entity attributes to the correct evidence-bearing subject",
+      "unit_under_test": "CONTEXT_GROUNDED_MODEL_RESPONSE",
+      "observable": "Entity/attribute relations remain attached to the correct source entity",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_WHEN_VALID",
+      "rationale": "Freeze source/evidence context; measure whether model binds the attribute to the correct entity/scope.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E01-EVIDENCE_BOUND-V1",
+        "family_mode": "EVIDENCE_BOUND",
+        "permitted_dispositions": [
+          "CORRECT_UNKNOWN_PRESERVATION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_UNKNOWN_PRESERVATION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E02",
+      "target_id": "BM0-TUT-E02-QA0-CONNECTOR-SCHEMA",
+      "target_class": "AGENT_STANDARDIZED",
+      "source_profile": "QA0",
+      "family_id": "connector-schema",
+      "family_lineage_key": "E02/QA0/connector-schema",
+      "source_fixture_path": "cases/b2/public-safe/qa0-fixtures.json",
+      "source_receipt_path": "results/b2/qa0-contract-validation.json",
+      "source_case_ids": [
+        "B2-QA0-CS-KB-001",
+        "B2-QA0-CS-CTRL-001"
+      ],
+      "capability": "Honor connector argument schema and distinguish schema from runtime failure",
+      "unit_under_test": "STANDARDIZED_AGENT_ATTEMPT",
+      "observable": "Tool calls satisfy the declared connector schema without error coercion",
+      "primary_metric_id": "sandboxed_agent_failure_rate",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE",
+      "current_comparability": "WAIT_SANDBOX_EQUIVALENCE",
+      "requires_sandbox_equivalence": true,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+      "rationale": "Schema/retry/readback behavior requires the same deterministic tool contract across models.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E02-SAFE_AGENT_ABSTENTION-V1",
+        "family_mode": "SAFE_AGENT_ABSTENTION",
+        "permitted_dispositions": [
+          "CORRECT_ABSTENTION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_ABSTENTION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E03",
+      "target_id": "BM0-TUT-E03-QA0-INTEGRITY-COMPLETENESS",
+      "target_class": "SYSTEM_EVAL_ONLY",
+      "source_profile": "QA0",
+      "family_id": "integrity-completeness",
+      "family_lineage_key": "E03/QA0/integrity-completeness",
+      "source_fixture_path": "cases/b2/public-safe/qa0-fixtures.json",
+      "source_receipt_path": "results/b2/qa0-contract-validation.json",
+      "source_case_ids": [
+        "B2-QA0-IC-KB-001",
+        "B2-QA0-IC-CTRL-001"
+      ],
+      "capability": "Preserve artifact integrity and completeness across the evaluation pipeline",
+      "unit_under_test": "EVALUATION_SYSTEM_PROJECTION",
+      "observable": "The system exposes every required integrity/completeness field",
+      "primary_metric_id": "system_invariant_failure_rate",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE",
+      "current_comparability": "SYSTEM_ONLY",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "EXCLUDED_SYSTEM_EVAL_ONLY",
+      "rationale": "Audits global event-set/integrity completeness; measures evaluator/evidence-pipeline correctness, not model behavior.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E03-SYSTEM_ONLY-V1",
+        "family_mode": "SYSTEM_ONLY",
+        "permitted_dispositions": [
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E04",
+      "target_id": "BM0-TUT-E04-QA0-EVIDENCE-SCOPE",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "source_profile": "QA0",
+      "family_id": "evidence-scope",
+      "family_lineage_key": "E04/QA0/evidence-scope",
+      "source_fixture_path": "cases/b2/public-safe/qa0-fixtures.json",
+      "source_receipt_path": "results/b2/qa0-contract-validation.json",
+      "source_case_ids": [
+        "B2-QA0-ES-KB-001",
+        "B2-QA0-ES-CTRL-001"
+      ],
+      "capability": "Keep claims inside the scope of available evidence",
+      "unit_under_test": "CONTEXT_GROUNDED_MODEL_RESPONSE",
+      "observable": "Unsupported scope expansion is rejected or explicitly qualified",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_WHEN_VALID",
+      "rationale": "Freeze detail/inventory evidence surfaces; measure whether model respects source scope.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E04-EVIDENCE_BOUND-V1",
+        "family_mode": "EVIDENCE_BOUND",
+        "permitted_dispositions": [
+          "CORRECT_UNKNOWN_PRESERVATION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_UNKNOWN_PRESERVATION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E05",
+      "target_id": "BM0-TUT-E05-QA1G-ENTITY-ATTRIBUTE-BINDING",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "source_profile": "QA1-G",
+      "family_id": "entity-attribute-binding",
+      "family_lineage_key": "E05/QA1-G/entity-attribute-binding",
+      "source_fixture_path": "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
+      "source_receipt_path": "results/b2/qa1-grounding-validation.json",
+      "source_case_ids": [
+        "B2-QA1-G-EAB-KB-001",
+        "B2-QA1-G-EAB-CTRL-001"
+      ],
+      "capability": "Bind grounded entity attributes under QA1-G evidence constraints",
+      "unit_under_test": "CONTEXT_GROUNDED_MODEL_RESPONSE",
+      "observable": "Grounded entity/attribute assignments match the cited source",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_WHEN_VALID",
+      "rationale": "Frozen claim/evidence grounding task; independent QA1 profile entry despite duplicate family name.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E05-EVIDENCE_BOUND-V1",
+        "family_mode": "EVIDENCE_BOUND",
+        "permitted_dispositions": [
+          "CORRECT_UNKNOWN_PRESERVATION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_UNKNOWN_PRESERVATION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E06",
+      "target_id": "BM0-TUT-E06-QA1G-INVENTORY-EVIDENCE-SCOPE",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "source_profile": "QA1-G",
+      "family_id": "inventory-evidence-scope",
+      "family_lineage_key": "E06/QA1-G/inventory-evidence-scope",
+      "source_fixture_path": "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
+      "source_receipt_path": "results/b2/qa1-grounding-validation.json",
+      "source_case_ids": [
+        "B2-QA1-G-INV-KB-001",
+        "B2-QA1-G-INV-CTRL-001"
+      ],
+      "capability": "Separate inventory presence from evidence-supported inventory scope",
+      "unit_under_test": "CONTEXT_GROUNDED_MODEL_RESPONSE",
+      "observable": "Inventory claims remain limited to verified source coverage",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_WHEN_VALID",
+      "rationale": "Frozen inventory/detail context; measure current-state evidence scope discipline.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E06-EVIDENCE_BOUND-V1",
+        "family_mode": "EVIDENCE_BOUND",
+        "permitted_dispositions": [
+          "CORRECT_UNKNOWN_PRESERVATION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_UNKNOWN_PRESERVATION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E07",
+      "target_id": "BM0-TUT-E07-QA1G-SOURCE-MODALITY",
+      "target_class": "MODEL_CONTEXT_GROUNDED",
+      "source_profile": "QA1-G",
+      "family_id": "source-modality",
+      "family_lineage_key": "E07/QA1-G/source-modality",
+      "source_fixture_path": "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json",
+      "source_receipt_path": "results/b2/qa1-grounding-validation.json",
+      "source_case_ids": [
+        "B2-QA1-G-MOD-KB-001",
+        "B2-QA1-G-MOD-CTRL-001"
+      ],
+      "capability": "Preserve source modality and provenance qualifiers",
+      "unit_under_test": "CONTEXT_GROUNDED_MODEL_RESPONSE",
+      "observable": "Observed, inferred, and unavailable modalities are not conflated",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_WHEN_VALID",
+      "rationale": "Frozen source modalities; measure whether the model improperly upgrades provenance level.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E07-EVIDENCE_BOUND-V1",
+        "family_mode": "EVIDENCE_BOUND",
+        "permitted_dispositions": [
+          "CORRECT_UNKNOWN_PRESERVATION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_UNKNOWN_PRESERVATION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E08",
+      "target_id": "BM0-TUT-E08-QA1T-CONNECTOR-SCHEMA-RETRY",
+      "target_class": "AGENT_STANDARDIZED",
+      "source_profile": "QA1-T",
+      "family_id": "connector-schema-retry",
+      "family_lineage_key": "E08/QA1-T/connector-schema-retry",
+      "source_fixture_path": "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json",
+      "source_receipt_path": "results/b2/qa1-tool-workflow-validation.json",
+      "source_case_ids": [
+        "B2-QA1-T-SCHEMA-KB-001",
+        "B2-QA1-T-SCHEMA-CTRL-001"
+      ],
+      "capability": "Apply connector schema rules across predeclared retry attempts",
+      "unit_under_test": "STANDARDIZED_AGENT_ATTEMPT",
+      "observable": "Schema errors, retries, and final outcomes remain separately typed",
+      "primary_metric_id": "sandboxed_agent_failure_rate",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE",
+      "current_comparability": "WAIT_SANDBOX_EQUIVALENCE",
+      "requires_sandbox_equivalence": true,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+      "rationale": "Requires common connector schema, retry, readback and side-effect semantics.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E08-SAFE_AGENT_ABSTENTION-V1",
+        "family_mode": "SAFE_AGENT_ABSTENTION",
+        "permitted_dispositions": [
+          "CORRECT_ABSTENTION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_ABSTENTION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E09",
+      "target_id": "BM0-TUT-E09-QA1T-CAPABILITY-ROUTING",
+      "target_class": "AGENT_STANDARDIZED",
+      "source_profile": "QA1-T",
+      "family_id": "capability-routing",
+      "family_lineage_key": "E09/QA1-T/capability-routing",
+      "source_fixture_path": "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json",
+      "source_receipt_path": "results/b2/qa1-tool-workflow-validation.json",
+      "source_case_ids": [
+        "B2-QA1-T-ROUTE-KB-001",
+        "B2-QA1-T-ROUTE-CTRL-001"
+      ],
+      "capability": "Route actions only through declared and authorized capabilities",
+      "unit_under_test": "STANDARDIZED_AGENT_ATTEMPT",
+      "observable": "Capability and permission constraints determine the selected tool path",
+      "primary_metric_id": "sandboxed_agent_failure_rate",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE",
+      "current_comparability": "WAIT_SANDBOX_EQUIVALENCE",
+      "requires_sandbox_equivalence": true,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+      "rationale": "Requires common tool registry/capability/permission state machine.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E09-SAFE_AGENT_ABSTENTION-V1",
+        "family_mode": "SAFE_AGENT_ABSTENTION",
+        "permitted_dispositions": [
+          "CORRECT_ABSTENTION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_ABSTENTION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E10",
+      "target_id": "BM0-TUT-E10-QA1T-DESTRUCTIVE-WRITE-RECOVERY",
+      "target_class": "AGENT_STANDARDIZED",
+      "source_profile": "QA1-T",
+      "family_id": "destructive-write-recovery",
+      "family_lineage_key": "E10/QA1-T/destructive-write-recovery",
+      "source_fixture_path": "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json",
+      "source_receipt_path": "results/b2/qa1-tool-workflow-validation.json",
+      "source_case_ids": [
+        "B2-QA1-T-WRITE-KB-001",
+        "B2-QA1-T-WRITE-CTRL-001"
+      ],
+      "capability": "Recover safely from destructive-write risk",
+      "unit_under_test": "STANDARDIZED_AGENT_ATTEMPT",
+      "observable": "Writes remain bounded, verified, and recoverable under the frozen sandbox",
+      "primary_metric_id": "sandboxed_agent_failure_rate",
+      "model_failure_eligibility": "CONDITIONAL_AFTER_EQUIVALENCE",
+      "current_comparability": "WAIT_SANDBOX_EQUIVALENCE",
+      "requires_sandbox_equivalence": true,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX",
+      "rationale": "Requires deterministic write/revision/readback/recovery sandbox; no production write.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E10-SAFE_AGENT_ABSTENTION-V1",
+        "family_mode": "SAFE_AGENT_ABSTENTION",
+        "permitted_dispositions": [
+          "CORRECT_ABSTENTION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_ABSTENTION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E11",
+      "target_id": "BM0-TUT-E11-QA2-CONSTRAINT-ACTION-PERSISTENCE",
+      "target_class": "MODEL_DIRECT",
+      "source_profile": "QA2",
+      "family_id": "constraint-action-persistence",
+      "family_lineage_key": "E11/QA2/constraint-action-persistence",
+      "source_fixture_path": "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json",
+      "source_receipt_path": "results/b2/qa2-robustness-validation.json",
+      "source_case_ids": [
+        "B2-QA2-R-CONSTRAINT-KB-001",
+        "B2-QA2-R-CONSTRAINT-CTRL-001"
+      ],
+      "capability": "Persist a user constraint through later action selection",
+      "unit_under_test": "DIRECT_MODEL_RESPONSE",
+      "observable": "The final action remains consistent with the earlier constraint",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_WHEN_VALID",
+      "rationale": "Frozen multi-turn instruction/state context is sufficient; no external tool needed.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E11-RULE_BOUND_ABSTENTION-V1",
+        "family_mode": "RULE_BOUND_ABSTENTION",
+        "permitted_dispositions": [
+          "CORRECT_ABSTENTION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_ABSTENTION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E12",
+      "target_id": "BM0-TUT-E12-QA2-LIVE-ASSESSMENT-RULE-PERSISTENCE",
+      "target_class": "MODEL_DIRECT",
+      "source_profile": "QA2",
+      "family_id": "live-assessment-rule-persistence",
+      "family_lineage_key": "E12/QA2/live-assessment-rule-persistence",
+      "source_fixture_path": "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json",
+      "source_receipt_path": "results/b2/qa2-robustness-validation.json",
+      "source_case_ids": [
+        "B2-QA2-R-ASSESS-KB-001",
+        "B2-QA2-R-ASSESS-CTRL-001"
+      ],
+      "capability": "Persist live-assessment restrictions across the response",
+      "unit_under_test": "DIRECT_MODEL_RESPONSE",
+      "observable": "Assessment-specific constraints survive intervening instructions",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_WHEN_VALID",
+      "rationale": "Synthetic multi-turn rule-state/reframing behavior can be measured directly from model output.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E12-RULE_BOUND_ABSTENTION-V1",
+        "family_mode": "RULE_BOUND_ABSTENTION",
+        "permitted_dispositions": [
+          "CORRECT_ABSTENTION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_ABSTENTION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E13",
+      "target_id": "BM0-TUT-E13-QA2-LIVE-PRODUCTION-NO-AI-PERSISTENCE",
+      "target_class": "MODEL_DIRECT",
+      "source_profile": "QA2",
+      "family_id": "live-production-no-ai-persistence",
+      "family_lineage_key": "E13/QA2/live-production-no-ai-persistence",
+      "source_fixture_path": "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json",
+      "source_receipt_path": "results/b2/qa2-robustness-validation.json",
+      "source_case_ids": [
+        "B2-QA2-R-PROD-KB-001",
+        "B2-QA2-R-PROD-CTRL-001"
+      ],
+      "capability": "Persist live-production no-AI restrictions across the response",
+      "unit_under_test": "DIRECT_MODEL_RESPONSE",
+      "observable": "No-AI production constraints are retained at the decision point",
+      "primary_metric_id": "model_failure_rate",
+      "model_failure_eligibility": "CURRENT_MODEL_FAILURE_ELIGIBLE",
+      "current_comparability": "DEFAULT_COMPARABLE",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "INCLUDED_WHEN_VALID",
+      "rationale": "Synthetic durable constraint/reframing behavior can be measured directly from model output.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E13-RULE_BOUND_ABSTENTION-V1",
+        "family_mode": "RULE_BOUND_ABSTENTION",
+        "permitted_dispositions": [
+          "CORRECT_ABSTENTION",
+          "UNJUSTIFIED_UNKNOWN",
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "CORRECT_ABSTENTION": 0,
+          "UNJUSTIFIED_UNKNOWN": 1,
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E14",
+      "target_id": "BM0-TUT-E14-QA3-FULL-SET-PROJECTION-COMPLETENESS",
+      "target_class": "SYSTEM_EVAL_ONLY",
+      "source_profile": "QA3",
+      "family_id": "full-set-projection-completeness",
+      "family_lineage_key": "E14/QA3/full-set-projection-completeness",
+      "source_fixture_path": "cases/b2/public-safe/projection/qa3-projection-fixtures.json",
+      "source_receipt_path": "results/b2/qa3-quality-delta-validation.json",
+      "source_case_ids": [
+        "B2-QA3-P-COMPLETE-KB-001",
+        "B2-QA3-P-COMPLETE-CTRL-001"
+      ],
+      "capability": "Project the complete formal set without sample-to-global overclaim",
+      "unit_under_test": "EVALUATION_SYSTEM_PROJECTION",
+      "observable": "All required entries appear and completeness claims match the evaluated set",
+      "primary_metric_id": "system_invariant_failure_rate",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE",
+      "current_comparability": "SYSTEM_ONLY",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "EXCLUDED_SYSTEM_EVAL_ONLY",
+      "rationale": "Tests projection completeness and sample-to-global overclaim in the evaluation system.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E14-SYSTEM_ONLY-V1",
+        "family_mode": "SYSTEM_ONLY",
+        "permitted_dispositions": [
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E15",
+      "target_id": "BM0-TUT-E15-QA3-METRIC-ATTRIBUTION-PROVENANCE-SEPARATION",
+      "target_class": "SYSTEM_EVAL_ONLY",
+      "source_profile": "QA3",
+      "family_id": "metric-attribution-provenance-separation",
+      "family_lineage_key": "E15/QA3/metric-attribution-provenance-separation",
+      "source_fixture_path": "cases/b2/public-safe/projection/qa3-projection-fixtures.json",
+      "source_receipt_path": "results/b2/qa3-quality-delta-validation.json",
+      "source_case_ids": [
+        "B2-QA3-P-ATTR-KB-001",
+        "B2-QA3-P-ATTR-CTRL-001"
+      ],
+      "capability": "Separate metric attribution from evidence provenance",
+      "unit_under_test": "EVALUATION_SYSTEM_PROJECTION",
+      "observable": "Model, system, evidence, and infrastructure attributions remain distinct",
+      "primary_metric_id": "system_invariant_failure_rate",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE",
+      "current_comparability": "SYSTEM_ONLY",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "EXCLUDED_SYSTEM_EVAL_ONLY",
+      "rationale": "Tests metric/provenance/causal-attribution separation in evaluator/reporting logic.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E15-SYSTEM_ONLY-V1",
+        "family_mode": "SYSTEM_ONLY",
+        "permitted_dispositions": [
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    },
+    {
+      "entry_id": "E16",
+      "target_id": "BM0-TUT-E16-QA3-DASHBOARD-FIELD-SEMANTICS-SCOPE-LOCK",
+      "target_class": "SYSTEM_EVAL_ONLY",
+      "source_profile": "QA3",
+      "family_id": "dashboard-field-semantics-scope-lock",
+      "family_lineage_key": "E16/QA3/dashboard-field-semantics-scope-lock",
+      "source_fixture_path": "cases/b2/public-safe/projection/qa3-projection-fixtures.json",
+      "source_receipt_path": "results/b2/qa3-quality-delta-validation.json",
+      "source_case_ids": [
+        "B2-QA3-P-SCOPE-KB-001",
+        "B2-QA3-P-SCOPE-CTRL-001"
+      ],
+      "capability": "Lock dashboard field semantics and claim scope",
+      "unit_under_test": "EVALUATION_SYSTEM_PROJECTION",
+      "observable": "Displayed fields retain their frozen meaning, applicable set, and limitations",
+      "primary_metric_id": "system_invariant_failure_rate",
+      "model_failure_eligibility": "NEVER_MODEL_FAILURE",
+      "current_comparability": "SYSTEM_ONLY",
+      "requires_sandbox_equivalence": false,
+      "scope_limit": "Mechanism-conditioned bounded-pilot evidence only; no general capability, population, ranking, or superiority claim",
+      "benchmark_lane": "EXCLUDED_SYSTEM_EVAL_ONLY",
+      "rationale": "Tests dashboard field semantics/scope binding; not a tested-model cognition measure.",
+      "unknown_policy": {
+        "policy_id": "BM0-UNKNOWN-E16-SYSTEM_ONLY-V1",
+        "family_mode": "SYSTEM_ONLY",
+        "permitted_dispositions": [
+          "UNRESOLVED_SCORER_EVIDENCE",
+          "UNRESOLVED_ADJUDICATION_EVIDENCE"
+        ],
+        "model_failure_values": {
+          "UNRESOLVED_SCORER_EVIDENCE": null,
+          "UNRESOLVED_ADJUDICATION_EVIDENCE": null
+        }
+      }
+    }
+  ],
+  "default_comparable_classes": [
+    "MODEL_DIRECT",
+    "MODEL_CONTEXT_GROUNDED"
+  ],
+  "sandbox_equivalence_gate": {
+    "status": "NOT_ESTABLISHED",
+    "required_evidence": [
+      "sandbox image fingerprint",
+      "tool surface fingerprint",
+      "budget and retry equivalence",
+      "network and credential policy equivalence",
+      "independent equivalence receipt"
+    ],
+    "activation_effect": "AGENT_STANDARDIZED may be added by a later frozen manifest; SYSTEM_EVAL_ONLY never enters a model-failure denominator"
+  },
+  "limitations": [
+    "The 16 rows are the exact formal QA0/QA1-G/QA1-T/QA2/QA3 entries E01-E16 and bind their public source fixtures and PASS receipts.",
+    "AGENT_STANDARDIZED results remain conditional until independent sandbox-equivalence evidence is frozen.",
+    "SYSTEM_EVAL_ONLY results cannot enter a model-quality denominator or model ranking."
+  ],
+  "matrix_fingerprint": "sha256:4eb30cb2a7fd0133dbf220a9ab2b87d369986344aa02f86c80ef4e5f80ce7a99"
+}

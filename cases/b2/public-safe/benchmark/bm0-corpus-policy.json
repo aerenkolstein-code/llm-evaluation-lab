@@ -1,0 +1,73 @@
+{
+  "schema_version": "b2-bm0-corpus-policy/v1",
+  "policy_id": "B2-BM0-CORPUS-POLICY-001",
+  "pools": [
+    {
+      "pool_id": "PUBLIC_REGRESSION",
+      "visibility": "PUBLIC_SAFE",
+      "purpose": "Current public-safe regression assets for engineering regression and openly disclosed benchmark slices",
+      "allowed_in_primary_estimate": false,
+      "content_location": "PUBLIC_REPOSITORY_ALLOWED",
+      "selection_timing": "BEFORE_FROZEN_MANIFEST",
+      "lineage_role": "ENGINEERING_REGRESSION_ONLY"
+    },
+    {
+      "pool_id": "PRIVATE_HIDDEN_HOLDOUT",
+      "visibility": "PRIVATE_EXTERNAL",
+      "purpose": "Sealed primary-estimate items unavailable to model, developer, scorer tuning, and public repository before manifest freeze",
+      "allowed_in_primary_estimate": true,
+      "content_location": "OUTSIDE_PUBLIC_REPOSITORY",
+      "selection_timing": "BEFORE_EXECUTION_MANIFEST_FREEZE_BY_INDEPENDENT_CURATOR",
+      "lineage_role": "PRIMARY_HOLDOUT_ONLY"
+    },
+    {
+      "pool_id": "MECHANISM_PRESERVING_MUTATION",
+      "visibility": "PUBLIC_SAFE_GENERATED",
+      "purpose": "Entity, wording, ordering, distractor, or surface variants that preserve the same failure mechanism",
+      "allowed_in_primary_estimate": false,
+      "content_location": "PUBLIC_REPOSITORY_ALLOWED_AFTER_PUBLIC_SAFETY_CHECK",
+      "selection_timing": "BEFORE_FROZEN_MANIFEST",
+      "lineage_role": "STRESS_TEST_ONLY"
+    },
+    {
+      "pool_id": "CONTROL",
+      "visibility": "PUBLIC_SAFE",
+      "purpose": "Matched controls for false-reject and contract-regression checks",
+      "allowed_in_primary_estimate": false,
+      "content_location": "PUBLIC_REPOSITORY_ALLOWED",
+      "selection_timing": "BEFORE_FROZEN_MANIFEST",
+      "lineage_role": "CONTROL_ONLY"
+    }
+  ],
+  "split_rules": {
+    "lineage_disjoint": true,
+    "case_identity_disjoint": true,
+    "mutation_parent_disclosed": true,
+    "tuning_on_hidden_forbidden": true,
+    "promotion_requires_new_contract_version": true
+  },
+  "access_sequence": [
+    "CURATOR_SELECT_AND_COMMIT_PRIVATE_HOLDOUT",
+    "FREEZE_EXECUTION_MANIFEST",
+    "AUTHORIZE_EXECUTION",
+    "OPEN_PRIVATE_HOLDOUT_TO_EXECUTION_PATH",
+    "LOG_ACCESS"
+  ],
+  "hidden_holdout": {
+    "exact_content_in_public_repository": false,
+    "exact_case_ids_in_public_repository": false,
+    "private_locator_in_public_repository": false,
+    "per_case_commitments_in_public_repository": false,
+    "aggregate_commitment_required_before_execution": true,
+    "independent_curator_seal_before_manifest_freeze": true,
+    "access_after_manifest_freeze": true,
+    "access_log_required": true
+  },
+  "forbidden_reuse": [
+    "B2-BLIND-01/PR-30 corpus or output by assumption",
+    "development examples as hidden evidence",
+    "control cases as hidden model-quality evidence",
+    "mutation children across train and holdout lineage"
+  ],
+  "policy_fingerprint": "sha256:370f7ac67c404bd263461a876b7b1048dd9ce8fba2813cb4fd1396bf98f42e99"
+}

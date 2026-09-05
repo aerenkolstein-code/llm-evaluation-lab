@@ -1,0 +1,627 @@
+{
+  "schema_version": "b2-bm0-measurement-contract/v1",
+  "work_order_id": "WO-B2-BM0",
+  "work_order_revision": "v0.2",
+  "stage": "BOUNDED_OFFLINE_MEASUREMENT_CONTRACT",
+  "implementation_base_sha": "901ba05b99c413d45415c474c71b5969c155dea1",
+  "authority": "MEASUREMENT_CONTRACT_NOT_BENCHMARK_RESULT",
+  "provider_roster_status": "NOT_SELECTED",
+  "artifact_bindings": {
+    "b2/bm0.py": "sha256:f802d6e97d41fccba41bc18198f14fc1614bd895d8a8b3393f698b6b77e42f3d",
+    "tests/test_b2_bm0.py": "sha256:4e16b857621b6f1511a8e7c4662172d6429500ff18937e79ac2a419faa88ea19",
+    "cases/b2/public-safe/benchmark/bm0-target-applicability.json": "sha256:8d813c2e9d97fe49e8ec16cce3165bd8cd9c93da975614c148b4a8682265f0ee",
+    "cases/b2/public-safe/benchmark/bm0-metric-registry.json": "sha256:31a46cb81bf6c611fececbb802bc001299f3c2a7d5b5689b76a9703af7c0bb60",
+    "cases/b2/public-safe/benchmark/bm0-corpus-policy.json": "sha256:1658ebd5f39aadb72fc5d8321782e03be82218e8b99cfa174f90a702bd9a64be",
+    "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json": "sha256:8896ef5c9011f37082316ec60a65b05c444dac7451a4883ebc43401a18ec44a9",
+    "cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json": "sha256:b77a22c38e7cbec6173a82687934e99dd433bc23090b848704f39bf54863a4c5",
+    "schemas/bm0_trial_identity.schema.json": "sha256:e96afed97ef41575789bb62d483d1e521e2c22ed1555e4906d1f560172975a52",
+    "schemas/bm0_observation.schema.json": "sha256:b00ebe34794fa83ac7f2e19b213f5e56c7d967bf187f8482c823e39f0dc3a4e2",
+    "schemas/bm0_adjudication_record.schema.json": "sha256:f3912eec9cfac90704c0a327e0ec9f6bd676ea8beded1a3833cfd821a656be4f",
+    "schemas/bm0_benchmark_manifest.schema.json": "sha256:7da719eb9f4f6b444b06aaaa995facb20f18d1dc14f1ced7edd874826a63031a",
+    "schemas/bm0_measurement_contract.schema.json": "sha256:d5308c86c9844a30db93a806ac145f2adda76ef13070fbab63e0448936ca4fdd",
+    "schemas/bm0_candidate_roster_budget.schema.json": "sha256:64e92b119c9d6d04ebbe6af5fabec285c46b22b7d5ad7cc3ccf7a7d0d2c24edb",
+    "cases/b2/public-safe/qa0-fixtures.json": "sha256:78bd3f2e9232f140c7027ab5488bc41cca4e3531b84bda7c5626292447677854",
+    "results/b2/qa0-contract-validation.json": "sha256:b76c73a2e4ea28a84f00eb49a066ccf31b9333638dac9f54f7722c37c16fe2d3",
+    "cases/b2/public-safe/grounding/qa1-grounding-fixtures.json": "sha256:3a14b361bf828cafa8fba8176a576e529cfaac7b7f23247cadbc215a41973e8d",
+    "results/b2/qa1-grounding-validation.json": "sha256:ea50afde6503439e454f3c94d64725bd3c6f6fd7787b0df06989bc19868393ea",
+    "cases/b2/public-safe/tool-workflow/qa1-tool-workflow-fixtures.json": "sha256:8c3a105905f266f29aa68ee4a57f3d6b07f645267caffac2c0a1d364b6a4c5c9",
+    "results/b2/qa1-tool-workflow-validation.json": "sha256:1aead58eb8fa19befa48d26c9b0c31ef3f58e5c2d7e2f08d3e6654c50b01c494",
+    "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json": "sha256:8081e2adcde4dbf3f239815a39c22a943b0dbd6e2d5cdf31c81e598090493ace",
+    "results/b2/qa2-robustness-validation.json": "sha256:073f986f9952738c9111b4e16d64577e42a9b4e6cad1e86311ea1bdcf250370f",
+    "cases/b2/public-safe/projection/qa3-projection-fixtures.json": "sha256:2db519b6f6b6c27798160629dab4965505bfe3c7b81ece47d4700f405c4c43d5",
+    "results/b2/qa3-quality-delta-validation.json": "sha256:90d35b2c492a45f8398df56073192bab505d417ba29a2a1f7ffb701c3f6f93d0"
+  },
+  "target_contract": {
+    "target_count": 16,
+    "class_counts": {
+      "MODEL_DIRECT": 3,
+      "MODEL_CONTEXT_GROUNDED": 5,
+      "AGENT_STANDARDIZED": 4,
+      "SYSTEM_EVAL_ONLY": 4
+    },
+    "default_comparable_classes": [
+      "MODEL_DIRECT",
+      "MODEL_CONTEXT_GROUNDED"
+    ],
+    "sandbox_equivalence_status": "NOT_ESTABLISHED",
+    "benchmark_lane_counts": {
+      "INCLUDED_WHEN_VALID": 8,
+      "INCLUDED_ONLY_UNDER_STANDARDIZED_SANDBOX": 4,
+      "EXCLUDED_SYSTEM_EVAL_ONLY": 4
+    },
+    "per_entry_rationale_required": true,
+    "per_entry_unknown_policy_required": true
+  },
+  "terminal_semantics": [
+    {
+      "terminal_status": "PASS",
+      "category": "MODEL_SCORABLE",
+      "model_failure_denominator": true,
+      "model_failure_numerator": false,
+      "resolution_rule": "TERMINAL_FIXED"
+    },
+    {
+      "terminal_status": "FAIL",
+      "category": "MODEL_SCORABLE",
+      "model_failure_denominator": true,
+      "model_failure_numerator": true,
+      "resolution_rule": "TERMINAL_FIXED"
+    },
+    {
+      "terminal_status": "NOT_EVALUABLE",
+      "category": "NON_EVALUABLE",
+      "model_failure_denominator": false,
+      "model_failure_numerator": false,
+      "resolution_rule": "TERMINAL_FIXED"
+    },
+    {
+      "terminal_status": "BLOCKED",
+      "category": "GOVERNANCE_BLOCK",
+      "model_failure_denominator": false,
+      "model_failure_numerator": false,
+      "resolution_rule": "TERMINAL_FIXED"
+    },
+    {
+      "terminal_status": "ERROR",
+      "category": "INFRASTRUCTURE_ERROR",
+      "model_failure_denominator": false,
+      "model_failure_numerator": false,
+      "resolution_rule": "TERMINAL_FIXED"
+    },
+    {
+      "terminal_status": "UNKNOWN",
+      "category": "FAMILY_POLICY_DEPENDENT",
+      "model_failure_denominator": null,
+      "model_failure_numerator": null,
+      "resolution_rule": "TARGET_UNKNOWN_POLICY_AND_DISPOSITION"
+    }
+  ],
+  "model_failure_denominator": {
+    "unit": "UNIQUE_PREDECLARED_ATTEMPT",
+    "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
+    "eligible_classes": [
+      "MODEL_DIRECT",
+      "MODEL_CONTEXT_GROUNDED"
+    ],
+    "required_applicability_result": "APPLICABLE",
+    "excluded_applicability_results": [
+      "NOT_APPLICABLE"
+    ],
+    "eligible_statuses": [
+      "PASS",
+      "FAIL",
+      "UNKNOWN"
+    ],
+    "denominator_rule": "MODEL_FAILURE_VALUE_IN_0_1",
+    "failure_rule": "MODEL_FAILURE_VALUE_EQUALS_1",
+    "unknown_resolution": "PER_ENTRY_POLICY_AND_EXPLICIT_DISPOSITION_NO_NULL_COERCION",
+    "excluded_statuses": [
+      "NOT_EVALUABLE",
+      "BLOCKED",
+      "ERROR"
+    ],
+    "zero_denominator": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR",
+    "partial_grid": "NOT_EVALUABLE/MISSING_PLANNED_OBSERVATIONS",
+    "retry_semantics": "NEW_PREDECLARED_ATTEMPT_ID_NEVER_SILENT_REPLACEMENT"
+  },
+  "sap": {
+    "sap_id": "B2-BM0-EXECUTABLE-SAP-001",
+    "frozen_before_hidden_access": true,
+    "design_rule": {
+      "sample_size_rule_id": "BOUNDED-PILOT-FIXED-SUITE-V1",
+      "purpose": "BOUNDED_PILOT_MECHANISM_CONDITIONED_FREQUENCY_EVIDENCE",
+      "statistical_unit": "DISTINCT_CASE_VARIANT",
+      "cluster_unit": "CASE_ID_WITH_REPEATED_TRIALS_NESTED",
+      "minimum_distinct_cases_per_family_entry": 2,
+      "maximum_distinct_cases_per_family_entry": 8,
+      "minimum_replicates_per_case": 2,
+      "maximum_replicates_per_case": 5,
+      "target_precision": "NOT_CLAIMED_BOUNDED_PILOT",
+      "significance_or_superiority_claim": "FORBIDDEN",
+      "outcome_dependent_extension": "FORBIDDEN",
+      "change_control": "NEW_FROZEN_MANIFEST_AND_SEPARATE_APPROVAL_REQUIRED"
+    },
+    "methods": [
+      {
+        "method_id": "BM0-SAP-01-FIXED-ATTEMPT-STOP-V1",
+        "implementation": "fixed_attempt_stop_v1",
+        "purpose": "Stop only after every predeclared attempt has a receipt, without reading outcomes, scores, or adjudication decisions.",
+        "frozen_parameters": {
+          "required_event_fields": [
+            "attempt_id",
+            "recorded"
+          ],
+          "forbidden_event_fields": [
+            "terminal_status",
+            "model_failure_value",
+            "score",
+            "output",
+            "adjudication_decision"
+          ],
+          "decision_rule": "STOP_IFF_ALL_PREDECLARED_ATTEMPTS_RECORDED"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-02-IDENTITY-GRID-V1",
+        "implementation": "validate_observation_grid_v1",
+        "purpose": "Reject duplicate, unplanned, substituted, silently-fallback, or configuration-drifted observations against the frozen identity grid.",
+        "frozen_parameters": {
+          "duplicate_policy": "ERROR",
+          "unplanned_policy": "ERROR",
+          "missing_policy": "NOT_EVALUABLE"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1",
+        "implementation": "typed_terminal_partition_v1",
+        "purpose": "Expose the complete typed terminal distribution and suppress rates when any planned observation is missing.",
+        "frozen_parameters": {
+          "terminal_statuses": [
+            "PASS",
+            "FAIL",
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "coercion": "FORBIDDEN",
+          "diagnostic_numerator": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "unknown_diagnostic_rule": "COUNT_ONLY_WHEN_MODEL_FAILURE_VALUE_IS_NULL",
+          "diagnostic_denominator": [
+            "PASS",
+            "FAIL",
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "identity_source": "FROZEN_MANIFEST_GRID",
+          "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
+          "zero_scheduled_attempts": "NOT_EVALUABLE",
+          "corpus_pool": "ALL_DECLARED_POOLS"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1",
+        "implementation": "model_failure_denominator_v1",
+        "purpose": "Compute descriptive model or conditionally comparable agent failure rates using only PASS and FAIL.",
+        "frozen_parameters": {
+          "numerator": "MODEL_FAILURE_VALUE_EQUALS_1",
+          "denominator": "MODEL_FAILURE_VALUE_IN_0_1",
+          "eligible_terminals": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ],
+          "excluded": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR"
+          ],
+          "unknown_rule": "APPLY_ENTRY_POLICY_WITHOUT_NULL_COERCION",
+          "zero_denominator": "NOT_EVALUABLE",
+          "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
+          "metric_target_classes": {
+            "model_failure_rate": [
+              "MODEL_DIRECT",
+              "MODEL_CONTEXT_GROUNDED"
+            ],
+            "sandboxed_agent_failure_rate": [
+              "AGENT_STANDARDIZED"
+            ]
+          },
+          "ranking": "FORBIDDEN_AT_BM0",
+          "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+        "implementation": "wilson_interval_v1",
+        "purpose": "Compute the named deterministic two-sided 95 percent Wilson interval for a non-zero binary denominator.",
+        "frozen_parameters": {
+          "confidence_level": 0.95,
+          "z": 1.959963984540054,
+          "zero_denominator": "NOT_EVALUABLE"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-06-PAIRED-COMPLETE-CASE-V1",
+        "implementation": "paired_complete_case_v1",
+        "purpose": "Compare two models only on the same complete case, repeat, retry ordinal, configuration, scorer, and oracle identity.",
+        "frozen_parameters": {
+          "pair_key": [
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
+            "replicate_index",
+            "retry_ordinal"
+          ],
+          "compatibility_fields": [
+            "benchmark_id",
+            "contract_version",
+            "target_id",
+            "target_class",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id",
+            "mechanism_lineage_id",
+            "case_fingerprint",
+            "generator_or_mutation_version",
+            "contamination_status",
+            "exposure_status",
+            "corpus_item_alias",
+            "corpus_item_commitment",
+            "corpus_pool_id",
+            "mutation_parent_commitment",
+            "prompt_template_version",
+            "prompt_fingerprint",
+            "context_fingerprint",
+            "tool_schema_fingerprint",
+            "sandbox_fingerprint",
+            "state_machine_fingerprint",
+            "capability_mode",
+            "system_wrapper_version",
+            "developer_wrapper_version",
+            "sampling_controls",
+            "reasoning_controls",
+            "harness_version",
+            "adapter_version",
+            "scorer_id",
+            "scorer_version",
+            "scorer_fingerprint",
+            "oracle_id",
+            "oracle_version",
+            "oracle_fingerprint",
+            "replicate_index",
+            "random_seed",
+            "environment_fingerprint"
+          ],
+          "pair_inclusion": "BOTH_MODEL_FAILURE_VALUES_IN_0_1",
+          "non_scorable_pair_policy": "SYMMETRIC_EXCLUSION_WITHOUT_NULL_COERCION",
+          "unpaired_design": "NOT_EVALUABLE",
+          "identity_mismatch": "NOT_EVALUABLE",
+          "metric_target_classes": {
+            "model_failure_rate": [
+              "MODEL_DIRECT",
+              "MODEL_CONTEXT_GROUNDED"
+            ],
+            "sandboxed_agent_failure_rate": [
+              "AGENT_STANDARDIZED"
+            ]
+          },
+          "ranking": "NOT_EMITTED",
+          "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-07-ADJUDICATION-RESOLUTION-V1",
+        "implementation": "resolve_adjudication_v1",
+        "purpose": "Resolve two independent blinded primary judgments and one predeclared tiebreaker under the frozen UNKNOWN rules.",
+        "frozen_parameters": {
+          "authority_order": [
+            "DETERMINISTIC_ORACLE",
+            "STRUCTURED_RULE_SCORER",
+            "BLINDED_INDEPENDENT_HUMAN_REVIEW",
+            "CALIBRATED_LLM_JUDGE_ASSISTANCE_ONLY"
+          ],
+          "open_case_final_authority": "HUMAN_HUMAN",
+          "primary_records": 2,
+          "distinct_adjudicators": true,
+          "tiebreakers_on_disagreement": 1,
+          "tiebreak_eligible_decisions": [
+            "PASS",
+            "FAIL"
+          ],
+          "unknown_semantics": "TERMINAL_NOT_TIEBREAKABLE",
+          "identity_blinding": true,
+          "peer_decision_blinding": true,
+          "llm_judge_role": "CALIBRATED_ASSISTANCE_ONLY_NOT_FINAL_AUTHORITY",
+          "agreement_reporting": "REQUIRED_RAW_PRIMARY_EXACT_AGREEMENT_AND_ESCALATION"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1",
+        "implementation": "system_invariant_failure_rate_v1",
+        "purpose": "Compute system-only invariant failures without model attribution or ranking.",
+        "frozen_parameters": {
+          "target_class": "SYSTEM_EVAL_ONLY",
+          "subject_identity": "SYSTEM_SCOPE",
+          "numerator": [
+            "FAIL"
+          ],
+          "denominator": [
+            "PASS",
+            "FAIL"
+          ],
+          "excluded": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES",
+          "model_attribution": "FORBIDDEN",
+          "ranking": "FORBIDDEN",
+          "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-09-CASE-FAILURE-PROBABILITY-V1",
+        "implementation": "case_failure_probability_v1",
+        "purpose": "Compute CFP for one exact model/version and one distinct case, nesting repeated trials within that case.",
+        "frozen_parameters": {
+          "statistical_unit": "VALID_MODEL_TRIAL",
+          "case_cluster_key": [
+            "model_subject_id",
+            "entry_id",
+            "family_id",
+            "case_id",
+            "variant_id"
+          ],
+          "repeat_unit": "replicate_index",
+          "numerator": "MODEL_FAILURE_VALUE_EQUALS_1",
+          "denominator": "MODEL_FAILURE_VALUE_IN_0_1",
+          "eligible_terminals": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ],
+          "excluded": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR"
+          ],
+          "unknown_rule": "APPLY_ENTRY_POLICY_WITHOUT_NULL_COERCION",
+          "interval_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+          "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-10-FAMILY-CONDITIONAL-FAILURE-RATE-V1",
+        "implementation": "family_conditional_failure_rate_v1",
+        "purpose": "Compute FCFR as the unweighted macro mean across distinct case CFPs in one formal family entry.",
+        "frozen_parameters": {
+          "statistical_unit": "DISTINCT_CASE_VARIANT",
+          "cluster_unit": "CASE_ID",
+          "family_key": [
+            "model_subject_id",
+            "entry_id",
+            "family_id"
+          ],
+          "estimator": "UNWEIGHTED_MEAN_OF_DISTINCT_CASE_CFP",
+          "repeat_weighting": "EQUAL_WITHIN_CASE",
+          "case_weighting": "EQUAL_ACROSS_DISTINCT_CASES",
+          "uncertainty_method_id": "BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1",
+          "minimum_distinct_cases_for_uncertainty": 2,
+          "incomplete_case": "NOT_EVALUABLE/SUPPRESS_FAMILY_ESTIMATE"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1",
+        "implementation": "fcfr_case_cluster_bootstrap_v1",
+        "purpose": "Compute deterministic percentile uncertainty by resampling distinct case clusters with a frozen seed.",
+        "frozen_parameters": {
+          "method_family": "DETERMINISTIC_PERCENTILE_CASE_CLUSTER_BOOTSTRAP",
+          "cluster_unit": "DISTINCT_CASE_ID",
+          "resamples": 10000,
+          "seed": 20260904,
+          "confidence_level": 0.95,
+          "lower_percentile": 0.025,
+          "upper_percentile": 0.975,
+          "resample_repeated_trials_as_independent_cases": false,
+          "minimum_distinct_clusters": 2
+        }
+      },
+      {
+        "method_id": "BM0-SAP-12-CONTROL-FALSE-POSITIVE-RATE-V1",
+        "implementation": "control_false_positive_rate_v1",
+        "purpose": "Compute matched CONTROL false-positive frequency separately from target-case failure.",
+        "frozen_parameters": {
+          "statistical_unit": "VALID_CONTROL_TRIAL",
+          "control_selector": "corpus_pool_id=CONTROL",
+          "numerator": "MODEL_FAILURE_VALUE_EQUALS_1",
+          "denominator": "MODEL_FAILURE_VALUE_IN_0_1",
+          "eligible_terminals": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ],
+          "excluded": [
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR"
+          ],
+          "unknown_rule": "APPLY_ENTRY_POLICY_WITHOUT_NULL_COERCION",
+          "interval_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+          "incomplete_grid": "NOT_EVALUABLE/SUPPRESS_OUTCOME_AGGREGATES"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1",
+        "implementation": "within_case_instability_v1",
+        "purpose": "Report outcome switching across repeated model-scorable trials inside the same case.",
+        "frozen_parameters": {
+          "statistical_unit": "DISTINCT_CASE_VARIANT",
+          "cluster_unit": "CASE_ID",
+          "eligible_case": "AT_LEAST_TWO_NON_NULL_MODEL_FAILURE_VALUES",
+          "switch_definition": "BOTH_0_AND_1_MODEL_FAILURE_VALUES_WITHIN_CASE",
+          "numerator": "SWITCHING_CASE_COUNT",
+          "denominator": "ELIGIBLE_DISTINCT_CASE_COUNT",
+          "repeated_trials_are_not_distinct_cases": true
+        }
+      },
+      {
+        "method_id": "BM0-SAP-14-INFRASTRUCTURE-ERROR-RATE-V1",
+        "implementation": "infrastructure_error_rate_v1",
+        "purpose": "Report provider/network/schema/runtime ERROR attempts over all planned attempts without model attribution.",
+        "frozen_parameters": {
+          "statistical_unit": "PREDECLARED_ATTEMPT",
+          "numerator": [
+            "ERROR"
+          ],
+          "denominator": [
+            "PASS",
+            "FAIL",
+            "NOT_EVALUABLE",
+            "BLOCKED",
+            "ERROR",
+            "UNKNOWN"
+          ],
+          "missing_observations": "NOT_EVALUABLE/SUPPRESS_RATE",
+          "model_failure_attribution": "FORBIDDEN"
+        }
+      },
+      {
+        "method_id": "BM0-SAP-15-BOUNDED-PILOT-DESIGN-V1",
+        "implementation": "bounded_pilot_design_v1",
+        "purpose": "Validate frozen bounded-pilot case and replicate counts before execution without reading outcomes or inflating repeats with retries.",
+        "frozen_parameters": {
+          "sample_size_rule_id": "BOUNDED-PILOT-FIXED-SUITE-V1",
+          "purpose": "BOUNDED_PILOT_MECHANISM_CONDITIONED_FREQUENCY_EVIDENCE",
+          "statistical_unit": "DISTINCT_CASE_VARIANT",
+          "cluster_unit": "CASE_ID_WITH_REPEATED_TRIALS_NESTED",
+          "minimum_distinct_cases_per_family_entry": 2,
+          "maximum_distinct_cases_per_family_entry": 8,
+          "minimum_replicates_per_case": 2,
+          "maximum_replicates_per_case": 5,
+          "target_precision": "NOT_CLAIMED_BOUNDED_PILOT",
+          "significance_or_superiority_claim": "FORBIDDEN",
+          "outcome_dependent_extension": "FORBIDDEN",
+          "change_control": "NEW_FROZEN_MANIFEST_AND_SEPARATE_APPROVAL_REQUIRED"
+        }
+      }
+    ]
+  },
+  "adjudication_contract": {
+    "schema_path": "schemas/bm0_adjudication_record.schema.json",
+    "plan_location": "FROZEN_MANIFEST",
+    "mode_status": "NOT_SELECTED",
+    "authority_order": [
+      "DETERMINISTIC_ORACLE",
+      "STRUCTURED_RULE_SCORER",
+      "BLINDED_INDEPENDENT_HUMAN_REVIEW",
+      "CALIBRATED_LLM_JUDGE_ASSISTANCE_ONLY"
+    ],
+    "route_policy": {
+      "deterministic_oracle": "FINAL_WHEN_APPLICABLE",
+      "structured_rule_scorer": "FINAL_WHEN_ORACLE_NOT_APPLICABLE",
+      "open_nondeterministic": "HUMAN_HUMAN_MINIMUM_TWO_INDEPENDENT"
+    },
+    "open_case_final_mode": "HUMAN_HUMAN",
+    "minimum_primary_records": 2,
+    "distinct_adjudicators_required": true,
+    "adjudicator_configuration_bound": true,
+    "predeclared_tiebreaker_required": true,
+    "tiebreak_rule": "EXACTLY_ONE_PREDECLARED_DISTINCT_TIEBREAKER_ONLY_ON_PASS_FAIL_DISAGREEMENT",
+    "model_identity_blinded": true,
+    "provider_identity_blinded": true,
+    "peer_decisions_blinded": true,
+    "llm_judge_assistance_policy": {
+      "allowed": true,
+      "final_authority": false,
+      "calibration_set_required": true,
+      "known_bad_control_required": true,
+      "exact_identity_and_version_required": true,
+      "judge_error_audit_required": true,
+      "hidden_from_primary_humans_until_decision": true
+    },
+    "agreement_reporting_policy": {
+      "required": true,
+      "measure": "RAW_EXACT_AGREEMENT_OVER_TWO_PRIMARY_HUMAN_DECISIONS",
+      "disagreement_escalation_required": true,
+      "auditable_final_label_required": true
+    }
+  },
+  "claim_ceiling": {
+    "allowed_claim_codes": [
+      "BM0_OFFLINE_CONTRACT_VALIDATED",
+      "BM0_READY_FOR_EXACT_HEAD_CI_AND_INDEPENDENT_QA"
+    ],
+    "forbidden_claim_codes": [
+      "BM0_GREEN",
+      "MODEL_RANKING",
+      "MODEL_WINNER",
+      "LIVE_PROVIDER_PERFORMANCE",
+      "POPULATION_FAILURE_RATE",
+      "CAUSAL_IMPROVEMENT",
+      "FAIRNESS_VALIDATED",
+      "LQE_VALIDATED",
+      "PRODUCTION_READY",
+      "INDEPENDENT_QA_PASS"
+    ]
+  },
+  "execution_boundaries": {
+    "live_model_calls": 0,
+    "credential_lookup": false,
+    "spend": 0,
+    "provider_roster_selection": false,
+    "benchmark_results": false,
+    "b2_blind_reuse_by_assumption": false,
+    "b1_pr17_mutation": false,
+    "qa_receipt_history_rewrite": false,
+    "fairness_lqe_promotion": false,
+    "dependency_workflow_docker_version_change": false,
+    "merge_release": false
+  },
+  "bm0_green_gate": {
+    "developer_regressions": "REQUIRED",
+    "exact_head_ci": "REQUIRED",
+    "independent_qa": "DISTINCT_PASS_REQUIRED",
+    "current_state": "NOT_EVALUATED"
+  },
+  "limitations": [
+    "This is an offline bounded-pilot measurement contract, not a benchmark result, leaderboard, ranking, or population estimate.",
+    "The exact provider/model roster, hidden cases, execution count, maximum spend, and credential path remain unselected and unauthorized.",
+    "All E01-E16 formal family entries bind their existing public-safe source fixtures and PASS receipts; future private cases require a separately frozen manifest.",
+    "No result-dependent sample extension, stopping, significance claim, or superiority claim is permitted by BM0."
+  ],
+  "applicability_contract": {
+    "manifest_field": "model_applicability",
+    "result_values": [
+      "APPLICABLE",
+      "NOT_APPLICABLE"
+    ],
+    "completeness": "EXACTLY_ONE_PER_SELECTED_PROVIDER_MODEL_X_16_ENTRY",
+    "not_applicable_denominator": "EXCLUDED_AND_DISCLOSED",
+    "planned_model_attempt_requirement": "MATCHING_APPLICABLE_DECLARATION_REQUIRED",
+    "system_eval_rule": "MODEL_PROVIDER_NOT_APPLICABLE_SYSTEM_SCOPE_SCORED_SEPARATELY"
+  },
+  "candidate_roster_budget_contract": {
+    "artifact_path": "cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json",
+    "schema_path": "schemas/bm0_candidate_roster_budget.schema.json",
+    "roster_label": "CANDIDATE",
+    "provider_roster_status": "NOT_SELECTED",
+    "budget_label": "ESTIMATE_ONLY",
+    "candidate_count": 3,
+    "spending_authority": false,
+    "refresh_before_live_selection": true
+  },
+  "contract_fingerprint": "sha256:dd3a0eb9f08c8adc8cf7ddd531690b2c69dfdde9b0b76ca2de53edfe4ed1f2aa"
+}

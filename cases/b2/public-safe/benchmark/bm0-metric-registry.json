@@ -1,0 +1,427 @@
+{
+  "schema_version": "b2-bm0-metric-registry/v1",
+  "registry_id": "B2-BM0-METRIC-REGISTRY-001",
+  "metrics": [
+    {
+      "metric_id": "case_failure_probability",
+      "version": "v1",
+      "kind": "MODEL_QUALITY_CASE_LEVEL",
+      "description": "CFP: model failures divided by valid model trials for one exact model/version and one case; repeats stay inside the case.",
+      "applicability_classes": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED",
+        "AGENT_STANDARDIZED"
+      ],
+      "numerator_statuses": [
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR"
+      ],
+      "corpus_pool": "ALL_DECLARED_POOLS",
+      "activation_gate": "AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
+      "estimate_method_id": "BM0-SAP-09-CASE-FAILURE-PROBABILITY-V1",
+      "uncertainty_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+      "zero_denominator_semantics": "NOT_EVALUABLE/ZERO_CASE_SCORABLE_DENOMINATOR",
+      "directionality": "LOWER_IS_BETTER",
+      "claim_scope": "CASE_CONDITIONAL_ONLY",
+      "applicability_filter": "APPLICABLE_MODEL_PROVIDER_ONLY",
+      "weighting": {
+        "statistical_unit": "VALID_MODEL_TRIAL",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "NOT_APPLICABLE_CASE_SCOPED",
+        "across_families": "NOT_APPLICABLE_CASE_SCOPED",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN"
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
+    },
+    {
+      "metric_id": "family_conditional_failure_rate",
+      "version": "v1",
+      "kind": "MODEL_QUALITY_FAMILY_MACRO",
+      "description": "FCFR: unweighted macro mean of distinct case CFP values within one formal family entry; repeated trials never create extra cases.",
+      "applicability_classes": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED",
+        "AGENT_STANDARDIZED"
+      ],
+      "numerator_statuses": [
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR"
+      ],
+      "corpus_pool": "ALL_DECLARED_POOLS",
+      "activation_gate": "AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
+      "estimate_method_id": "BM0-SAP-10-FAMILY-CONDITIONAL-FAILURE-RATE-V1",
+      "uncertainty_method_id": "BM0-SAP-11-FCFR-CASE-CLUSTER-BOOTSTRAP-V1",
+      "zero_denominator_semantics": "NOT_EVALUABLE/NO_DISTINCT_SCORABLE_CASES",
+      "directionality": "LOWER_IS_BETTER",
+      "claim_scope": "MECHANISM_CONDITIONED_FAMILY_PROFILE_ONLY",
+      "applicability_filter": "APPLICABLE_MODEL_PROVIDER_ONLY",
+      "weighting": {
+        "statistical_unit": "DISTINCT_CASE_VARIANT_CFP",
+        "within_case": "EQUAL_WEIGHT_REPLICATES_TO_CFP",
+        "across_cases": "EQUAL_WEIGHT_DISTINCT_CASE_CFP",
+        "across_families": "MODEL_X_FAMILY_PROFILE_NO_SCALAR_POOL",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN"
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
+    },
+    {
+      "metric_id": "control_false_positive_rate",
+      "version": "v1",
+      "kind": "CONTROL_DIAGNOSTIC",
+      "description": "CFPR: matched CONTROL trials incorrectly assigned FAIL divided by model-scorable CONTROL trials.",
+      "applicability_classes": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED",
+        "AGENT_STANDARDIZED"
+      ],
+      "numerator_statuses": [
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR"
+      ],
+      "corpus_pool": "ALL_DECLARED_POOLS",
+      "activation_gate": "CONTROL_VARIANT_ONLY_AND_AGENT_REQUIRES_SANDBOX_EQUIVALENCE",
+      "estimate_method_id": "BM0-SAP-12-CONTROL-FALSE-POSITIVE-RATE-V1",
+      "uncertainty_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+      "zero_denominator_semantics": "NOT_EVALUABLE/ZERO_CONTROL_SCORABLE_DENOMINATOR",
+      "directionality": "LOWER_IS_BETTER",
+      "claim_scope": "CONTROL_FALSE_POSITIVE_ONLY",
+      "applicability_filter": "APPLICABLE_MODEL_PROVIDER_ONLY",
+      "weighting": {
+        "statistical_unit": "VALID_CONTROL_TRIAL",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "EQUAL_WEIGHT_PER_VALID_CONTROL_TRIAL",
+        "across_families": "CONTROL_DIAGNOSTIC_ONLY",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN"
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
+    },
+    {
+      "metric_id": "within_case_instability",
+      "version": "v1",
+      "kind": "STOCHASTIC_STABILITY",
+      "description": "Share of repeat-eligible distinct cases that contain both PASS and FAIL across valid repeated trials.",
+      "applicability_classes": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED",
+        "AGENT_STANDARDIZED"
+      ],
+      "numerator_statuses": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR"
+      ],
+      "corpus_pool": "ALL_DECLARED_POOLS",
+      "activation_gate": "AT_LEAST_TWO_SCORABLE_REPLICATES_PER_CASE",
+      "estimate_method_id": "BM0-SAP-13-WITHIN-CASE-INSTABILITY-V1",
+      "uncertainty_method_id": "NONE_DESCRIPTIVE_SWITCHING_ONLY",
+      "zero_denominator_semantics": "NOT_EVALUABLE/NO_REPEAT_ELIGIBLE_CASES",
+      "directionality": "LOWER_IS_BETTER",
+      "claim_scope": "WITHIN_CASE_REPEAT_STABILITY_ONLY",
+      "applicability_filter": "APPLICABLE_MODEL_PROVIDER_ONLY",
+      "weighting": {
+        "statistical_unit": "ELIGIBLE_DISTINCT_CASE_VARIANT",
+        "within_case": "ONE_SWITCH_INDICATOR_PER_CASE",
+        "across_cases": "EQUAL_WEIGHT_DISTINCT_CASES",
+        "across_families": "SEPARATE_FAMILY_PROFILE",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN"
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
+    },
+    {
+      "metric_id": "model_failure_rate",
+      "version": "v1",
+      "kind": "MODEL_QUALITY",
+      "description": "Descriptive FAIL rate on the complete private-holdout grid for direct and context-grounded model targets.",
+      "applicability_classes": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED"
+      ],
+      "numerator_statuses": [
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR"
+      ],
+      "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
+      "activation_gate": "NONE",
+      "estimate_method_id": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1",
+      "uncertainty_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+      "zero_denominator_semantics": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR",
+      "directionality": "LOWER_IS_BETTER",
+      "claim_scope": "MODEL_ONLY_DESCRIPTIVE",
+      "applicability_filter": "APPLICABLE_MODEL_PROVIDER_ONLY",
+      "weighting": {
+        "statistical_unit": "VALID_MODEL_TRIAL",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "EQUAL_WEIGHT_PER_VALID_TRIAL_NOT_CASE_BALANCED",
+        "across_families": "NO_BROAD_AGGREGATE_CLAIM",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN_AS_PRIMARY_SUMMARY"
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
+    },
+    {
+      "metric_id": "sandboxed_agent_failure_rate",
+      "version": "v1",
+      "kind": "MODEL_QUALITY_CONDITIONAL",
+      "description": "Descriptive FAIL rate for standardized-agent targets only after sandbox equivalence is independently established.",
+      "applicability_classes": [
+        "AGENT_STANDARDIZED"
+      ],
+      "numerator_statuses": [
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR"
+      ],
+      "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
+      "activation_gate": "SANDBOX_EQUIVALENCE_ESTABLISHED",
+      "estimate_method_id": "BM0-SAP-04-MODEL-FAILURE-DENOMINATOR-V1",
+      "uncertainty_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+      "zero_denominator_semantics": "NOT_EVALUABLE/ZERO_MODEL_SCORABLE_DENOMINATOR",
+      "directionality": "LOWER_IS_BETTER",
+      "claim_scope": "MODEL_ONLY_AFTER_EQUIVALENCE",
+      "applicability_filter": "APPLICABLE_MODEL_PROVIDER_ONLY",
+      "weighting": {
+        "statistical_unit": "VALID_AGENT_TRIAL_AFTER_EQUIVALENCE",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "EQUAL_WEIGHT_PER_VALID_TRIAL_NOT_CASE_BALANCED",
+        "across_families": "NO_BROAD_AGGREGATE_CLAIM",
+        "across_models": "SEPARATE_MODEL_SUBJECTS",
+        "cross_family_micro_pooling": "FORBIDDEN_AS_PRIMARY_SUMMARY"
+      },
+      "model_failure_value_rule": "MODEL_FAILURE_VALUE_TRISTATE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
+    },
+    {
+      "metric_id": "system_invariant_failure_rate",
+      "version": "v1",
+      "kind": "SYSTEM_QUALITY",
+      "description": "FAIL divided by PASS plus FAIL for system-only invariants, with no model attribution.",
+      "applicability_classes": [
+        "SYSTEM_EVAL_ONLY"
+      ],
+      "numerator_statuses": [
+        "FAIL"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL"
+      ],
+      "excluded_terminal_statuses": [
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR",
+        "UNKNOWN"
+      ],
+      "corpus_pool": "PRIVATE_HIDDEN_HOLDOUT",
+      "activation_gate": "SYSTEM_ONLY",
+      "estimate_method_id": "BM0-SAP-08-SYSTEM-INVARIANT-FAILURE-RATE-V1",
+      "uncertainty_method_id": "BM0-SAP-05-WILSON-INTERVAL-V1",
+      "zero_denominator_semantics": "NOT_EVALUABLE/ZERO_SYSTEM_SCORABLE_DENOMINATOR",
+      "directionality": "LOWER_IS_BETTER",
+      "claim_scope": "SYSTEM_ONLY_NOT_MODEL_QUALITY",
+      "applicability_filter": "SYSTEM_SCOPE_ONLY_MODEL_PROVIDER_NOT_APPLICABLE",
+      "weighting": {
+        "statistical_unit": "VALID_SYSTEM_TRIAL",
+        "within_case": "EQUAL_WEIGHT_PER_VALID_REPLICATE",
+        "across_cases": "EQUAL_WEIGHT_PER_VALID_TRIAL",
+        "across_families": "SYSTEM_PROFILE_ONLY",
+        "across_models": "NOT_APPLICABLE_SYSTEM_SCOPE",
+        "cross_family_micro_pooling": "FORBIDDEN_AS_MODEL_QUALITY"
+      },
+      "model_failure_value_rule": "SYSTEM_INVARIANT_FAILURE_VALUE_1_NUMERATOR_0_OR_1_DENOMINATOR_NULL_EXCLUDED"
+    },
+    {
+      "metric_id": "infrastructure_error_rate",
+      "version": "v1",
+      "kind": "INFRASTRUCTURE_DIAGNOSTIC",
+      "description": "Provider, network, schema, or runtime ERROR attempts divided by all planned attempts; never a model failure rate.",
+      "applicability_classes": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED",
+        "AGENT_STANDARDIZED",
+        "SYSTEM_EVAL_ONLY"
+      ],
+      "numerator_statuses": [
+        "ERROR"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [],
+      "corpus_pool": "ALL_DECLARED_POOLS",
+      "activation_gate": "COMPLETE_PREDECLARED_GRID",
+      "estimate_method_id": "BM0-SAP-14-INFRASTRUCTURE-ERROR-RATE-V1",
+      "uncertainty_method_id": "NONE_DIAGNOSTIC_COUNTING_ONLY",
+      "zero_denominator_semantics": "NOT_EVALUABLE/ZERO_SCHEDULED_ATTEMPTS",
+      "directionality": "LOWER_IS_BETTER",
+      "claim_scope": "INFRASTRUCTURE_ONLY_NOT_MODEL_FAILURE",
+      "applicability_filter": "ALL_PREDECLARED_ATTEMPTS_WITH_APPLICABILITY_DISCLOSED",
+      "weighting": {
+        "statistical_unit": "PREDECLARED_ATTEMPT",
+        "within_case": "EQUAL_WEIGHT_PER_ATTEMPT",
+        "across_cases": "EQUAL_WEIGHT_PER_ATTEMPT_DIAGNOSTIC",
+        "across_families": "DIAGNOSTIC_ONLY",
+        "across_models": "REPORT_PROVIDER_MODEL_AND_TOTAL_SEPARATELY",
+        "cross_family_micro_pooling": "DIAGNOSTIC_ONLY"
+      },
+      "model_failure_value_rule": "TERMINAL_STATUS_ONLY"
+    },
+    {
+      "metric_id": "terminal_distribution",
+      "version": "v1",
+      "kind": "TYPED_TERMINAL_DIAGNOSTIC",
+      "description": "Complete typed distribution over PASS, FAIL, NOT_EVALUABLE, BLOCKED, ERROR, and UNKNOWN.",
+      "applicability_classes": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED",
+        "AGENT_STANDARDIZED",
+        "SYSTEM_EVAL_ONLY"
+      ],
+      "numerator_statuses": [
+        "PASS",
+        "FAIL",
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR",
+        "UNKNOWN"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [],
+      "corpus_pool": "ALL_DECLARED_POOLS",
+      "activation_gate": "COMPLETE_PREDECLARED_GRID",
+      "estimate_method_id": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1",
+      "uncertainty_method_id": "NONE_DIAGNOSTIC_COUNTING_ONLY",
+      "zero_denominator_semantics": "NOT_EVALUABLE/ZERO_SCHEDULED_ATTEMPTS",
+      "directionality": "DISTRIBUTION_ONLY",
+      "claim_scope": "TERMINAL_VISIBILITY_ONLY",
+      "applicability_filter": "ALL_PREDECLARED_ATTEMPTS_WITH_APPLICABILITY_DISCLOSED",
+      "weighting": {
+        "statistical_unit": "PREDECLARED_ATTEMPT",
+        "within_case": "EQUAL_WEIGHT_PER_ATTEMPT",
+        "across_cases": "EQUAL_WEIGHT_PER_ATTEMPT_DIAGNOSTIC",
+        "across_families": "REPORT_STRATIFIED_COUNTS",
+        "across_models": "REPORT_STRATIFIED_COUNTS",
+        "cross_family_micro_pooling": "COUNTS_ONLY_NO_QUALITY_CLAIM"
+      },
+      "model_failure_value_rule": "TERMINAL_STATUS_ONLY"
+    },
+    {
+      "metric_id": "non_scorable_attempt_rate",
+      "version": "v1",
+      "kind": "INFRASTRUCTURE_AND_EVIDENCE_DIAGNOSTIC",
+      "description": "Non-model-scorable terminal attempts divided by all scheduled attempts, reported only as a diagnostic.",
+      "applicability_classes": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED",
+        "AGENT_STANDARDIZED",
+        "SYSTEM_EVAL_ONLY"
+      ],
+      "numerator_statuses": [
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR",
+        "UNKNOWN"
+      ],
+      "denominator_statuses": [
+        "PASS",
+        "FAIL",
+        "NOT_EVALUABLE",
+        "BLOCKED",
+        "ERROR",
+        "UNKNOWN"
+      ],
+      "excluded_terminal_statuses": [],
+      "corpus_pool": "ALL_DECLARED_POOLS",
+      "activation_gate": "NONE",
+      "estimate_method_id": "BM0-SAP-03-TYPED-TERMINAL-PARTITION-V1",
+      "uncertainty_method_id": "NONE_DIAGNOSTIC_COUNTING_ONLY",
+      "zero_denominator_semantics": "NOT_EVALUABLE/ZERO_SCHEDULED_ATTEMPTS",
+      "directionality": "DIAGNOSTIC_ONLY",
+      "claim_scope": "DIAGNOSTIC_ONLY_NOT_MODEL_FAILURE",
+      "applicability_filter": "ALL_PREDECLARED_ATTEMPTS_WITH_APPLICABILITY_DISCLOSED",
+      "weighting": {
+        "statistical_unit": "PREDECLARED_ATTEMPT",
+        "within_case": "EQUAL_WEIGHT_PER_ATTEMPT",
+        "across_cases": "EQUAL_WEIGHT_PER_ATTEMPT_DIAGNOSTIC",
+        "across_families": "REPORT_STRATIFIED_COUNTS",
+        "across_models": "REPORT_PROVIDER_MODEL_AND_TOTAL_SEPARATELY",
+        "cross_family_micro_pooling": "DIAGNOSTIC_ONLY"
+      },
+      "model_failure_value_rule": "UNKNOWN_COUNTS_NONSCORABLE_ONLY_WHEN_FAILURE_VALUE_NULL"
+    }
+  ],
+  "registry_fingerprint": "sha256:9fc5d7a4ac96b5514d3e9e1f634158f04c7fd2be0a362c69756e9e51bb225934"
+}

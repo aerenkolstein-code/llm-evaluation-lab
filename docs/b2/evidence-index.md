@@ -85,3 +85,25 @@ performance, and quality delta as `NOT_EVALUABLE` where the canonical snapshot
 does not contain the required series or baseline. No brand-specific adapter or
 brand-specific claim is selected. Developer PASS remains distinct from the
 Independent QA verdict.
+
+## B2 BM0 measurement-contract evidence
+
+| Contract surface | Canonical artifact | Developer evidence |
+|---|---|---|
+| 16-entry target/applicability partition | `cases/b2/public-safe/benchmark/bm0-target-applicability.json` | exact ordered counts: 3 direct, 5 context-grounded, 4 agent-standardized, 4 system-only |
+| Per-model applicability manifest | `cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json` | a frozen selected roster requires one explicit applicability row per model × E01–E16; N/A is excluded and disclosed, omission is invalid, and system entries remain system scope |
+| Metric and denominator registry | `cases/b2/public-safe/benchmark/bm0-metric-registry.json` | freezes applicability filters and within-case/across-case/across-family/across-model weighting in addition to `FAIL / (PASS + FAIL)`; direct/context and sandboxed-agent estimates remain separate |
+| Public/hidden corpus separation | `cases/b2/public-safe/benchmark/bm0-corpus-policy.json` | an independent curator seals the opaque holdout commitment before execution-manifest freeze; exact content, IDs, locator, and per-case commitments remain outside the public repository |
+| Manifest and no-peeking stop rule | `cases/b2/public-safe/benchmark/bm0-benchmark-manifest.template.json` | design-only template; frozen use requires independent artifact bindings and at least one private-hidden attempt |
+| Candidate roster and budget model | `cases/b2/public-safe/benchmark/bm0-candidate-roster-budget.json` | three official-doc-sourced candidates remain `CANDIDATE` / `NOT_SELECTED`; all costs are recomputed `ESTIMATE_ONLY` values with no spending authority |
+| Central contract and executable SAP | `cases/b2/public-safe/benchmark/bm0-measurement-contract.json` | 15 named deterministic methods, including executable bounded-pilot case/repeat validation, contract-core/artifact fingerprints, attribution boundaries, claim ceiling, and BM0 gate boundary |
+| Strict record shapes | `schemas/bm0_*.schema.json` | runtime-parity target/class mappings, immutable snapshot aliases, frozen hidden-attempt requirement, exact terminal/SAP order, and blind-adjudication states |
+| Adversarial validation | `tests/test_b2_bm0.py` | cross-wired bindings, corpus alias/commitment collisions, duplicate/unplanned/missing rows, stop-rule peeking, partial-rate suppression, metric-class separation, paired compatibility, and UNKNOWN adjudication tests |
+| Checked developer receipt | `results/b2/bm0-contract-validation.json` | offline contract PASS only; exact-head CI and Independent QA remain `NOT_RUN`; `bm0_green` remains false |
+
+BM0 is based on fresh `main@901ba05b99c413d45415c474c71b5969c155dea1`.
+It does not reuse the B2-BLIND-01 / PR #30 repair head, mutate B1 / PR #17,
+rewrite QA0–QA3 receipts, call a live provider, select a model roster, expose a
+hidden corpus, emit a ranking, or promote Fairness/LQE. Its developer receipt
+is ready for exact-head CI and a distinct BM0 Independent QA review, but it is
+not itself a BM0 GREEN verdict.

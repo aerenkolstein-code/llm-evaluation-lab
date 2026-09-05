@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/bm0-adjudication-record.schema.json",
+  "title": "B2 BM0 Blind Adjudication Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "adjudication_id",
+    "study_id",
+    "attempt_id",
+    "item_alias",
+    "metric_id",
+    "round_role",
+    "adjudicator_type",
+    "authority_role",
+    "adjudicator_id",
+    "adjudicator_configuration_fingerprint",
+    "llm_judge_assistance",
+    "record_status",
+    "decision",
+    "blind_to_model_identity",
+    "blind_to_provider_identity",
+    "blind_to_peer_decisions",
+    "blind_to_llm_assistance_before_decision",
+    "rubric_version",
+    "rubric_fingerprint",
+    "evidence_complete",
+    "conflict_status",
+    "rationale_code",
+    "record_fingerprint"
+  ],
+  "properties": {
+    "schema_version": {"const": "b2-bm0-adjudication-record/v1"},
+    "adjudication_id": {"$ref": "#/$defs/identifier"},
+    "study_id": {"$ref": "#/$defs/identifier"},
+    "attempt_id": {"$ref": "#/$defs/identifier"},
+    "item_alias": {"$ref": "#/$defs/identifier"},
+    "metric_id": {"$ref": "#/$defs/identifier"},
+    "round_role": {"enum": ["PRIMARY", "TIEBREAK"]},
+    "adjudicator_type": {"const": "HUMAN"},
+    "authority_role": {"const": "BLINDED_INDEPENDENT_HUMAN_REVIEW"},
+    "adjudicator_id": {"$ref": "#/$defs/identifier"},
+    "adjudicator_configuration_fingerprint": {"$ref": "#/$defs/sha256"},
+    "llm_judge_assistance": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "judge_id",
+            "judge_version",
+            "judge_configuration_fingerprint",
+            "calibration_set_fingerprint",
+            "known_bad_control_receipt_fingerprint",
+            "judge_error_audit_fingerprint",
+            "final_authority"
+          ],
+          "properties": {
+            "judge_id": {"$ref": "#/$defs/identifier"},
+            "judge_version": {"$ref": "#/$defs/identifier"},
+            "judge_configuration_fingerprint": {"$ref": "#/$defs/sha256"},
+            "calibration_set_fingerprint": {"$ref": "#/$defs/sha256"},
+            "known_bad_control_receipt_fingerprint": {"$ref": "#/$defs/sha256"},
+            "judge_error_audit_fingerprint": {"$ref": "#/$defs/sha256"},
+            "final_authority": {"const": false}
+          }
+        }
+      ]
+    },
+    "record_status": {"enum": ["COMPLETED", "ERROR"]},
+    "decision": {
+      "oneOf": [{"enum": ["PASS", "FAIL", "UNKNOWN"]}, {"type": "null"}]
+    },
+    "blind_to_model_identity": {"const": true},
+    "blind_to_provider_identity": {"const": true},
+    "blind_to_peer_decisions": {"const": true},
+    "blind_to_llm_assistance_before_decision": {"const": true},
+    "rubric_version": {"$ref": "#/$defs/identifier"},
+    "rubric_fingerprint": {"$ref": "#/$defs/sha256"},
+    "evidence_complete": {"type": "boolean"},
+    "conflict_status": {"const": "NONE"},
+    "rationale_code": {"$ref": "#/$defs/identifier"},
+    "record_fingerprint": {"$ref": "#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"record_status": {"const": "COMPLETED"}},
+        "required": ["record_status"]
+      },
+      "then": {
+        "properties": {"decision": {"enum": ["PASS", "FAIL", "UNKNOWN"]}}
+      }
+    },
+    {
+      "if": {"properties": {"record_status": {"const": "ERROR"}}, "required": ["record_status"]},
+      "then": {
+        "properties": {
+          "decision": {"type": "null"},
+          "evidence_complete": {"const": false}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"decision": {"enum": ["PASS", "FAIL"]}}, "required": ["decision"]},
+      "then": {"properties": {"evidence_complete": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"decision": {"const": "UNKNOWN"}}, "required": ["decision"]},
+      "then": {"properties": {"evidence_complete": {"const": false}}}
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 192,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]*$"
+    },
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

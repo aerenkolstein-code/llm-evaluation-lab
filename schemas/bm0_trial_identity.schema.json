@@ -1,0 +1,839 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/bm0_trial_identity.schema.json",
+  "title": "B2 BM0 Trial Identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "benchmark_id",
+    "contract_version",
+    "study_id",
+    "trial_id",
+    "attempt_id",
+    "parent_attempt_id",
+    "provider_subject_id",
+    "model_subject_id",
+    "model_snapshot_id",
+    "requested_model_id",
+    "expected_resolved_model_or_version_id",
+    "required_identity_certainty",
+    "alias_limitation",
+    "endpoint_id",
+    "capability_mode",
+    "system_wrapper_version",
+    "developer_wrapper_version",
+    "sampling_controls",
+    "reasoning_controls",
+    "target_id",
+    "target_class",
+    "applicability_result",
+    "entry_id",
+    "family_id",
+    "case_id",
+    "variant_id",
+    "mechanism_lineage_id",
+    "case_fingerprint",
+    "generator_or_mutation_version",
+    "contamination_status",
+    "exposure_status",
+    "corpus_pool_id",
+    "corpus_item_alias",
+    "corpus_item_commitment",
+    "mutation_parent_commitment",
+    "prompt_template_version",
+    "prompt_fingerprint",
+    "context_fingerprint",
+    "tool_schema_fingerprint",
+    "sandbox_fingerprint",
+    "state_machine_fingerprint",
+    "harness_version",
+    "adapter_id",
+    "adapter_version",
+    "scorer_id",
+    "scorer_version",
+    "scorer_fingerprint",
+    "oracle_id",
+    "oracle_version",
+    "oracle_fingerprint",
+    "replicate_index",
+    "random_seed",
+    "environment_fingerprint"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "b2-bm0-trial-identity/v1"
+    },
+    "benchmark_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "contract_version": {
+      "const": "v0.2"
+    },
+    "study_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "trial_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "attempt_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "parent_attempt_id": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+        }
+      ]
+    },
+    "provider_subject_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "model_subject_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "model_snapshot_id": {
+      "allOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+        },
+        {
+          "not": {
+            "pattern": "^(?:[Ll][Aa][Tt][Ee][Ss][Tt]|[Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Aa][Uu][Tt][Oo]|[Nn][Oo][Tt]_[Ss][Ee][Ll][Ee][Cc][Tt][Ee][Dd])$"
+          }
+        }
+      ]
+    },
+    "requested_model_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "expected_resolved_model_or_version_id": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+        }
+      ]
+    },
+    "required_identity_certainty": {
+      "enum": [
+        "EXACT",
+        "ALIAS_ONLY",
+        "SYSTEM_SCOPE"
+      ]
+    },
+    "alias_limitation": {
+      "enum": [
+        "NONE",
+        "MOVING_ALIAS_RESOLUTION_REQUIRED",
+        "UNVERIFIABLE_ALIAS_DISCLOSED",
+        "NOT_APPLICABLE_SYSTEM_SCOPE"
+      ]
+    },
+    "endpoint_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "capability_mode": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "system_wrapper_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "developer_wrapper_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "sampling_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "temperature",
+        "top_p",
+        "max_output_tokens",
+        "seed",
+        "automatic_retries",
+        "additional_parameters_fingerprint"
+      ],
+      "properties": {
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            }
+          ]
+        },
+        "top_p": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ]
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "automatic_retries": {
+          "const": 0
+        },
+        "additional_parameters_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "reasoning_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "effort",
+        "max_reasoning_tokens",
+        "configuration_fingerprint"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "DISABLED",
+            "PROVIDER_DEFAULT",
+            "FIXED"
+          ]
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+            }
+          ]
+        },
+        "max_reasoning_tokens": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "configuration_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "target_id": {
+      "enum": [
+        "BM0-TUT-E01-QA0-ENTITY-ATTRIBUTE-BINDING",
+        "BM0-TUT-E02-QA0-CONNECTOR-SCHEMA",
+        "BM0-TUT-E03-QA0-INTEGRITY-COMPLETENESS",
+        "BM0-TUT-E04-QA0-EVIDENCE-SCOPE",
+        "BM0-TUT-E05-QA1G-ENTITY-ATTRIBUTE-BINDING",
+        "BM0-TUT-E06-QA1G-INVENTORY-EVIDENCE-SCOPE",
+        "BM0-TUT-E07-QA1G-SOURCE-MODALITY",
+        "BM0-TUT-E08-QA1T-CONNECTOR-SCHEMA-RETRY",
+        "BM0-TUT-E09-QA1T-CAPABILITY-ROUTING",
+        "BM0-TUT-E10-QA1T-DESTRUCTIVE-WRITE-RECOVERY",
+        "BM0-TUT-E11-QA2-CONSTRAINT-ACTION-PERSISTENCE",
+        "BM0-TUT-E12-QA2-LIVE-ASSESSMENT-RULE-PERSISTENCE",
+        "BM0-TUT-E13-QA2-LIVE-PRODUCTION-NO-AI-PERSISTENCE",
+        "BM0-TUT-E14-QA3-FULL-SET-PROJECTION-COMPLETENESS",
+        "BM0-TUT-E15-QA3-METRIC-ATTRIBUTION-PROVENANCE-SEPARATION",
+        "BM0-TUT-E16-QA3-DASHBOARD-FIELD-SEMANTICS-SCOPE-LOCK"
+      ]
+    },
+    "target_class": {
+      "enum": [
+        "MODEL_DIRECT",
+        "MODEL_CONTEXT_GROUNDED",
+        "AGENT_STANDARDIZED",
+        "SYSTEM_EVAL_ONLY"
+      ]
+    },
+    "entry_id": {
+      "enum": [
+        "E01",
+        "E02",
+        "E03",
+        "E04",
+        "E05",
+        "E06",
+        "E07",
+        "E08",
+        "E09",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E14",
+        "E15",
+        "E16"
+      ]
+    },
+    "family_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "variant_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "mechanism_lineage_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "case_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "generator_or_mutation_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "contamination_status": {
+      "enum": [
+        "ASSESSED_CLEAR",
+        "KNOWN_EXPOSED",
+        "UNKNOWN"
+      ]
+    },
+    "exposure_status": {
+      "enum": [
+        "PUBLICLY_DISCLOSED_REGRESSION",
+        "PUBLICLY_DISCLOSED_MUTATION",
+        "PUBLICLY_DISCLOSED_CONTROL",
+        "PRIVATE_UNEXPOSED_BEFORE_MANIFEST_FREEZE"
+      ]
+    },
+    "corpus_pool_id": {
+      "enum": [
+        "PUBLIC_REGRESSION",
+        "MECHANISM_PRESERVING_MUTATION",
+        "CONTROL",
+        "PRIVATE_HIDDEN_HOLDOUT"
+      ]
+    },
+    "corpus_item_alias": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "corpus_item_commitment": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "mutation_parent_commitment": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      ]
+    },
+    "prompt_template_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "prompt_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "context_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "tool_schema_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "sandbox_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "state_machine_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "harness_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "adapter_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "adapter_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "scorer_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "scorer_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "scorer_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "oracle_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "oracle_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+    },
+    "oracle_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "replicate_index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "random_seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "environment_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "applicability_result": {
+      "enum": [
+        "APPLICABLE",
+        "NOT_APPLICABLE"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "const": "MODEL_DIRECT"
+          }
+        },
+        "required": [
+          "target_class"
+        ]
+      },
+      "then": {
+        "properties": {
+          "target_id": {
+            "enum": [
+              "BM0-TUT-E11-QA2-CONSTRAINT-ACTION-PERSISTENCE",
+              "BM0-TUT-E12-QA2-LIVE-ASSESSMENT-RULE-PERSISTENCE",
+              "BM0-TUT-E13-QA2-LIVE-PRODUCTION-NO-AI-PERSISTENCE"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "const": "MODEL_CONTEXT_GROUNDED"
+          }
+        },
+        "required": [
+          "target_class"
+        ]
+      },
+      "then": {
+        "properties": {
+          "target_id": {
+            "enum": [
+              "BM0-TUT-E01-QA0-ENTITY-ATTRIBUTE-BINDING",
+              "BM0-TUT-E04-QA0-EVIDENCE-SCOPE",
+              "BM0-TUT-E05-QA1G-ENTITY-ATTRIBUTE-BINDING",
+              "BM0-TUT-E06-QA1G-INVENTORY-EVIDENCE-SCOPE",
+              "BM0-TUT-E07-QA1G-SOURCE-MODALITY"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "const": "AGENT_STANDARDIZED"
+          }
+        },
+        "required": [
+          "target_class"
+        ]
+      },
+      "then": {
+        "properties": {
+          "target_id": {
+            "enum": [
+              "BM0-TUT-E02-QA0-CONNECTOR-SCHEMA",
+              "BM0-TUT-E08-QA1T-CONNECTOR-SCHEMA-RETRY",
+              "BM0-TUT-E09-QA1T-CAPABILITY-ROUTING",
+              "BM0-TUT-E10-QA1T-DESTRUCTIVE-WRITE-RECOVERY"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "const": "SYSTEM_EVAL_ONLY"
+          }
+        },
+        "required": [
+          "target_class"
+        ]
+      },
+      "then": {
+        "properties": {
+          "target_id": {
+            "enum": [
+              "BM0-TUT-E03-QA0-INTEGRITY-COMPLETENESS",
+              "BM0-TUT-E14-QA3-FULL-SET-PROJECTION-COMPLETENESS",
+              "BM0-TUT-E15-QA3-METRIC-ATTRIBUTION-PROVENANCE-SEPARATION",
+              "BM0-TUT-E16-QA3-DASHBOARD-FIELD-SEMANTICS-SCOPE-LOCK"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "corpus_pool_id": {
+            "const": "PUBLIC_REGRESSION"
+          }
+        },
+        "required": [
+          "corpus_pool_id"
+        ]
+      },
+      "then": {
+        "properties": {
+          "exposure_status": {
+            "const": "PUBLICLY_DISCLOSED_REGRESSION"
+          },
+          "mutation_parent_commitment": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "corpus_pool_id": {
+            "const": "MECHANISM_PRESERVING_MUTATION"
+          }
+        },
+        "required": [
+          "corpus_pool_id"
+        ]
+      },
+      "then": {
+        "properties": {
+          "exposure_status": {
+            "const": "PUBLICLY_DISCLOSED_MUTATION"
+          },
+          "mutation_parent_commitment": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "corpus_pool_id": {
+            "const": "CONTROL"
+          }
+        },
+        "required": [
+          "corpus_pool_id"
+        ]
+      },
+      "then": {
+        "properties": {
+          "exposure_status": {
+            "const": "PUBLICLY_DISCLOSED_CONTROL"
+          },
+          "mutation_parent_commitment": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "corpus_pool_id": {
+            "const": "PRIVATE_HIDDEN_HOLDOUT"
+          }
+        },
+        "required": [
+          "corpus_pool_id"
+        ]
+      },
+      "then": {
+        "properties": {
+          "exposure_status": {
+            "const": "PRIVATE_UNEXPOSED_BEFORE_MANIFEST_FREEZE"
+          },
+          "mutation_parent_commitment": {
+            "type": "null"
+          },
+          "contamination_status": {
+            "enum": [
+              "ASSESSED_CLEAR",
+              "UNKNOWN"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "const": "SYSTEM_EVAL_ONLY"
+          }
+        },
+        "required": [
+          "target_class"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provider_subject_id": {
+            "const": "SYSTEM_SCOPE"
+          },
+          "model_subject_id": {
+            "const": "SYSTEM_SCOPE"
+          },
+          "model_snapshot_id": {
+            "const": "SYSTEM_SCOPE"
+          },
+          "requested_model_id": {
+            "const": "SYSTEM_SCOPE"
+          },
+          "expected_resolved_model_or_version_id": {
+            "const": "SYSTEM_SCOPE"
+          },
+          "endpoint_id": {
+            "const": "SYSTEM_SCOPE"
+          },
+          "required_identity_certainty": {
+            "const": "SYSTEM_SCOPE"
+          },
+          "alias_limitation": {
+            "const": "NOT_APPLICABLE_SYSTEM_SCOPE"
+          },
+          "capability_mode": {
+            "const": "SYSTEM_EVAL"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "provider_subject_id": {
+            "not": {
+              "const": "SYSTEM_SCOPE"
+            }
+          },
+          "model_subject_id": {
+            "not": {
+              "const": "SYSTEM_SCOPE"
+            }
+          },
+          "model_snapshot_id": {
+            "not": {
+              "const": "SYSTEM_SCOPE"
+            }
+          },
+          "requested_model_id": {
+            "not": {
+              "const": "SYSTEM_SCOPE"
+            }
+          },
+          "expected_resolved_model_or_version_id": {
+            "not": {
+              "const": "SYSTEM_SCOPE"
+            }
+          },
+          "endpoint_id": {
+            "not": {
+              "const": "SYSTEM_SCOPE"
+            }
+          },
+          "required_identity_certainty": {
+            "enum": [
+              "EXACT",
+              "ALIAS_ONLY"
+            ]
+          },
+          "alias_limitation": {
+            "enum": [
+              "NONE",
+              "MOVING_ALIAS_RESOLUTION_REQUIRED",
+              "UNVERIFIABLE_ALIAS_DISCLOSED"
+            ]
+          },
+          "capability_mode": {
+            "not": {
+              "const": "SYSTEM_EVAL"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "not": {
+              "const": "SYSTEM_EVAL_ONLY"
+            }
+          },
+          "required_identity_certainty": {
+            "const": "EXACT"
+          }
+        },
+        "required": [
+          "target_class",
+          "required_identity_certainty"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expected_resolved_model_or_version_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+\\-/]{0,191}$"
+          },
+          "alias_limitation": {
+            "enum": [
+              "NONE",
+              "MOVING_ALIAS_RESOLUTION_REQUIRED"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "not": {
+              "const": "SYSTEM_EVAL_ONLY"
+            }
+          },
+          "required_identity_certainty": {
+            "const": "ALIAS_ONLY"
+          }
+        },
+        "required": [
+          "target_class",
+          "required_identity_certainty"
+        ]
+      },
+      "then": {
+        "properties": {
+          "model_snapshot_id": {
+            "const": "UNRESOLVED_ALIAS"
+          },
+          "expected_resolved_model_or_version_id": {
+            "type": "null"
+          },
+          "alias_limitation": {
+            "const": "UNVERIFIABLE_ALIAS_DISCLOSED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_class": {
+            "const": "SYSTEM_EVAL_ONLY"
+          }
+        },
+        "required": [
+          "target_class"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applicability_result": {
+            "const": "NOT_APPLICABLE"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "applicability_result": {
+            "const": "APPLICABLE"
+          }
+        }
+      }
+    }
+  ]
+}

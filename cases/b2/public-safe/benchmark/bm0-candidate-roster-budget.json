@@ -1,0 +1,164 @@
+{
+  "schema_version": "b2-bm0-candidate-roster-budget/v1",
+  "artifact_id": "B2-BM0-CANDIDATE-ROSTER-BUDGET-20260904",
+  "work_order_id": "WO-B2-BM0",
+  "research_as_of": "2026-09-04",
+  "roster_label": "CANDIDATE",
+  "provider_roster_status": "NOT_SELECTED",
+  "budget_label": "ESTIMATE_ONLY",
+  "research_sources": [
+    {
+      "source_id": "OPENAI-API-PRICING-20260904",
+      "provider_id": "openai",
+      "source_url": "https://developers.openai.com/api/docs/pricing",
+      "retrieved_on": "2026-09-04",
+      "source_type": "OFFICIAL_PUBLIC_API_DOCUMENTATION",
+      "source_fingerprint": "sha256:f0b90a907312b9fa2f6277cf552bc32b64bafad3109affe9529de7102c78e1f5"
+    },
+    {
+      "source_id": "ANTHROPIC-SONNET-5-20260904",
+      "provider_id": "anthropic",
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-5/overview",
+      "retrieved_on": "2026-09-04",
+      "source_type": "OFFICIAL_PUBLIC_API_DOCUMENTATION",
+      "source_fingerprint": "sha256:b8b2e569d3f5b6e50e08ee385cc637f0d180c6c4f20a95091f0054553ed0645a"
+    },
+    {
+      "source_id": "GOOGLE-GEMINI-PRICING-20260904",
+      "provider_id": "google",
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "retrieved_on": "2026-09-04",
+      "source_type": "OFFICIAL_PUBLIC_API_DOCUMENTATION",
+      "source_fingerprint": "sha256:f31b9c5eace28d14fc58ed111dc99d795dc17c6105a46ec2fb7ac94a771d388d"
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "CANDIDATE-OPENAI-GPT-5.6-TERRA",
+      "provider_id": "openai",
+      "requested_model_id": "gpt-5.6-terra",
+      "endpoint_family": "responses-api",
+      "capability_modes": [
+        "TEXT_RESPONSE"
+      ],
+      "roster_label": "CANDIDATE",
+      "selection_status": "NOT_SELECTED",
+      "pricing_source_id": "OPENAI-API-PRICING-20260904",
+      "pricing": {
+        "currency": "USD",
+        "unit": "PER_1M_TOKENS",
+        "processing_mode": "STANDARD",
+        "context_band": "SHORT_CONTEXT_OR_BASE",
+        "input_usd_per_million_tokens": 2.0,
+        "output_usd_per_million_tokens": 12.0,
+        "cache_discount_assumed": false,
+        "regional_uplift_assumed": false,
+        "valid_through": null
+      },
+      "refresh_before_live_selection": true
+    },
+    {
+      "candidate_id": "CANDIDATE-ANTHROPIC-CLAUDE-SONNET-5",
+      "provider_id": "anthropic",
+      "requested_model_id": "claude-sonnet-5",
+      "endpoint_family": "messages-api",
+      "capability_modes": [
+        "TEXT_RESPONSE"
+      ],
+      "roster_label": "CANDIDATE",
+      "selection_status": "NOT_SELECTED",
+      "pricing_source_id": "ANTHROPIC-SONNET-5-20260904",
+      "pricing": {
+        "currency": "USD",
+        "unit": "PER_1M_TOKENS",
+        "processing_mode": "STANDARD",
+        "context_band": "SHORT_CONTEXT_OR_BASE",
+        "input_usd_per_million_tokens": 2.0,
+        "output_usd_per_million_tokens": 10.0,
+        "cache_discount_assumed": false,
+        "regional_uplift_assumed": false,
+        "valid_through": null
+      },
+      "refresh_before_live_selection": true
+    },
+    {
+      "candidate_id": "CANDIDATE-GOOGLE-GEMINI-3.6-FLASH",
+      "provider_id": "google",
+      "requested_model_id": "gemini-3.6-flash",
+      "endpoint_family": "generate-content-api",
+      "capability_modes": [
+        "TEXT_RESPONSE"
+      ],
+      "roster_label": "CANDIDATE",
+      "selection_status": "NOT_SELECTED",
+      "pricing_source_id": "GOOGLE-GEMINI-PRICING-20260904",
+      "pricing": {
+        "currency": "USD",
+        "unit": "PER_1M_TOKENS",
+        "processing_mode": "STANDARD",
+        "context_band": "SHORT_CONTEXT_OR_BASE",
+        "input_usd_per_million_tokens": 0.75,
+        "output_usd_per_million_tokens": 3.75,
+        "cache_discount_assumed": false,
+        "regional_uplift_assumed": false,
+        "valid_through": "2026-12-31"
+      },
+      "refresh_before_live_selection": true
+    }
+  ],
+  "budget_model": {
+    "estimate_label": "ESTIMATE_ONLY",
+    "assumption_set_id": "BM0-DEFAULT-BOUNDED-PILOT-ESTIMATE-V1",
+    "scope": "DEFAULT_COMPARABLE_CLASSES_ONLY",
+    "default_comparable_entry_count": 8,
+    "cases_per_entry": 4,
+    "replicates_per_case": 3,
+    "calls_per_candidate": 96,
+    "input_tokens_per_call": 8000,
+    "output_tokens_per_call": 2000,
+    "automatic_retries": 0,
+    "cached_input_tokens": 0,
+    "tool_or_search_surcharge_included": false,
+    "tax_region_discount_included": false,
+    "formula": "calls * ((input_tokens_per_call * input_usd_per_million_tokens + output_tokens_per_call * output_usd_per_million_tokens) / 1000000)",
+    "candidate_estimates": [
+      {
+        "candidate_id": "CANDIDATE-OPENAI-GPT-5.6-TERRA",
+        "planned_calls": 96,
+        "estimated_input_tokens": 768000,
+        "estimated_output_tokens": 192000,
+        "estimated_token_cost_usd": 3.84,
+        "estimate_status": "ESTIMATE_ONLY",
+        "spending_authority": false
+      },
+      {
+        "candidate_id": "CANDIDATE-ANTHROPIC-CLAUDE-SONNET-5",
+        "planned_calls": 96,
+        "estimated_input_tokens": 768000,
+        "estimated_output_tokens": 192000,
+        "estimated_token_cost_usd": 3.456,
+        "estimate_status": "ESTIMATE_ONLY",
+        "spending_authority": false
+      },
+      {
+        "candidate_id": "CANDIDATE-GOOGLE-GEMINI-3.6-FLASH",
+        "planned_calls": 96,
+        "estimated_input_tokens": 768000,
+        "estimated_output_tokens": 192000,
+        "estimated_token_cost_usd": 1.296,
+        "estimate_status": "ESTIMATE_ONLY",
+        "spending_authority": false
+      }
+    ],
+    "aggregate_estimated_token_cost_usd": 8.592,
+    "spending_authority": false
+  },
+  "selection_gate": {
+    "selection_status": "NOT_SELECTED",
+    "live_execution_authorized": false,
+    "credential_path_selected": false,
+    "maximum_spend_selected": false,
+    "required_next_action": "FRESH_PROVIDER_MODEL_PRICE_REGION_REFRESH_AND_SEPARATE_LIVE_WORK_ORDER"
+  },
+  "artifact_fingerprint": "sha256:ad043d05670d171f5150fcd40facf47ffc09fbaa3b7e8c7a251d8de8ab90b029"
+}

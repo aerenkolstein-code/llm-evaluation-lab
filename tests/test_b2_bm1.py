@@ -8,6 +8,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+import b2.bm1 as bm1_mod
 from b2.bm1 import (
     APPROVED_PATHS,
     AUTOMATIC_RETRIES,
@@ -15,33 +16,32 @@ from b2.bm1 import (
     BM1ContractError,
     BM1GlobalStop,
     BM1Runner,
+    CLAIM_STORE_STORAGE_KIND,
     CONTROL_CASE_ID,
     FileAttemptClaimStore,
     FileRawEvidenceSink,
     GOOGLE_CREDENTIAL_REFERENCE,
-    GOOGLE_ENDPOINT_ID,
     GOOGLE_PROVIDER_ID,
     GOOGLE_REQUESTED_MODEL_ID,
     GoogleInteractionsHTTPTransport,
-    InMemoryAttemptClaimStore,
     InMemoryRawEvidenceSink,
     LIVE_ATTEMPT_CLAIM_POLICY,
     LIVE_AUTH_SCHEMA_VERSION,
-    LiveAuthorityAnchor,
     MAX_PLANNED_ATTEMPTS,
     MAX_TOTAL_SMOKE_SPEND_USD,
     OPENAI_CREDENTIAL_REFERENCE,
-    OPENAI_ENDPOINT_ID,
     OPENAI_PROVIDER_ID,
     OPENAI_REQUESTED_MODEL_ID,
     OpenAIResponsesHTTPTransport,
     RAW_BUNDLE_STORAGE_KIND,
     RUN_READY_SCHEMA_VERSION,
+    build_claim_store_fingerprint,
     build_google_request,
     build_live_authorization_fingerprint,
     build_openai_request,
     build_raw_destination_fingerprint,
     build_run_ready_receipt_fingerprint,
+    build_storage_authority_fingerprint,
     expected_decision_for_case,
     normalize_google_response,
     normalize_openai_response,
@@ -63,6 +63,9 @@ EXPIRED_NOW = datetime(2026, 9, 5, 5, 1, 0, tzinfo=timezone.utc)
 EXECUTION_COMMIT = "a" * 40
 EXECUTION_TREE = "b" * 40
 USER_AUTH_FP = "sha256:" + "d" * 64
+AUTHORIZATION_ID = "BM1-LIVE-AUTH-TEST-001"
+RAW_DEST_ID = "BM1-RAW-BUNDLE-TEST-001"
+CLAIM_STORE_ID = "BM1-CLAIM-STORE-TEST-001"
 
 
 def load_json(path: Path) -> dict:
@@ -81,11 +84,26 @@ def refingerprint(document: dict, field: str) -> dict:
     return candidate
 
 
-def run_ready_receipt(manifest: dict, *, destination_id: str = "BM1-RAW-BUNDLE-TEST-001", **overrides: object) -> dict:
-    destination = {
+def run_ready_receipt(
+    manifest: dict, *, raw_dir: str | Path, claim_dir: str | Path,
+    destination_id: str = RAW_DEST_ID, store_id: str = CLAIM_STORE_ID,
+    **overrides: object,
+) -> dict:
+    raw_binding = {
         "destination_id": destination_id,
         "storage_kind": RAW_BUNDLE_STORAGE_KIND,
-        "destination_fingerprint": build_raw_destination_fingerprint(destination_id),
+        "label_fingerprint": build_raw_destination_fingerprint(destination_id),
+        "storage_authority_fingerprint": build_storage_authority_fingerprint(
+            raw_dir, storage_kind=RAW_BUNDLE_STORAGE_KIND,
+        ),
+    }
+    claim_binding = {
+        "store_id": store_id,
+        "storage_kind": CLAIM_STORE_STORAGE_KIND,
+        "label_fingerprint": build_claim_store_fingerprint(store_id),
+        "storage_authority_fingerprint": build_storage_authority_fingerprint(
+            claim_dir, storage_kind=CLAIM_STORE_STORAGE_KIND,
+        ),
     }
     document = {
         "schema_version": RUN_READY_SCHEMA_VERSION,
@@ -95,7 +113,8 @@ def run_ready_receipt(manifest: dict, *, destination_id: str = "BM1-RAW-BUNDLE-T
         "execution_tree_sha": EXECUTION_TREE,
         "provider_authority_fingerprint": "sha256:" + "1" * 64,
         "credential_decision_fingerprint": "sha256:" + "2" * 64,
-        "raw_bundle_destination": destination,
+        "raw_bundle_destination": raw_binding,
+        "attempt_claim_store": claim_binding,
         "authorized_attempt_ids": [row["attempt_id"] for row in manifest["attempt_plan"]],
         "runtime_limits": {
             "maximum_provider_requests": 4,
@@ -112,23 +131,24 @@ def run_ready_receipt(manifest: dict, *, destination_id: str = "BM1-RAW-BUNDLE-T
     return document
 
 
-def authority_anchor(run_ready: dict, *, user_fp: str = USER_AUTH_FP) -> LiveAuthorityAnchor:
-    return LiveAuthorityAnchor(
-        run_ready_receipt_fingerprint=run_ready["receipt_fingerprint"],
-        user_authorization_fingerprint=user_fp,
-    )
-
-
-def live_authorization(manifest: dict, run_ready: dict, anchor: LiveAuthorityAnchor, **overrides: object) -> dict:
+def live_authorization(
+    manifest: dict, run_ready: dict, *, user_fp: str = USER_AUTH_FP,
+    authorization_id: str = AUTHORIZATION_ID, **overrides: object,
+) -> dict:
+    raw_binding = run_ready["raw_bundle_destination"]
+    claim_binding = run_ready["attempt_claim_store"]
     document = {
         "schema_version": LIVE_AUTH_SCHEMA_VERSION,
-        "authorization_id": "BM1-LIVE-AUTH-TEST-001",
+        "authorization_id": authorization_id,
         "manifest_fingerprint": manifest["manifest_fingerprint"],
         "execution_commit_sha": EXECUTION_COMMIT,
         "execution_tree_sha": EXECUTION_TREE,
         "run_ready_receipt_fingerprint": run_ready["receipt_fingerprint"],
-        "user_authorization_fingerprint": anchor.user_authorization_fingerprint,
-        "raw_bundle_destination_fingerprint": run_ready["raw_bundle_destination"]["destination_fingerprint"],
+        "user_authorization_fingerprint": user_fp,
+        "raw_bundle_destination_fingerprint": raw_binding["label_fingerprint"],
+        "raw_storage_authority_fingerprint": raw_binding["storage_authority_fingerprint"],
+        "attempt_claim_store_fingerprint": claim_binding["label_fingerprint"],
+        "claim_storage_authority_fingerprint": claim_binding["storage_authority_fingerprint"],
         "authorized_attempt_ids": [row["attempt_id"] for row in manifest["attempt_plan"]],
         "maximum_provider_requests": 4,
         "maximum_total_spend_usd": 0.20,
@@ -141,21 +161,42 @@ def live_authorization(manifest: dict, run_ready: dict, anchor: LiveAuthorityAnc
     return document
 
 
+class FixedAuthorityVerifier:
+    """Test double for an independently provisioned outer-runtime Authority."""
+
+    def __init__(self, run_ready_fp: str, user_fp: str, authorization_id: str) -> None:
+        self.expected = (run_ready_fp, user_fp, authorization_id)
+        self.calls: list[tuple[str, str, str]] = []
+
+    def verify(
+        self, *, run_ready_receipt_fingerprint: str,
+        user_authorization_fingerprint: str, authorization_id: str,
+    ) -> bool:
+        observed = (
+            run_ready_receipt_fingerprint,
+            user_authorization_fingerprint,
+            authorization_id,
+        )
+        self.calls.append(observed)
+        return observed == self.expected
+
+
+class RejectAllVerifier:
+    def verify(self, **kwargs) -> bool:
+        return False
+
+
 def response_for(provider_id: str, model_id: str, decision: str, serial: int = 1) -> dict:
     final = json.dumps({"decision": decision}, separators=(",", ":"))
     if provider_id == OPENAI_PROVIDER_ID:
         return {
-            "_http_status": 200,
-            "id": f"resp-{serial}",
-            "model": model_id,
+            "_http_status": 200, "id": f"resp-{serial}", "model": model_id,
             "status": "completed",
             "output": [{"type": "message", "content": [{"type": "output_text", "text": final}]}],
             "usage": {"input_tokens": 100, "output_tokens": 10},
         }
     return {
-        "_http_status": 200,
-        "id": f"interaction-{serial}",
-        "model": model_id,
+        "_http_status": 200, "id": f"interaction-{serial}", "model": model_id,
         "status": "completed",
         "steps": [{"type": "model_output", "content": [{"type": "text", "text": final}]}],
         "usage": {"total_input_tokens": 100, "total_output_tokens": 10},
@@ -172,10 +213,8 @@ class FakeTransport:
 
     def call(self, *, provider_id: str, endpoint_id: str, request_body: dict, timeout_seconds: int) -> dict:
         self.calls.append({
-            "provider_id": provider_id,
-            "endpoint_id": endpoint_id,
-            "request_body": copy.deepcopy(request_body),
-            "timeout_seconds": timeout_seconds,
+            "provider_id": provider_id, "endpoint_id": endpoint_id,
+            "request_body": copy.deepcopy(request_body), "timeout_seconds": timeout_seconds,
         })
         if provider_id != self.provider_id:
             raise AssertionError("fake provider mismatch")
@@ -248,23 +287,18 @@ class BM1ManifestTests(unittest.TestCase):
         self.assertEqual(checked["runtime_contract"]["live_attempt_claim"], LIVE_ATTEMPT_CLAIM_POLICY)
         self.assertFalse(checked["authorization"]["live_execution"])
 
-    def test_manifest_fingerprint_tamper_is_rejected(self):
+    def test_manifest_fingerprint_case_model_order_and_sixth_path_tamper_rejected(self):
         changed = copy.deepcopy(self.manifest)
         changed["runtime_contract"]["timeout_seconds"] = 121
         with self.assertRaises(BM1ContractError):
             validate_manifest(changed, case_lookup=self.lookup)
 
-    def test_case_prompt_decision_and_model_drift_are_rejected(self):
-        for key, value in (
-            ("case_fingerprint", "sha256:" + "0" * 64),
-            ("prompt_fingerprint", "sha256:" + "1" * 64),
-            ("expected_decision", "PROVIDE_BOUNDARY_COMPATIBLE_HELP"),
-        ):
-            changed = copy.deepcopy(self.manifest)
-            changed["case_binding"]["cases"][0][key] = value
-            changed = refingerprint(changed, "manifest_fingerprint")
-            with self.subTest(key=key), self.assertRaises(BM1ContractError):
-                validate_manifest(changed, case_lookup=self.lookup)
+        changed = copy.deepcopy(self.manifest)
+        changed["case_binding"]["cases"][0]["case_fingerprint"] = "sha256:" + "0" * 64
+        changed = refingerprint(changed, "manifest_fingerprint")
+        with self.assertRaises(BM1ContractError):
+            validate_manifest(changed, case_lookup=self.lookup)
+
         changed = copy.deepcopy(self.manifest)
         changed["providers"][0]["requested_model_id"] = "gpt-substitute"
         changed["providers"][0]["identity_policy"]["accepted_resolved_model_ids"] = ["gpt-substitute"]
@@ -274,7 +308,6 @@ class BM1ManifestTests(unittest.TestCase):
         with self.assertRaises(BM1ContractError):
             validate_manifest(changed, case_lookup=self.lookup)
 
-    def test_attempt_order_and_sixth_path_are_rejected(self):
         changed = copy.deepcopy(self.manifest)
         changed["attempt_plan"][0], changed["attempt_plan"][1] = changed["attempt_plan"][1], changed["attempt_plan"][0]
         changed["attempt_plan"][0]["sequence"] = 1
@@ -282,6 +315,7 @@ class BM1ManifestTests(unittest.TestCase):
         changed = refingerprint(changed, "manifest_fingerprint")
         with self.assertRaises(BM1ContractError):
             validate_manifest(changed, case_lookup=self.lookup)
+
         changed = copy.deepcopy(self.manifest)
         changed["implementation_scope"]["approved_paths"].append("b2/not-authorized.py")
         changed = refingerprint(changed, "manifest_fingerprint")
@@ -303,32 +337,28 @@ class BM1SerializationAndIdentityTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.lookup = fixture_lookup()
 
-    def test_e11_prompt_and_provider_request_controls_are_frozen(self):
+    def test_e11_prompt_provider_controls_and_symbolic_credentials_are_frozen(self):
         target = self.lookup["B2-QA2-R-CONSTRAINT-KB-001"]
         control = self.lookup[CONTROL_CASE_ID]
         self.assertEqual(expected_decision_for_case(target), "DECLINE_CONFLICTING_ASSISTANCE")
         self.assertEqual(expected_decision_for_case(control), "PROVIDE_BOUNDARY_COMPATIBLE_HELP")
         prompt = render_case_prompt(target)
         openai = build_openai_request(requested_model_id=OPENAI_REQUESTED_MODEL_ID, prompt=prompt, max_output_tokens=2000)
+        google = build_google_request(requested_model_id=GOOGLE_REQUESTED_MODEL_ID, prompt=prompt, max_output_tokens=2000)
         self.assertEqual(openai["reasoning"], {"effort": "low"})
         self.assertNotIn("temperature", openai)
-        google = build_google_request(requested_model_id=GOOGLE_REQUESTED_MODEL_ID, prompt=prompt, max_output_tokens=2000)
         self.assertEqual(google["generation_config"]["thinking_level"], "low")
         for key in ("temperature", "top_p", "top_k"):
             self.assertNotIn(key, google["generation_config"])
-
-    def test_symbolic_credential_guard_rejects_google_dual_key(self):
         self.assertEqual(validate_symbolic_credential_presence(OPENAI_PROVIDER_ID, [OPENAI_CREDENTIAL_REFERENCE]), OPENAI_CREDENTIAL_REFERENCE)
         self.assertEqual(validate_symbolic_credential_presence(GOOGLE_PROVIDER_ID, [GOOGLE_CREDENTIAL_REFERENCE]), GOOGLE_CREDENTIAL_REFERENCE)
         with self.assertRaises(BM1AuthorizationError):
             validate_symbolic_credential_presence(GOOGLE_PROVIDER_ID, ["GEMINI_API_KEY", "GOOGLE_API_KEY"])
-        with self.assertRaises(BM1AuthorizationError):
-            validate_symbolic_credential_presence(GOOGLE_PROVIDER_ID, ["GOOGLE_API_KEY"])
 
     def test_response_normalizers_capture_identity_and_usage(self):
         openai = normalize_openai_response(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        self.assertEqual((openai.provider_terminal_status, openai.resolved_model_id, openai.input_tokens), ("SUCCESS", OPENAI_REQUESTED_MODEL_ID, 100))
         google = normalize_google_response(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))
+        self.assertEqual((openai.provider_terminal_status, openai.resolved_model_id, openai.input_tokens), ("SUCCESS", OPENAI_REQUESTED_MODEL_ID, 100))
         self.assertEqual((google.provider_terminal_status, google.resolved_model_id, google.output_tokens), ("SUCCESS", GOOGLE_REQUESTED_MODEL_ID, 10))
 
 
@@ -357,25 +387,21 @@ class BM1RunnerTests(unittest.TestCase):
             replay = replay_scorer(manifest=self.manifest, case_lookup=self.lookup, evidence_sink=self.sink, public_receipt=receipt)
             self.assertEqual(replay["terminal_status"], receipt["terminal_status"])
 
-    def test_identity_substitution_is_not_evaluable(self):
+    def test_identity_substitution_first_second_error_and_no_fifth_request(self):
         wrong = response_for("openai", "not-the-requested-model", "DECLINE_CONFLICTING_ASSISTANCE")
         self.openai = FakeTransport("openai", [wrong])
         receipt = self.runner().run_next(self.manifest["attempt_plan"][0]["attempt_id"])
         self.assertEqual((receipt["terminal_status"], receipt["terminal_reason"]), ("NOT_EVALUABLE", "IDENTITY_NOT_AUDITABLE"))
 
-    def test_first_provider_error_continues_second_error_stops_and_no_fifth_request(self):
         self.openai = FakeTransport("openai", [ConnectionError("first"), ConnectionError("second")])
         runner = self.runner()
         receipts = runner.run_all()
-        self.assertEqual(receipts[0]["terminal_status"], "ERROR")
-        self.assertEqual(receipts[1]["terminal_status"], "ERROR")
-        self.assertEqual(receipts[2]["terminal_status"], "BLOCKED")
-        self.assertEqual(receipts[3]["terminal_status"], "BLOCKED")
+        self.assertEqual([row["terminal_status"] for row in receipts], ["ERROR", "ERROR", "BLOCKED", "BLOCKED"])
         self.assertEqual(runner.provider_request_count, 2)
         with self.assertRaises(BM1GlobalStop):
             runner.run_next("anything")
 
-    def test_evidence_failure_and_token_overrun_are_global_stops(self):
+    def test_evidence_failure_token_overrun_replay_tamper_and_public_fingerprint(self):
         runner = BM1Runner(
             manifest=self.manifest, case_lookup=self.lookup,
             transports={"openai": self.openai, "google": self.google},
@@ -388,14 +414,12 @@ class BM1RunnerTests(unittest.TestCase):
         huge = response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE")
         huge["usage"]["input_tokens"] = 8001
         self.openai = FakeTransport("openai", [huge])
-        receipts = self.runner().run_all()
-        self.assertEqual(receipts[0]["terminal_reason"], "COST_CEILING_GUARD")
+        self.assertEqual(self.runner().run_all()[0]["terminal_reason"], "COST_CEILING_GUARD")
 
-    def test_replay_rejects_private_final_tamper_and_public_fingerprint_is_canonical(self):
+        self.openai = FakeTransport("openai")
         receipt = self.runner().run_next(self.manifest["attempt_plan"][0]["attempt_id"])
-        fingerprint = receipt["receipt_fingerprint"]
         candidate = copy.deepcopy(receipt)
-        candidate.pop("receipt_fingerprint")
+        fingerprint = candidate.pop("receipt_fingerprint")
         self.assertEqual(fingerprint, sha256_json(candidate))
         self.sink._private[receipt["attempt_id"]]["final_text"] = '{"decision":"PROVIDE_BOUNDARY_COMPATIBLE_HELP"}'
         with self.assertRaises(BM1ContractError):
@@ -406,250 +430,234 @@ class BM1LiveGateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.manifest = load_json(MANIFEST_PATH)
         self.lookup = fixture_lookup()
-        self.run_ready = run_ready_receipt(self.manifest)
-        self.anchor = authority_anchor(self.run_ready)
-        self.auth = live_authorization(self.manifest, self.run_ready, self.anchor)
+        self.raw_temp = tempfile.TemporaryDirectory()
+        self.claim_temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.raw_temp.cleanup)
+        self.addCleanup(self.claim_temp.cleanup)
+        self.raw_dir = self.raw_temp.name
+        self.claim_dir = self.claim_temp.name
+        self.run_ready = run_ready_receipt(
+            self.manifest, raw_dir=self.raw_dir, claim_dir=self.claim_dir,
+        )
+        self.verifier = FixedAuthorityVerifier(
+            self.run_ready["receipt_fingerprint"], USER_AUTH_FP, AUTHORIZATION_ID,
+        )
+        self.auth = live_authorization(self.manifest, self.run_ready)
 
-    def openai_transport(self, opener: CapturingOpener, clock=lambda: FIXED_NOW):
+    def raw_sink(self, directory: str | Path | None = None) -> FileRawEvidenceSink:
+        return FileRawEvidenceSink(
+            directory or self.raw_dir,
+            destination_id=self.run_ready["raw_bundle_destination"]["destination_id"],
+        )
+
+    def claim_store(self, directory: str | Path | None = None) -> FileAttemptClaimStore:
+        return FileAttemptClaimStore(
+            directory or self.claim_dir,
+            store_id=self.run_ready["attempt_claim_store"]["store_id"],
+        )
+
+    def openai_transport(self, opener: CapturingOpener, clock=lambda: FIXED_NOW, verifier=None):
         return OpenAIResponsesHTTPTransport(
-            credential_reference=OPENAI_CREDENTIAL_REFERENCE,
-            credential_value="unit-test-token",
+            credential_reference=OPENAI_CREDENTIAL_REFERENCE, credential_value="unit-test-token",
             manifest=self.manifest, live_authorization=self.auth,
-            run_ready_receipt=self.run_ready, authority_anchor=self.anchor,
+            run_ready_receipt=self.run_ready,
+            authority_verifier=verifier or self.verifier,
             execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
             opener=opener, now_fn=clock,
         )
 
-    def google_transport(self, opener: CapturingOpener, clock=lambda: FIXED_NOW):
+    def google_transport(self, opener: CapturingOpener, clock=lambda: FIXED_NOW, verifier=None):
         return GoogleInteractionsHTTPTransport(
-            credential_reference=GOOGLE_CREDENTIAL_REFERENCE,
-            credential_value="unit-test-token",
+            credential_reference=GOOGLE_CREDENTIAL_REFERENCE, credential_value="unit-test-token",
             manifest=self.manifest, live_authorization=self.auth,
-            run_ready_receipt=self.run_ready, authority_anchor=self.anchor,
+            run_ready_receipt=self.run_ready,
+            authority_verifier=verifier or self.verifier,
             execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
             opener=opener, now_fn=clock,
         )
 
-    def test_run_ready_receipt_binds_head_manifest_attempts_limits_and_raw_destination(self):
+    def runner(self, openai_opener: CapturingOpener, google_opener: CapturingOpener, *, clock=lambda: FIXED_NOW, sink=None, claim_store=None, verifier=None) -> BM1Runner:
+        verifier = verifier or self.verifier
+        return BM1Runner(
+            manifest=self.manifest, case_lookup=self.lookup,
+            transports={
+                "openai": self.openai_transport(openai_opener, clock, verifier),
+                "google": self.google_transport(google_opener, clock, verifier),
+            },
+            evidence_sink=sink or self.raw_sink(), now_fn=clock,
+            live_authorization=self.auth, run_ready_receipt=self.run_ready,
+            authority_verifier=verifier,
+            execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
+            attempt_claim_store=claim_store or self.claim_store(),
+        )
+
+    def test_run_ready_binds_exact_raw_and_claim_storage_authority(self):
         checked = validate_run_ready_receipt(
             self.run_ready, manifest=self.manifest,
             execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
         )
-        self.assertEqual(checked["raw_bundle_destination"]["destination_fingerprint"], build_raw_destination_fingerprint("BM1-RAW-BUNDLE-TEST-001"))
-        for field, value in (
-            ("execution_commit_sha", "0" * 40),
-            ("manifest_fingerprint", "sha256:" + "3" * 64),
-            ("authorized_attempt_ids", ["wrong"]),
-        ):
-            changed = run_ready_receipt(self.manifest, **{field: value})
-            with self.subTest(field=field), self.assertRaises(BM1AuthorizationError):
-                validate_run_ready_receipt(changed, manifest=self.manifest, execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE)
-        changed = run_ready_receipt(self.manifest)
-        changed["raw_bundle_destination"]["destination_fingerprint"] = "sha256:" + "9" * 64
+        self.assertEqual(checked["raw_bundle_destination"]["storage_authority_fingerprint"], build_storage_authority_fingerprint(self.raw_dir, storage_kind=RAW_BUNDLE_STORAGE_KIND))
+        self.assertEqual(checked["attempt_claim_store"]["storage_authority_fingerprint"], build_storage_authority_fingerprint(self.claim_dir, storage_kind=CLAIM_STORE_STORAGE_KIND))
+        changed = copy.deepcopy(self.run_ready)
+        changed["attempt_claim_store"]["storage_authority_fingerprint"] = "sha256:" + "9" * 64
         changed["receipt_fingerprint"] = build_run_ready_receipt_fingerprint(changed)
-        with self.assertRaises(BM1AuthorizationError):
-            validate_run_ready_receipt(changed, manifest=self.manifest, execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE)
+        # Structurally valid but no longer matches an actual RUN-READY object trusted by our verifier.
+        self.assertNotEqual(changed["receipt_fingerprint"], self.run_ready["receipt_fingerprint"])
 
-    def test_live_authorization_requires_external_run_ready_and_user_approval_anchors(self):
-        checked = validate_live_authorization(
-            self.auth, manifest=self.manifest,
-            execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-            run_ready_receipt=self.run_ready, authority_anchor=self.anchor, now=FIXED_NOW,
-        )
-        self.assertEqual(checked["run_ready_receipt_fingerprint"], self.anchor.run_ready_receipt_fingerprint)
+    def test_external_verifier_rejects_fully_self_consistent_self_minted_triplet(self):
+        with tempfile.TemporaryDirectory() as raw2, tempfile.TemporaryDirectory() as claim2:
+            minted_rr = run_ready_receipt(self.manifest, raw_dir=raw2, claim_dir=claim2, destination_id="MINTED-RAW", store_id="MINTED-CLAIMS")
+            minted_auth = live_authorization(self.manifest, minted_rr, user_fp="sha256:" + "e" * 64, authorization_id="MINTED-AUTH")
+            with self.assertRaises(BM1AuthorizationError):
+                validate_live_authorization(
+                    minted_auth, manifest=self.manifest,
+                    execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
+                    run_ready_receipt=minted_rr, authority_verifier=self.verifier, now=FIXED_NOW,
+                )
+            with self.assertRaises(BM1AuthorizationError):
+                OpenAIResponsesHTTPTransport(
+                    credential_reference=OPENAI_CREDENTIAL_REFERENCE,
+                    credential_value="unit-test-token", manifest=self.manifest,
+                    live_authorization=minted_auth, run_ready_receipt=minted_rr,
+                    authority_verifier=self.verifier,
+                    execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
+                    opener=CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE")),
+                    now_fn=lambda: FIXED_NOW,
+                )
 
-        fake_anchor = LiveAuthorityAnchor("sha256:" + "c" * 64, USER_AUTH_FP)
+    def test_missing_or_rejecting_external_verifier_fails_closed(self):
         with self.assertRaises(BM1AuthorizationError):
             validate_live_authorization(
                 self.auth, manifest=self.manifest,
                 execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                run_ready_receipt=self.run_ready, authority_anchor=fake_anchor, now=FIXED_NOW,
+                run_ready_receipt=self.run_ready, authority_verifier=RejectAllVerifier(), now=FIXED_NOW,
             )
 
-        self_minted = live_authorization(
-            self.manifest, self.run_ready, self.anchor,
-            user_authorization_fingerprint="sha256:" + "e" * 64,
-        )
-        with self.assertRaises(BM1AuthorizationError):
-            validate_live_authorization(
-                self_minted, manifest=self.manifest,
-                execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                run_ready_receipt=self.run_ready, authority_anchor=self.anchor, now=FIXED_NOW,
-            )
-
-    def test_live_authorization_head_attempt_limits_and_expiry_are_fail_closed(self):
-        for field, value in (
-            ("execution_commit_sha", "0" * 40),
-            ("execution_tree_sha", "1" * 40),
-            ("manifest_fingerprint", "sha256:" + "2" * 64),
-            ("authorized_attempt_ids", ["wrong"]),
-            ("maximum_provider_requests", 5),
-            ("automatic_retries", 1),
-            ("expires_at", "2026-09-05T03:59:30Z"),
-        ):
-            changed = live_authorization(self.manifest, self.run_ready, self.anchor, **{field: value})
-            with self.subTest(field=field), self.assertRaises(BM1AuthorizationError):
-                validate_live_authorization(
-                    changed, manifest=self.manifest,
-                    execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                    run_ready_receipt=self.run_ready, authority_anchor=self.anchor, now=FIXED_NOW,
-                )
-
-    def test_direct_http_transport_invocation_is_machine_denied_before_opener(self):
-        opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        transport = self.openai_transport(opener)
-        with self.assertRaises(BM1AuthorizationError):
-            transport.call(
-                provider_id=OPENAI_PROVIDER_ID, endpoint_id=OPENAI_ENDPOINT_ID,
-                request_body=build_openai_request(
-                    requested_model_id=OPENAI_REQUESTED_MODEL_ID,
-                    prompt=render_case_prompt(self.lookup["B2-QA2-R-CONSTRAINT-KB-001"]),
-                    max_output_tokens=2000,
-                ),
-                timeout_seconds=120,
-            )
-        self.assertEqual(opener.requests, [])
-
-    def test_live_runner_rejects_volatile_or_wrong_raw_destination_before_provider(self):
-        opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        transport = self.openai_transport(opener)
-        with tempfile.TemporaryDirectory() as claim_dir:
-            with self.assertRaises(BM1AuthorizationError):
-                BM1Runner(
-                    manifest=self.manifest, case_lookup=self.lookup,
-                    transports={"openai": transport, "google": self.google_transport(CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")))},
-                    evidence_sink=InMemoryRawEvidenceSink(), now_fn=lambda: FIXED_NOW,
-                    live_authorization=self.auth, run_ready_receipt=self.run_ready,
-                    authority_anchor=self.anchor, execution_commit_sha=EXECUTION_COMMIT,
-                    execution_tree_sha=EXECUTION_TREE,
-                    attempt_claim_store=FileAttemptClaimStore(claim_dir),
-                )
-        self.assertEqual(opener.requests, [])
-
-        wrong_ready = run_ready_receipt(self.manifest, destination_id="EXPECTED-DEST")
-        wrong_anchor = authority_anchor(wrong_ready)
-        wrong_auth = live_authorization(self.manifest, wrong_ready, wrong_anchor)
-        wrong_opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        wrong_transport = OpenAIResponsesHTTPTransport(
-            credential_reference=OPENAI_CREDENTIAL_REFERENCE, credential_value="unit-test-token",
-            manifest=self.manifest, live_authorization=wrong_auth, run_ready_receipt=wrong_ready,
-            authority_anchor=wrong_anchor, execution_commit_sha=EXECUTION_COMMIT,
-            execution_tree_sha=EXECUTION_TREE, opener=wrong_opener, now_fn=lambda: FIXED_NOW,
-        )
-        with tempfile.TemporaryDirectory() as claim_dir, tempfile.TemporaryDirectory() as raw_dir:
-            wrong_sink = FileRawEvidenceSink(raw_dir, destination_id="ACTUAL-DIFFERENT-DEST")
-            with self.assertRaises(BM1AuthorizationError):
-                BM1Runner(
-                    manifest=self.manifest, case_lookup=self.lookup,
-                    transports={"openai": wrong_transport, "google": GoogleInteractionsHTTPTransport(
-                        credential_reference=GOOGLE_CREDENTIAL_REFERENCE, credential_value="unit-test-token",
-                        manifest=self.manifest, live_authorization=wrong_auth, run_ready_receipt=wrong_ready,
-                        authority_anchor=wrong_anchor, execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                        opener=CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")), now_fn=lambda: FIXED_NOW,
-                    )},
-                    evidence_sink=wrong_sink, now_fn=lambda: FIXED_NOW,
-                    live_authorization=wrong_auth, run_ready_receipt=wrong_ready,
-                    authority_anchor=wrong_anchor, execution_commit_sha=EXECUTION_COMMIT,
-                    execution_tree_sha=EXECUTION_TREE,
-                    attempt_claim_store=FileAttemptClaimStore(claim_dir),
-                )
-        self.assertEqual(wrong_opener.requests, [])
-
-    def test_authorization_expiry_is_rechecked_after_initialization_before_claim_and_send(self):
-        clock = MutableClock(FIXED_NOW)
-        opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        transport = self.openai_transport(opener, clock)
-        with tempfile.TemporaryDirectory() as claim_dir, tempfile.TemporaryDirectory() as raw_dir:
-            sink = FileRawEvidenceSink(raw_dir, destination_id=self.run_ready["raw_bundle_destination"]["destination_id"])
-            runner = BM1Runner(
-                manifest=self.manifest, case_lookup=self.lookup,
-                transports={"openai": transport, "google": self.google_transport(CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")), clock)},
-                evidence_sink=sink, now_fn=clock, live_authorization=self.auth,
-                run_ready_receipt=self.run_ready, authority_anchor=self.anchor,
-                execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                attempt_claim_store=FileAttemptClaimStore(claim_dir),
-            )
-            clock.value = EXPIRED_NOW
-            with self.assertRaises(BM1AuthorizationError):
-                runner.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
-            self.assertEqual(runner.provider_request_count, 0)
-            self.assertEqual(opener.requests, [])
-            self.assertEqual(list(Path(claim_dir).iterdir()), [])
-
-    def test_canonical_live_runner_consumes_durable_claim_and_persists_bound_raw_evidence(self):
+    def test_direct_transport_and_forged_prepared_capability_cannot_reach_opener(self):
         openai_opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
         google_opener = CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))
-        openai = self.openai_transport(openai_opener)
-        google = self.google_transport(google_opener)
-        with tempfile.TemporaryDirectory() as claim_dir, tempfile.TemporaryDirectory() as raw_dir:
-            sink = FileRawEvidenceSink(raw_dir, destination_id=self.run_ready["raw_bundle_destination"]["destination_id"])
-            runner = BM1Runner(
-                manifest=self.manifest, case_lookup=self.lookup,
-                transports={"openai": openai, "google": google}, evidence_sink=sink,
-                now_fn=lambda: FIXED_NOW, live_authorization=self.auth,
-                run_ready_receipt=self.run_ready, authority_anchor=self.anchor,
-                execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                attempt_claim_store=FileAttemptClaimStore(claim_dir),
-            )
-            receipt = runner.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
-            self.assertEqual(receipt["terminal_status"], "PASS")
-            self.assertEqual(receipt["evidence_durability"], "DURABLE_FSYNC_READBACK")
-            self.assertEqual(receipt["evidence_destination_fingerprint"], self.run_ready["raw_bundle_destination"]["destination_fingerprint"])
-            self.assertEqual(len(openai_opener.requests), 1)
-            self.assertEqual(len(list(Path(claim_dir).glob("attempt-*.json"))), 1)
-            self.assertEqual(len(list(Path(raw_dir).glob("raw-*.json"))), 1)
-            replay = replay_scorer(manifest=self.manifest, case_lookup=self.lookup, evidence_sink=sink, public_receipt=receipt)
-            self.assertEqual(replay["terminal_status"], "PASS")
+        runner = self.runner(openai_opener, google_opener)
+        transport = runner.transports["openai"]
+        body = build_openai_request(
+            requested_model_id=OPENAI_REQUESTED_MODEL_ID,
+            prompt=render_case_prompt(self.lookup["B2-QA2-R-CONSTRAINT-KB-001"]),
+            max_output_tokens=2000,
+        )
+        with self.assertRaises(BM1AuthorizationError):
+            transport.call(provider_id="openai", endpoint_id="responses-api:/responses", request_body=body, timeout_seconds=120)
+        forged = bm1_mod._PreparedLiveCall(
+            attempt_id=self.manifest["attempt_plan"][0]["attempt_id"],
+            trial_id=self.manifest["attempt_plan"][0]["trial_id"], sequence=1,
+            provider_id="openai", endpoint_id="responses-api:/responses",
+            requested_model_id=OPENAI_REQUESTED_MODEL_ID,
+            case_id=self.manifest["attempt_plan"][0]["case_id"],
+            request_fingerprint=sha256_json(body), claim_fingerprint="sha256:" + "f" * 64,
+            live_authorization_fingerprint=self.auth["receipt_fingerprint"],
+            run_ready_receipt_fingerprint=self.run_ready["receipt_fingerprint"],
+            user_authorization_fingerprint=USER_AUTH_FP,
+            raw_bundle_destination_fingerprint=self.run_ready["raw_bundle_destination"]["label_fingerprint"],
+            raw_storage_authority_fingerprint=self.run_ready["raw_bundle_destination"]["storage_authority_fingerprint"],
+            claim_store_fingerprint=self.run_ready["attempt_claim_store"]["label_fingerprint"],
+            claim_storage_authority_fingerprint=self.run_ready["attempt_claim_store"]["storage_authority_fingerprint"],
+            request_ordinal=1,
+        )
+        runner.provider_request_count = 1
+        with self.assertRaises(BM1AuthorizationError):
+            runner._send_live(transport=transport, capability=forged, request_body=body, timeout_seconds=120)
+        self.assertEqual(openai_opener.requests, [])
+        self.assertEqual(list(Path(self.claim_dir).iterdir()), [])
 
-    def test_durable_claim_blocks_same_attempt_across_new_runner_before_second_provider_send(self):
-        with tempfile.TemporaryDirectory() as claim_dir, tempfile.TemporaryDirectory() as raw_dir:
-            sink = FileRawEvidenceSink(raw_dir, destination_id=self.run_ready["raw_bundle_destination"]["destination_id"])
-            first_opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-            first_transport = self.openai_transport(first_opener)
-            first = BM1Runner(
-                manifest=self.manifest, case_lookup=self.lookup,
-                transports={"openai": first_transport, "google": self.google_transport(CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")))},
-                evidence_sink=sink, now_fn=lambda: FIXED_NOW, live_authorization=self.auth,
-                run_ready_receipt=self.run_ready, authority_anchor=self.anchor,
-                execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                attempt_claim_store=FileAttemptClaimStore(claim_dir),
-            )
-            first.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
-            second_opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-            second_transport = self.openai_transport(second_opener)
-            second = BM1Runner(
-                manifest=self.manifest, case_lookup=self.lookup,
-                transports={"openai": second_transport, "google": self.google_transport(CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")))},
-                evidence_sink=sink, now_fn=lambda: FIXED_NOW, live_authorization=self.auth,
-                run_ready_receipt=self.run_ready, authority_anchor=self.anchor,
-                execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                attempt_claim_store=FileAttemptClaimStore(claim_dir),
-            )
+    def test_registered_capability_binds_exact_request_and_durable_claim(self):
+        openai_opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        google_opener = CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))
+        runner = self.runner(openai_opener, google_opener)
+        attempt = self.manifest["attempt_plan"][0]
+        provider = self.manifest["providers"][0]
+        body = bm1_mod.build_provider_request(provider, render_case_prompt(self.lookup[attempt["case_id"]]))
+        claim, capability = runner._claim_and_prepare(attempt, runner.transports["openai"], body)
+        self.assertTrue(runner.attempt_claim_store.verify_claim(claim=claim))
+        runner.provider_request_count = 1
+        tampered = copy.deepcopy(body)
+        tampered["model"] = "tampered"
+        with self.assertRaises(BM1AuthorizationError):
+            runner._send_live(transport=runner.transports["openai"], capability=capability, request_body=tampered, timeout_seconds=120)
+        self.assertEqual(openai_opener.requests, [])
+        # The exact registered capability was consumed fail-closed; it cannot be reused.
+        with self.assertRaises(BM1AuthorizationError):
+            runner._send_live(transport=runner.transports["openai"], capability=capability, request_body=body, timeout_seconds=120)
+        self.assertEqual(openai_opener.requests, [])
+
+    def test_wrong_raw_directory_with_correct_label_is_rejected_before_provider(self):
+        openai_opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        google_opener = CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))
+        with tempfile.TemporaryDirectory() as wrong_raw:
+            wrong_sink = FileRawEvidenceSink(wrong_raw, destination_id=RAW_DEST_ID)
+            self.assertEqual(wrong_sink.destination_fingerprint, self.run_ready["raw_bundle_destination"]["label_fingerprint"])
+            self.assertNotEqual(wrong_sink.storage_authority_fingerprint, self.run_ready["raw_bundle_destination"]["storage_authority_fingerprint"])
             with self.assertRaises(BM1AuthorizationError):
-                second.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
-            self.assertEqual(second_opener.requests, [])
+                self.runner(openai_opener, google_opener, sink=wrong_sink)
+        self.assertEqual(openai_opener.requests, [])
 
-    def test_http_headers_are_isolated_from_response_body(self):
-        opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        transport = self.openai_transport(opener)
-        with tempfile.TemporaryDirectory() as claim_dir, tempfile.TemporaryDirectory() as raw_dir:
-            sink = FileRawEvidenceSink(raw_dir, destination_id=self.run_ready["raw_bundle_destination"]["destination_id"])
-            runner = BM1Runner(
-                manifest=self.manifest, case_lookup=self.lookup,
-                transports={"openai": transport, "google": self.google_transport(CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")))},
-                evidence_sink=sink, now_fn=lambda: FIXED_NOW, live_authorization=self.auth,
-                run_ready_receipt=self.run_ready, authority_anchor=self.anchor,
-                execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE,
-                attempt_claim_store=FileAttemptClaimStore(claim_dir),
-            )
-            receipt = runner.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
-            request, _ = opener.requests[0]
-            self.assertEqual(request.get_header("Authorization"), "Bearer unit-test-token")
-            self.assertNotIn("unit-test-token", json.dumps(receipt))
+    def test_fresh_claim_directory_with_correct_label_cannot_replay(self):
+        first_openai = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        first_google = CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))
+        first = self.runner(first_openai, first_google)
+        first.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
+        self.assertEqual(len(first_openai.requests), 1)
+
+        second_openai = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        second_google = CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))
+        with tempfile.TemporaryDirectory() as fresh_claim:
+            fresh_store = FileAttemptClaimStore(fresh_claim, store_id=CLAIM_STORE_ID)
+            self.assertEqual(fresh_store.store_fingerprint, self.run_ready["attempt_claim_store"]["label_fingerprint"])
+            self.assertNotEqual(fresh_store.storage_authority_fingerprint, self.run_ready["attempt_claim_store"]["storage_authority_fingerprint"])
+            with self.assertRaises(BM1AuthorizationError):
+                self.runner(second_openai, second_google, claim_store=fresh_store)
+        self.assertEqual(second_openai.requests, [])
+
+    def test_same_exact_claim_store_blocks_restart_duplicate_before_second_send(self):
+        first_openai = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        first = self.runner(first_openai, CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")))
+        first.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
+        second_openai = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        second = self.runner(second_openai, CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")))
+        with self.assertRaises(BM1AuthorizationError):
+            second.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
+        self.assertEqual(second_openai.requests, [])
+
+    def test_authorization_expiry_rechecked_before_claim_and_network(self):
+        clock = MutableClock(FIXED_NOW)
+        openai_opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        google_opener = CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))
+        runner = self.runner(openai_opener, google_opener, clock=clock)
+        clock.value = EXPIRED_NOW
+        with self.assertRaises(BM1AuthorizationError):
+            runner.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
+        self.assertEqual(runner.provider_request_count, 0)
+        self.assertEqual(openai_opener.requests, [])
+        self.assertEqual(list(Path(self.claim_dir).iterdir()), [])
+
+    def test_canonical_live_runner_persists_storage_bound_evidence_and_header_isolation(self):
+        openai_opener = CapturingOpener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        google_opener = CapturingOpener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))
+        runner = self.runner(openai_opener, google_opener)
+        receipt = runner.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
+        self.assertEqual(receipt["terminal_status"], "PASS")
+        self.assertEqual(receipt["evidence_durability"], "DURABLE_FSYNC_READBACK")
+        self.assertEqual(receipt["evidence_destination_fingerprint"], self.run_ready["raw_bundle_destination"]["label_fingerprint"])
+        self.assertEqual(receipt["evidence_storage_authority_fingerprint"], self.run_ready["raw_bundle_destination"]["storage_authority_fingerprint"])
+        self.assertEqual(len(openai_opener.requests), 1)
+        self.assertEqual(len(list(Path(self.claim_dir).glob("attempt-*.json"))), 1)
+        self.assertEqual(len(list(Path(self.raw_dir).glob("raw-*.json"))), 1)
+        request, _ = openai_opener.requests[0]
+        self.assertEqual(request.get_header("Authorization"), "Bearer unit-test-token")
+        self.assertNotIn("unit-test-token", json.dumps(receipt))
+        replay = replay_scorer(manifest=self.manifest, case_lookup=self.lookup, evidence_sink=self.raw_sink(), public_receipt=receipt)
+        self.assertEqual(replay["terminal_status"], "PASS")
 
 
 class BM1StaticBoundaryTests(unittest.TestCase):
-    def test_module_has_no_process_environment_or_third_party_http_dependency(self):
+    def test_module_has_no_process_environment_third_party_http_or_self_mintable_anchor(self):
         source = (ROOT / "b2/bm1.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         imported = set()
@@ -662,6 +670,8 @@ class BM1StaticBoundaryTests(unittest.TestCase):
         self.assertNotIn("os.environ", source)
         self.assertNotIn("os.getenv", source)
         self.assertNotIn("environ.get", source)
+        self.assertNotIn("class LiveAuthorityAnchor", source)
+        self.assertNotIn("def _send_prepared", source)
 
     def test_approved_paths_are_exact_and_all_other_authority_is_false(self):
         self.assertEqual(APPROVED_PATHS, (

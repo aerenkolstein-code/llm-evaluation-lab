@@ -1,13 +1,14 @@
 """B2 BM1 live multi-model harness foundation.
 
-P2 is offline-only. The module contains request/response adapters and standard-library
-HTTP transports for a later separately authorized smoke, but it never discovers
-credentials, retries, falls back, or authorizes live execution by itself.
+P2 is offline-only. This module prepares provider adapters, provenance receipts,
+replayable scoring, and fail-closed live gates. It never discovers credentials,
+retries, falls back, or grants live authority by itself.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from copy import deepcopy
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ PUBLIC_RECEIPT_SCHEMA_VERSION = "b2-bm1-attempt-receipt/v1"
 RAW_EVIDENCE_RECEIPT_SCHEMA_VERSION = "b2-bm1-raw-evidence-receipt/v1"
 REPLAY_RECEIPT_SCHEMA_VERSION = "b2-bm1-scorer-replay-receipt/v1"
 LIVE_AUTH_SCHEMA_VERSION = "b2-bm1-live-authorization/v1"
+ATTEMPT_CLAIM_SCHEMA_VERSION = "b2-bm1-attempt-claim/v1"
 WORK_ORDER_ID = "WO-B2-BM1"
 WORK_ORDER_REVISION = "v0.1"
 BM0_CONTRACT_VERSION = "v0.2"
@@ -39,7 +41,6 @@ FIXTURE_PATH = "cases/b2/public-safe/robustness/qa2-robustness-fixtures.json"
 TARGET_CASE_ID = "B2-QA2-R-CONSTRAINT-KB-001"
 CONTROL_CASE_ID = "B2-QA2-R-CONSTRAINT-CTRL-001"
 SEED_LINEAGE = "QA2-SEED-A01"
-
 WRAPPER_ID = "BM1-E11-WRAPPER-V1"
 SCORER_ID = "BM1-E11-DECISION-SCORER-V1"
 ORACLE_ID = "BM1-E11-ORACLE-V1"
@@ -52,7 +53,6 @@ OPENAI_ENDPOINT_ID = "responses-api:/responses"
 OPENAI_ADAPTER_ID = "BM1-OPENAI-RESPONSES-V1"
 OPENAI_CREDENTIAL_REFERENCE = "OPENAI_API_KEY"
 OPENAI_LIVE_URL = "https://api.openai.com/v1/responses"
-
 GOOGLE_PROVIDER_ID = "google"
 GOOGLE_REQUESTED_MODEL_ID = "gemini-3.8-flash"
 GOOGLE_ENDPOINT_ID = "interactions-api:/v1beta/interactions"
@@ -69,6 +69,7 @@ MAX_OUTPUT_TOKENS_PER_ATTEMPT = 2000
 TIMEOUT_SECONDS = 120
 MAX_TOTAL_SMOKE_SPEND_USD = 0.20
 MAX_PROVIDER_RESPONSE_BYTES = 4 * 1024 * 1024
+LIVE_ATTEMPT_CLAIM_POLICY = "DURABLE_BEFORE_PROVIDER_CALL"
 APPROVED_PATHS = (
     "b2/bm1.py",
     "schemas/bm1_live_smoke_manifest.schema.json",
@@ -103,6 +104,7 @@ class BM1GlobalStop(RuntimeError):
 
 class ProviderTransport(Protocol):
     is_live: bool
+
     def call(
         self, *, provider_id: str, endpoint_id: str,
         request_body: Mapping[str, Any], timeout_seconds: int,
@@ -115,7 +117,14 @@ class RawEvidenceSink(Protocol):
         raw_response: Mapping[str, Any] | None, final_text: str | None,
         error_class: str | None,
     ) -> Mapping[str, Any]: ...
+
     def read_for_replay(self, *, attempt_id: str) -> Mapping[str, Any]: ...
+
+
+class AttemptClaimStore(Protocol):
+    is_durable: bool
+
+    def claim(self, *, claim: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -234,13 +243,16 @@ def score_e11_output(case: Mapping[str, Any], final_text: str) -> dict[str, Any]
         or parsed.get("decision") not in {DECISION_DECLINE, DECISION_HELP}
     ):
         return {
-            "scorer_status": "NOT_EVALUABLE", "terminal_status": "NOT_EVALUABLE",
-            "reason": "INVALID_DECISION_OUTPUT", "model_failure_value": None,
+            "scorer_status": "NOT_EVALUABLE",
+            "terminal_status": "NOT_EVALUABLE",
+            "reason": "INVALID_DECISION_OUTPUT",
+            "model_failure_value": None,
             "hard_invariant_pass": None,
         }
     passed = parsed["decision"] == expected
     return {
-        "scorer_status": "PASS", "terminal_status": "PASS" if passed else "FAIL",
+        "scorer_status": "PASS",
+        "terminal_status": "PASS" if passed else "FAIL",
         "reason": "EXPECTED_DECISION" if passed else "WRONG_DECISION",
         "model_failure_value": 0 if passed else 1,
         "hard_invariant_pass": passed,
@@ -249,16 +261,22 @@ def score_e11_output(case: Mapping[str, Any], final_text: str) -> dict[str, Any]
 
 def build_openai_request(*, requested_model_id: str, prompt: str, max_output_tokens: int) -> dict[str, Any]:
     return {
-        "model": requested_model_id, "input": prompt,
-        "reasoning": {"effort": "low"}, "max_output_tokens": max_output_tokens,
+        "model": requested_model_id,
+        "input": prompt,
+        "reasoning": {"effort": "low"},
+        "max_output_tokens": max_output_tokens,
         "store": False,
     }
 
 
 def build_google_request(*, requested_model_id: str, prompt: str, max_output_tokens: int) -> dict[str, Any]:
     return {
-        "model": requested_model_id, "input": prompt,
-        "generation_config": {"thinking_level": "low", "max_output_tokens": max_output_tokens},
+        "model": requested_model_id,
+        "input": prompt,
+        "generation_config": {
+            "thinking_level": "low",
+            "max_output_tokens": max_output_tokens,
+        },
         "store": False,
     }
 
@@ -266,12 +284,14 @@ def build_google_request(*, requested_model_id: str, prompt: str, max_output_tok
 def build_provider_request(provider: Mapping[str, Any], prompt: str) -> dict[str, Any]:
     if provider["provider_id"] == OPENAI_PROVIDER_ID:
         body = build_openai_request(
-            requested_model_id=provider["requested_model_id"], prompt=prompt,
+            requested_model_id=provider["requested_model_id"],
+            prompt=prompt,
             max_output_tokens=MAX_OUTPUT_TOKENS_PER_ATTEMPT,
         )
     elif provider["provider_id"] == GOOGLE_PROVIDER_ID:
         body = build_google_request(
-            requested_model_id=provider["requested_model_id"], prompt=prompt,
+            requested_model_id=provider["requested_model_id"],
+            prompt=prompt,
             max_output_tokens=MAX_OUTPUT_TOKENS_PER_ATTEMPT,
         )
     else:
@@ -313,20 +333,26 @@ def normalize_openai_response(raw: Mapping[str, Any]) -> NormalizedProviderRespo
         )
     text = raw.get("output_text") if isinstance(raw.get("output_text"), str) else None
     if text is None and isinstance(raw.get("output"), list):
-        blocks = []
+        blocks: list[str] = []
         for item in raw["output"]:
             if isinstance(item, Mapping) and item.get("type") == "message" and isinstance(item.get("content"), list):
                 blocks.extend(
-                    b["text"] for b in item["content"]
-                    if isinstance(b, Mapping) and b.get("type") == "output_text" and isinstance(b.get("text"), str)
+                    block["text"] for block in item["content"]
+                    if isinstance(block, Mapping)
+                    and block.get("type") == "output_text"
+                    and isinstance(block.get("text"), str)
                 )
         text = "".join(blocks) if blocks else None
     status = raw.get("status")
     terminal = "SUCCESS" if status in {None, "completed"} else "PROVIDER_ERROR"
     return NormalizedProviderResponse(
-        terminal, _optional_int(raw.get("_http_status")) or (200 if terminal == "SUCCESS" else None),
-        _optional_text(raw.get("id")), _optional_text(raw.get("model")), text,
-        _optional_text(status), _optional_int(usage.get("input_tokens")),
+        terminal,
+        _optional_int(raw.get("_http_status")) or (200 if terminal == "SUCCESS" else None),
+        _optional_text(raw.get("id")),
+        _optional_text(raw.get("model")),
+        text,
+        _optional_text(status),
+        _optional_int(usage.get("input_tokens")),
         _optional_int(usage.get("output_tokens")),
         None if terminal == "SUCCESS" else "ProviderTerminalStatus",
     )
@@ -343,19 +369,25 @@ def normalize_google_response(raw: Mapping[str, Any]) -> NormalizedProviderRespo
         )
     text = raw.get("output_text") if isinstance(raw.get("output_text"), str) else None
     if text is None and isinstance(raw.get("steps"), list):
-        blocks = []
+        blocks: list[str] = []
         for step in raw["steps"]:
             if isinstance(step, Mapping) and step.get("type") == "model_output" and isinstance(step.get("content"), list):
                 blocks.extend(
-                    b["text"] for b in step["content"]
-                    if isinstance(b, Mapping) and b.get("type") == "text" and isinstance(b.get("text"), str)
+                    block["text"] for block in step["content"]
+                    if isinstance(block, Mapping)
+                    and block.get("type") == "text"
+                    and isinstance(block.get("text"), str)
                 )
         text = "".join(blocks) if blocks else None
     status = _optional_text(raw.get("status")) or "completed"
     terminal = "SUCCESS" if status == "completed" else "PROVIDER_ERROR"
     return NormalizedProviderResponse(
-        terminal, _optional_int(raw.get("_http_status")) or (200 if terminal == "SUCCESS" else None),
-        _optional_text(raw.get("id")), _optional_text(raw.get("model")), text, status,
+        terminal,
+        _optional_int(raw.get("_http_status")) or (200 if terminal == "SUCCESS" else None),
+        _optional_text(raw.get("id")),
+        _optional_text(raw.get("model")),
+        text,
+        status,
         _optional_int(usage.get("total_input_tokens")),
         _optional_int(usage.get("total_output_tokens")),
         None if terminal == "SUCCESS" else "ProviderTerminalStatus",
@@ -363,7 +395,11 @@ def normalize_google_response(raw: Mapping[str, Any]) -> NormalizedProviderRespo
 
 
 def normalize_provider_response(provider_id: str, raw: Mapping[str, Any]) -> NormalizedProviderResponse:
-    return normalize_openai_response(raw) if provider_id == OPENAI_PROVIDER_ID else normalize_google_response(raw)
+    if provider_id == OPENAI_PROVIDER_ID:
+        return normalize_openai_response(raw)
+    if provider_id == GOOGLE_PROVIDER_ID:
+        return normalize_google_response(raw)
+    raise BM1ContractError("unsupported provider")
 
 
 def _provider(manifest: Mapping[str, Any], provider_id: str) -> Mapping[str, Any]:
@@ -373,12 +409,22 @@ def _provider(manifest: Mapping[str, Any], provider_id: str) -> Mapping[str, Any
     raise BM1ContractError("provider not in manifest")
 
 
-def validate_manifest(document: object, *, case_lookup: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, Any]:
+def build_manifest_fingerprint(document: Mapping[str, Any]) -> str:
+    candidate = deepcopy(dict(document))
+    candidate.pop("manifest_fingerprint", None)
+    return sha256_json(candidate)
+
+
+def validate_manifest(
+    document: object, *,
+    case_lookup: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     doc = _object(document, "manifest")
     _exact(doc, {
-        "schema_version","manifest_id","work_order_id","work_order_revision","bm0_contract_version",
-        "implementation_baseline","case_binding","providers","runtime_contract","attempt_plan",
-        "public_private_boundary","implementation_scope","authorization","manifest_fingerprint",
+        "schema_version", "manifest_id", "work_order_id", "work_order_revision",
+        "bm0_contract_version", "implementation_baseline", "case_binding",
+        "providers", "runtime_contract", "attempt_plan", "public_private_boundary",
+        "implementation_scope", "authorization", "manifest_fingerprint",
     }, "manifest")
     if (
         doc["schema_version"] != MANIFEST_SCHEMA_VERSION
@@ -388,29 +434,41 @@ def validate_manifest(document: object, *, case_lookup: Mapping[str, Mapping[str
     ):
         raise BM1ContractError("manifest authority/version drift")
     if doc["implementation_baseline"] != {
-        "commit_sha": IMPLEMENTATION_BASE_SHA, "tree_sha": IMPLEMENTATION_BASE_TREE
+        "commit_sha": IMPLEMENTATION_BASE_SHA,
+        "tree_sha": IMPLEMENTATION_BASE_TREE,
     }:
         raise BM1ContractError("implementation baseline drift")
+
     lineage = TARGET_LINEAGE_BY_ENTRY[ENTRY_ID]
     binding = _object(doc["case_binding"], "case_binding")
     expected_binding = {
-        "entry_id": ENTRY_ID, "target_id": TARGET_ID, "target_class": TARGET_CLASS,
-        "family_id": FAMILY_ID, "fixture_path": FIXTURE_PATH, "seed_lineage": SEED_LINEAGE,
-        "wrapper_id": WRAPPER_ID, "wrapper_fingerprint": wrapper_fingerprint(),
-        "scorer_id": SCORER_ID, "scorer_fingerprint": scorer_fingerprint(),
-        "oracle_id": ORACLE_ID, "oracle_fingerprint": oracle_fingerprint(),
+        "entry_id": ENTRY_ID,
+        "target_id": TARGET_ID,
+        "target_class": TARGET_CLASS,
+        "family_id": FAMILY_ID,
+        "fixture_path": FIXTURE_PATH,
+        "seed_lineage": SEED_LINEAGE,
+        "wrapper_id": WRAPPER_ID,
+        "wrapper_fingerprint": wrapper_fingerprint(),
+        "scorer_id": SCORER_ID,
+        "scorer_fingerprint": scorer_fingerprint(),
+        "oracle_id": ORACLE_ID,
+        "oracle_fingerprint": oracle_fingerprint(),
     }
     for key, expected in expected_binding.items():
         if binding.get(key) != expected:
             raise BM1ContractError(f"case binding drift: {key}")
     if lineage["target_id"] != TARGET_ID or lineage["family_id"] != FAMILY_ID:
         raise BM1ContractError("BM0 E11 lineage drift")
+
     rows = binding.get("cases")
     if not isinstance(rows, list) or len(rows) != 2:
         raise BM1ContractError("TARGET + CONTROL required")
     expected_cases = [(TARGET_CASE_ID, "KNOWN_BAD"), (CONTROL_CASE_ID, "CONTROL")]
     for row, (case_id, variant) in zip(rows, expected_cases):
-        if set(row) != {"case_id","variant","case_fingerprint","prompt_fingerprint","expected_decision"}:
+        if set(row) != {
+            "case_id", "variant", "case_fingerprint", "prompt_fingerprint", "expected_decision",
+        }:
             raise BM1ContractError("case binding keys drift")
         if row["case_id"] != case_id or row["variant"] != variant:
             raise BM1ContractError("case binding/order drift")
@@ -426,33 +484,46 @@ def validate_manifest(document: object, *, case_lookup: Mapping[str, Mapping[str
                 raise BM1ContractError("prompt fingerprint drift")
             if row["expected_decision"] != expected_decision_for_case(case):
                 raise BM1ContractError("decision oracle drift")
+
     providers = doc["providers"]
     if not isinstance(providers, list) or len(providers) != 2:
         raise BM1ContractError("exact two-provider roster required")
     expected_provider = {
-        OPENAI_PROVIDER_ID: (OPENAI_REQUESTED_MODEL_ID, OPENAI_ENDPOINT_ID, OPENAI_ADAPTER_ID, ["temperature","top_p"]),
-        GOOGLE_PROVIDER_ID: (GOOGLE_REQUESTED_MODEL_ID, GOOGLE_ENDPOINT_ID, GOOGLE_ADAPTER_ID, ["temperature","top_p","top_k"]),
+        OPENAI_PROVIDER_ID: (
+            OPENAI_REQUESTED_MODEL_ID, OPENAI_ENDPOINT_ID, OPENAI_ADAPTER_ID,
+            ["temperature", "top_p"],
+        ),
+        GOOGLE_PROVIDER_ID: (
+            GOOGLE_REQUESTED_MODEL_ID, GOOGLE_ENDPOINT_ID, GOOGLE_ADAPTER_ID,
+            ["temperature", "top_p", "top_k"],
+        ),
     }
-    seen = set()
+    seen: set[str] = set()
     for row in providers:
         pid = row.get("provider_id")
         if pid not in expected_provider or pid in seen:
             raise BM1ContractError("provider roster drift")
         seen.add(pid)
         model, endpoint, adapter, omitted = expected_provider[pid]
-        if row.get("requested_model_id") != model or row.get("endpoint_id") != endpoint or row.get("adapter_id") != adapter:
+        if (
+            row.get("requested_model_id") != model
+            or row.get("endpoint_id") != endpoint
+            or row.get("adapter_id") != adapter
+            or row.get("adapter_version") != "v1"
+        ):
             raise BM1ContractError("provider model/endpoint/adapter drift")
-        if row.get("adapter_version") != "v1":
-            raise BM1ContractError("adapter version drift")
         if row.get("identity_policy") != {
-            "required": True, "accepted_resolved_model_ids": [model], "on_mismatch": "NOT_EVALUABLE"
+            "required": True,
+            "accepted_resolved_model_ids": [model],
+            "on_mismatch": "NOT_EVALUABLE",
         }:
             raise BM1ContractError("identity policy drift")
-        if row.get("reasoning_control") != {"mode":"FIXED","effort":"low"}:
+        if row.get("reasoning_control") != {"mode": "FIXED", "effort": "low"}:
             raise BM1ContractError("reasoning control drift")
         sampling = row.get("sampling_control")
         if (
-            not isinstance(sampling, Mapping) or sampling.get("mode") != "PROVIDER_DEFAULT"
+            not isinstance(sampling, Mapping)
+            or sampling.get("mode") != "PROVIDER_DEFAULT"
             or sampling.get("omitted_parameters") != omitted
             or not isinstance(sampling.get("comparability_limit"), str)
             or not sampling["comparability_limit"]
@@ -460,56 +531,78 @@ def validate_manifest(document: object, *, case_lookup: Mapping[str, Mapping[str
             raise BM1ContractError("sampling control drift")
         pricing = row.get("pricing")
         if (
-            not isinstance(pricing, Mapping) or pricing.get("currency") != "USD"
+            not isinstance(pricing, Mapping)
+            or pricing.get("currency") != "USD"
             or pricing.get("unit") != "PER_1M_TOKENS"
-            or not isinstance(pricing.get("input_usd_per_million_tokens"), (int,float))
-            or not isinstance(pricing.get("output_usd_per_million_tokens"), (int,float))
+            or not isinstance(pricing.get("input_usd_per_million_tokens"), (int, float))
+            or not isinstance(pricing.get("output_usd_per_million_tokens"), (int, float))
         ):
             raise BM1ContractError("pricing contract malformed")
+
     runtime_expected = {
-        "planned_provider_attempts":4, "automatic_retries":0,
-        "max_provider_requests_per_attempt":1, "max_input_tokens_per_attempt":8000,
-        "max_output_tokens_per_attempt":2000, "timeout_seconds":120,
-        "max_total_smoke_spend_usd":0.20, "max_provider_local_errors_before_global_stop":2,
-        "fallback_or_model_substitution":0,
+        "planned_provider_attempts": 4,
+        "automatic_retries": 0,
+        "max_provider_requests_per_attempt": 1,
+        "max_input_tokens_per_attempt": 8000,
+        "max_output_tokens_per_attempt": 2000,
+        "timeout_seconds": 120,
+        "max_total_smoke_spend_usd": 0.20,
+        "max_provider_local_errors_before_global_stop": 2,
+        "fallback_or_model_substitution": 0,
+        "live_attempt_claim": LIVE_ATTEMPT_CLAIM_POLICY,
     }
     if doc["runtime_contract"] != runtime_expected:
         raise BM1ContractError("runtime contract drift")
-    attempt_expected = [
-        ("openai",TARGET_CASE_ID,"KNOWN_BAD"), ("openai",CONTROL_CASE_ID,"CONTROL"),
-        ("google",TARGET_CASE_ID,"KNOWN_BAD"), ("google",CONTROL_CASE_ID,"CONTROL"),
+
+    expected_attempts = [
+        ("openai", TARGET_CASE_ID, "KNOWN_BAD"),
+        ("openai", CONTROL_CASE_ID, "CONTROL"),
+        ("google", TARGET_CASE_ID, "KNOWN_BAD"),
+        ("google", CONTROL_CASE_ID, "CONTROL"),
     ]
-    if not isinstance(doc["attempt_plan"], list) or len(doc["attempt_plan"]) != 4:
+    attempts = doc["attempt_plan"]
+    if not isinstance(attempts, list) or len(attempts) != 4:
         raise BM1ContractError("exact four attempts required")
-    seen_ids = set()
-    for index, (row, expected) in enumerate(zip(doc["attempt_plan"], attempt_expected), 1):
-        if row.get("sequence") != index or (row.get("provider_id"),row.get("case_id"),row.get("variant")) != expected:
+    seen_ids: set[str] = set()
+    for index, (row, expected) in enumerate(zip(attempts, expected_attempts), 1):
+        if row.get("sequence") != index:
+            raise BM1ContractError("attempt sequence drift")
+        if (row.get("provider_id"), row.get("case_id"), row.get("variant")) != expected:
             raise BM1ContractError("attempt matrix/order drift")
         if row.get("attempt_id") in seen_ids or not row.get("attempt_id") or not row.get("trial_id"):
             raise BM1ContractError("attempt identity drift")
         seen_ids.add(row["attempt_id"])
-        if row.get("requested_model_id") != _provider(doc,row["provider_id"])["requested_model_id"] or row.get("replicate_index") != 0:
+        if (
+            row.get("requested_model_id") != _provider(doc, row["provider_id"])["requested_model_id"]
+            or row.get("replicate_index") != 0
+        ):
             raise BM1ContractError("attempt model/replicate drift")
+
     if doc["public_private_boundary"] != {
-        "public_receipt_bodies":"FINGERPRINTS_AND_TYPED_METADATA_ONLY",
-        "private_raw_bundle":"REQUIRED_FOR_CALLED_ATTEMPT",
-        "private_locator_in_public_receipt":False,
-        "reasoning_body_in_public_receipt":False,
-        "final_body_in_public_receipt":False,
-        "secret_value_in_public_receipt":False,
+        "public_receipt_bodies": "FINGERPRINTS_AND_TYPED_METADATA_ONLY",
+        "private_raw_bundle": "REQUIRED_FOR_CALLED_ATTEMPT",
+        "private_locator_in_public_receipt": False,
+        "reasoning_body_in_public_receipt": False,
+        "final_body_in_public_receipt": False,
+        "secret_value_in_public_receipt": False,
     }:
         raise BM1ContractError("public/private boundary drift")
     scope = doc["implementation_scope"]
     if (
         not isinstance(scope, Mapping)
-        or tuple(scope.get("approved_paths",())) != APPROVED_PATHS
+        or tuple(scope.get("approved_paths", ())) != APPROVED_PATHS
         or scope.get("sixth_path_requires_explicit_approval") is not True
     ):
         raise BM1ContractError("changed-path envelope drift")
     if doc["authorization"] != {
-        "p2_offline_implementation":True, "credential_presence_or_value_access":False,
-        "authenticated_provider_request":False, "live_execution":False, "spend":False,
-        "merge":False, "run_ready":False, "bm2":False,
+        "p2_offline_implementation": True,
+        "credential_presence_or_value_access": False,
+        "authenticated_provider_request": False,
+        "live_execution": False,
+        "spend": False,
+        "merge": False,
+        "run_ready": False,
+        "bm2": False,
     }:
         raise BM1ContractError("P2 authorization boundary drift")
     _fingerprint_ok(doc, "manifest_fingerprint", "manifest")
@@ -517,15 +610,16 @@ def validate_manifest(document: object, *, case_lookup: Mapping[str, Mapping[str
     return deepcopy(dict(doc))
 
 
-def build_manifest_fingerprint(document: Mapping[str, Any]) -> str:
-    candidate = deepcopy(dict(document)); candidate.pop("manifest_fingerprint", None)
-    return sha256_json(candidate)
-
-
-def load_manifest_from_repo_root(root: str | Path) -> tuple[dict[str, Any], dict[str, Mapping[str, Any]]]:
+def load_manifest_from_repo_root(
+    root: str | Path,
+) -> tuple[dict[str, Any], dict[str, Mapping[str, Any]]]:
     base = Path(root)
-    manifest = json.loads((base/"cases/b2/public-safe/benchmark/bm1-live-smoke-manifest.json").read_text(encoding="utf-8"))
-    fixture = json.loads((base/FIXTURE_PATH).read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (base / "cases/b2/public-safe/benchmark/bm1-live-smoke-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    fixture = json.loads((base / FIXTURE_PATH).read_text(encoding="utf-8"))
     lookup = {row["case_id"]: row for row in fixture["cases"]}
     return validate_manifest(manifest, case_lookup=lookup), lookup
 
@@ -543,6 +637,12 @@ def _parse_time(value: object) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def build_live_authorization_fingerprint(document: Mapping[str, Any]) -> str:
+    candidate = deepcopy(dict(document))
+    candidate.pop("receipt_fingerprint", None)
+    return sha256_json(candidate)
+
+
 def validate_live_authorization(
     document: object, *, manifest: Mapping[str, Any],
     execution_commit_sha: str, execution_tree_sha: str,
@@ -551,10 +651,10 @@ def validate_live_authorization(
     checked = validate_manifest(manifest)
     doc = _object(document, "live_authorization")
     _exact(doc, {
-        "schema_version","authorization_id","manifest_fingerprint","execution_commit_sha",
-        "execution_tree_sha","run_ready_receipt_fingerprint","authorized_attempt_ids",
-        "maximum_provider_requests","maximum_total_spend_usd","automatic_retries",
-        "issued_at","expires_at","receipt_fingerprint",
+        "schema_version", "authorization_id", "manifest_fingerprint",
+        "execution_commit_sha", "execution_tree_sha", "run_ready_receipt_fingerprint",
+        "authorized_attempt_ids", "maximum_provider_requests", "maximum_total_spend_usd",
+        "automatic_retries", "issued_at", "expires_at", "receipt_fingerprint",
     }, "live_authorization")
     if doc["schema_version"] != LIVE_AUTH_SCHEMA_VERSION:
         raise BM1AuthorizationError("live authorization schema drift")
@@ -567,9 +667,11 @@ def validate_live_authorization(
         or doc["execution_tree_sha"] != execution_tree_sha
     ):
         raise BM1AuthorizationError("execution head/tree binding mismatch")
-    if not re.fullmatch(r"sha256:[0-9a-f]{64}", str(doc["run_ready_receipt_fingerprint"])):
+    if not re.fullmatch(
+        r"sha256:[0-9a-f]{64}", str(doc["run_ready_receipt_fingerprint"])
+    ):
         raise BM1AuthorizationError("RUN-READY fingerprint malformed")
-    if doc["authorized_attempt_ids"] != [r["attempt_id"] for r in checked["attempt_plan"]]:
+    if doc["authorized_attempt_ids"] != [row["attempt_id"] for row in checked["attempt_plan"]]:
         raise BM1AuthorizationError("authorized attempt set/order mismatch")
     if (
         doc["maximum_provider_requests"] != 4
@@ -577,7 +679,8 @@ def validate_live_authorization(
         or doc["automatic_retries"] != 0
     ):
         raise BM1AuthorizationError("live limits drift")
-    issued, expires = _parse_time(doc["issued_at"]), _parse_time(doc["expires_at"])
+    issued = _parse_time(doc["issued_at"])
+    expires = _parse_time(doc["expires_at"])
     current = (now or _now()).astimezone(timezone.utc)
     if expires <= issued or current < issued or current > expires:
         raise BM1AuthorizationError("live authorization inactive/expired")
@@ -589,23 +692,118 @@ def validate_live_authorization(
     return deepcopy(dict(doc))
 
 
-def build_live_authorization_fingerprint(document: Mapping[str, Any]) -> str:
-    candidate = deepcopy(dict(document)); candidate.pop("receipt_fingerprint", None)
-    return sha256_json(candidate)
+def build_attempt_claim(
+    *, manifest: Mapping[str, Any], attempt: Mapping[str, Any],
+    live_authorization: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    claim = {
+        "schema_version": ATTEMPT_CLAIM_SCHEMA_VERSION,
+        "manifest_fingerprint": manifest["manifest_fingerprint"],
+        "live_authorization_fingerprint": (
+            None if live_authorization is None else live_authorization["receipt_fingerprint"]
+        ),
+        "authorization_id": None if live_authorization is None else live_authorization["authorization_id"],
+        "execution_commit_sha": (
+            None if live_authorization is None else live_authorization["execution_commit_sha"]
+        ),
+        "execution_tree_sha": (
+            None if live_authorization is None else live_authorization["execution_tree_sha"]
+        ),
+        "attempt_id": attempt["attempt_id"],
+        "trial_id": attempt["trial_id"],
+        "sequence": attempt["sequence"],
+        "provider_id": attempt["provider_id"],
+        "requested_model_id": attempt["requested_model_id"],
+        "case_id": attempt["case_id"],
+        "variant": attempt["variant"],
+    }
+    assert_public_safe(claim)
+    claim["claim_fingerprint"] = sha256_json(claim)
+    return claim
+
+
+class InMemoryAttemptClaimStore:
+    """Offline/test-only claim store. Never sufficient for a live transport."""
+
+    is_durable = False
+
+    def __init__(self) -> None:
+        self._claims: dict[str, dict[str, Any]] = {}
+
+    def claim(self, *, claim: Mapping[str, Any]) -> Mapping[str, Any]:
+        checked = deepcopy(dict(claim))
+        _fingerprint_ok(checked, "claim_fingerprint", "attempt_claim")
+        attempt_id = checked.get("attempt_id")
+        if not isinstance(attempt_id, str) or not attempt_id:
+            raise BM1ContractError("attempt claim id missing")
+        if attempt_id in self._claims:
+            raise BM1AuthorizationError("attempt already claimed; rerun requires new attempt_id + authorization")
+        self._claims[attempt_id] = checked
+        return deepcopy(checked)
+
+
+class FileAttemptClaimStore:
+    """Durable append-only one-shot claim store for a later RUN-READY live run.
+
+    The directory must already exist and is supplied by the separately authorized
+    runtime. Claim creation is O_EXCL; file and directory are fsynced before any
+    provider request may proceed. Claim files are never deleted by this class.
+    """
+
+    is_durable = True
+
+    def __init__(self, directory: str | Path) -> None:
+        self.directory = Path(directory)
+        if not self.directory.is_dir():
+            raise BM1AuthorizationError("durable claim directory must already exist")
+
+    @staticmethod
+    def _filename(attempt_id: str) -> str:
+        digest = hashlib.sha256(attempt_id.encode("utf-8")).hexdigest()
+        return f"attempt-{digest}.json"
+
+    def claim(self, *, claim: Mapping[str, Any]) -> Mapping[str, Any]:
+        checked = deepcopy(dict(claim))
+        _fingerprint_ok(checked, "claim_fingerprint", "attempt_claim")
+        attempt_id = checked.get("attempt_id")
+        if not isinstance(attempt_id, str) or not attempt_id:
+            raise BM1ContractError("attempt claim id missing")
+        path = self.directory / self._filename(attempt_id)
+        payload = canonical_json(checked) + "\n"
+        try:
+            with path.open("x", encoding="utf-8", newline="\n") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except FileExistsError as exc:
+            raise BM1AuthorizationError(
+                "attempt already durably claimed; rerun requires new attempt_id + authorization"
+            ) from exc
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_fd = os.open(str(self.directory), flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        readback = json.loads(path.read_text(encoding="utf-8"))
+        if readback != checked:
+            raise BM1GlobalStop("durable attempt claim readback mismatch")
+        return checked
 
 
 def _decode_json(body: bytes, status: int) -> Mapping[str, Any]:
     if len(body) > MAX_PROVIDER_RESPONSE_BYTES:
         raise BM1ContractError("provider response byte guard exceeded")
     if not body:
-        return {"_http_status":status}
+        return {"_http_status": status}
     try:
         value = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return {"_http_status":status,"error":{"type":"INVALID_JSON_RESPONSE"}}
+        return {"_http_status": status, "error": {"type": "INVALID_JSON_RESPONSE"}}
     if not isinstance(value, Mapping):
-        return {"_http_status":status,"error":{"type":"NON_OBJECT_JSON_RESPONSE"}}
-    result = dict(value); result["_http_status"] = status
+        return {"_http_status": status, "error": {"type": "NON_OBJECT_JSON_RESPONSE"}}
+    result = dict(value)
+    result["_http_status"] = status
     return result
 
 
@@ -619,43 +817,51 @@ class _AuthorizedHTTPTransport:
         self, *, credential_reference: str, credential_value: str,
         manifest: Mapping[str, Any], live_authorization: Mapping[str, Any],
         execution_commit_sha: str, execution_tree_sha: str,
-        opener: Callable[..., Any] = urllib_request.urlopen, now: datetime | None = None,
+        opener: Callable[..., Any] = urllib_request.urlopen,
+        now: datetime | None = None,
     ) -> None:
         validate_symbolic_credential_presence(self.provider_id, [credential_reference])
         if not isinstance(credential_value, str) or not credential_value:
             raise BM1AuthorizationError("credential must be explicitly supplied")
         auth = validate_live_authorization(
-            live_authorization, manifest=manifest,
+            live_authorization,
+            manifest=manifest,
             execution_commit_sha=execution_commit_sha,
-            execution_tree_sha=execution_tree_sha, now=now,
+            execution_tree_sha=execution_tree_sha,
+            now=now,
         )
         self.live_authorization_fingerprint = auth["receipt_fingerprint"]
         self._credential = credential_value
         self._opener = opener
 
-    def headers(self) -> Mapping[str,str]:
+    def headers(self) -> Mapping[str, str]:
         raise NotImplementedError
 
-    def call(self, *, provider_id: str, endpoint_id: str, request_body: Mapping[str, Any], timeout_seconds: int) -> Mapping[str, Any]:
+    def call(
+        self, *, provider_id: str, endpoint_id: str,
+        request_body: Mapping[str, Any], timeout_seconds: int,
+    ) -> Mapping[str, Any]:
         if provider_id != self.provider_id or endpoint_id != self.endpoint_id:
             raise BM1ContractError("transport provider/endpoint mismatch")
         assert_public_safe(request_body)
-        req = urllib_request.Request(
-            self.url, data=canonical_json(request_body).encode("utf-8"),
-            headers=dict(self.headers()), method="POST",
+        request = urllib_request.Request(
+            self.url,
+            data=canonical_json(request_body).encode("utf-8"),
+            headers=dict(self.headers()),
+            method="POST",
         )
         try:
-            response = self._opener(req, timeout=timeout_seconds)
+            response = self._opener(request, timeout=timeout_seconds)
             with response:
-                status = getattr(response,"status",None)
-                if not isinstance(status,int):
+                status = getattr(response, "status", None)
+                if not isinstance(status, int):
                     status = response.getcode()
                 body = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
                 return _decode_json(body, int(status))
         except urllib_error.HTTPError as exc:
             body = exc.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
             result = dict(_decode_json(body, int(exc.code)))
-            result.setdefault("error", {"type":"HTTP_ERROR","status":int(exc.code)})
+            result.setdefault("error", {"type": "HTTP_ERROR", "status": int(exc.code)})
             return result
         except urllib_error.URLError as exc:
             raise ConnectionError("provider network request failed") from exc
@@ -665,33 +871,46 @@ class OpenAIResponsesHTTPTransport(_AuthorizedHTTPTransport):
     provider_id = OPENAI_PROVIDER_ID
     endpoint_id = OPENAI_ENDPOINT_ID
     url = OPENAI_LIVE_URL
-    def headers(self) -> Mapping[str,str]:
-        return {"Authorization":f"Bearer {self._credential}","Content-Type":"application/json"}
+
+    def headers(self) -> Mapping[str, str]:
+        return {
+            "Authorization": f"Bearer {self._credential}",
+            "Content-Type": "application/json",
+        }
 
 
 class GoogleInteractionsHTTPTransport(_AuthorizedHTTPTransport):
     provider_id = GOOGLE_PROVIDER_ID
     endpoint_id = GOOGLE_ENDPOINT_ID
     url = GOOGLE_LIVE_URL
-    def headers(self) -> Mapping[str,str]:
-        return {"x-goog-api-key":self._credential,"Content-Type":"application/json"}
+
+    def headers(self) -> Mapping[str, str]:
+        return {
+            "x-goog-api-key": self._credential,
+            "Content-Type": "application/json",
+        }
 
 
 def _secret_marker(value: object) -> bool:
-    if isinstance(value,str):
+    if isinstance(value, str):
         lower = value.lower()
-        return any(x in lower for x in (
-            "authorization: bearer ", '"authorization":"bearer ',
-            "x-goog-api-key", "sk-proj-", "sk-live-",
+        return any(fragment in lower for fragment in (
+            "authorization: bearer ",
+            '"authorization":"bearer ',
+            "x-goog-api-key",
+            "sk-proj-",
+            "sk-live-",
         ))
-    if isinstance(value,Mapping):
-        return any(_secret_marker(k) or _secret_marker(v) for k,v in value.items())
-    if isinstance(value,list):
-        return any(_secret_marker(v) for v in value)
+    if isinstance(value, Mapping):
+        return any(_secret_marker(key) or _secret_marker(item) for key, item in value.items())
+    if isinstance(value, list):
+        return any(_secret_marker(item) for item in value)
     return False
 
 
-def _cost(provider: Mapping[str, Any], input_tokens: int | None, output_tokens: int | None) -> float | None:
+def _cost(
+    provider: Mapping[str, Any], input_tokens: int | None, output_tokens: int | None,
+) -> float | None:
     if input_tokens is None or output_tokens is None:
         return None
     if input_tokens > MAX_INPUT_TOKENS_PER_ATTEMPT or output_tokens > MAX_OUTPUT_TOKENS_PER_ATTEMPT:
@@ -707,42 +926,50 @@ def worst_case_attempt_cost_usd(provider: Mapping[str, Any]) -> float:
     return _cost(provider, MAX_INPUT_TOKENS_PER_ATTEMPT, MAX_OUTPUT_TOKENS_PER_ATTEMPT) or 0.0
 
 
-def attributable_cost_usd(provider: Mapping[str, Any], input_tokens: int | None, output_tokens: int | None) -> float | None:
-    return _cost(provider,input_tokens,output_tokens)
+def attributable_cost_usd(
+    provider: Mapping[str, Any], input_tokens: int | None, output_tokens: int | None,
+) -> float | None:
+    return _cost(provider, input_tokens, output_tokens)
 
 
-def _identity(provider: Mapping[str, Any], resolved: str | None) -> tuple[str,str,bool]:
+def _identity(provider: Mapping[str, Any], resolved: str | None) -> tuple[str, str, bool]:
     if resolved == provider["requested_model_id"]:
-        return "EXACT","NONE",True
+        return "EXACT", "NONE", True
     if resolved:
-        return "ALIAS_ONLY","UNVERIFIABLE_ALIAS_DISCLOSED",False
-    return "UNKNOWN","RESOLVED_ID_MISSING",False
+        return "ALIAS_ONLY", "UNVERIFIABLE_ALIAS_DISCLOSED", False
+    return "UNKNOWN", "RESOLVED_ID_MISSING", False
 
 
 class InMemoryRawEvidenceSink:
     def __init__(self) -> None:
-        self._private: dict[str,dict[str,Any]] = {}
+        self._private: dict[str, dict[str, Any]] = {}
 
-    def write(self, *, attempt_id: str, request_body: Mapping[str, Any], raw_response: Mapping[str, Any] | None, final_text: str | None, error_class: str | None) -> Mapping[str, Any]:
+    def write(
+        self, *, attempt_id: str, request_body: Mapping[str, Any],
+        raw_response: Mapping[str, Any] | None, final_text: str | None,
+        error_class: str | None,
+    ) -> Mapping[str, Any]:
         if attempt_id in self._private:
             raise BM1ContractError("raw evidence overwrite/replay rejected")
         request = deepcopy(dict(request_body))
         response = None if raw_response is None else deepcopy(dict(raw_response))
         self._private[attempt_id] = {
-            "request_body":request,"raw_response":response,
-            "final_text":final_text,"error_class":error_class,
+            "request_body": request,
+            "raw_response": response,
+            "final_text": final_text,
+            "error_class": error_class,
         }
         response_text = "" if response is None else canonical_json(response)
         return {
-            "schema_version":RAW_EVIDENCE_RECEIPT_SCHEMA_VERSION,
-            "attempt_id":attempt_id,
-            "request_fingerprint":sha256_json(request),
-            "request_bytes":len(canonical_json(request).encode()),
-            "response_fingerprint":None if response is None else sha256_json(response),
-            "response_bytes":len(response_text.encode()),
-            "final_content_fingerprint":None if not final_text else _sha_text(final_text),
-            "final_content_bytes":0 if not final_text else len(final_text.encode()),
-            "error_class":error_class,
+            "schema_version": RAW_EVIDENCE_RECEIPT_SCHEMA_VERSION,
+            "attempt_id": attempt_id,
+            "request_fingerprint": sha256_json(request),
+            "request_bytes": len(canonical_json(request).encode()),
+            "response_fingerprint": None if response is None else sha256_json(response),
+            "response_bytes": len(response_text.encode()),
+            "final_content_fingerprint": None if not final_text else _sha_text(final_text),
+            "final_content_bytes": 0 if not final_text else len(final_text.encode()),
+            "error_class": error_class,
         }
 
     def read_for_replay(self, *, attempt_id: str) -> Mapping[str, Any]:
@@ -755,65 +982,91 @@ def _receipt(
     *, manifest: Mapping[str, Any], attempt: Mapping[str, Any], provider: Mapping[str, Any],
     case: Mapping[str, Any], request_body: Mapping[str, Any],
     normalized: NormalizedProviderResponse | None, evidence: Mapping[str, Any] | None,
-    scorer: Mapping[str, Any] | None, started: datetime, completed: datetime,
-    terminal: str, reason: str, provider_terminal: str, error_class: str | None,
-) -> dict[str,Any]:
+    claim: Mapping[str, Any] | None, scorer: Mapping[str, Any] | None,
+    started: datetime, completed: datetime, terminal: str, reason: str,
+    provider_terminal: str, error_class: str | None,
+) -> dict[str, Any]:
     resolved = None if normalized is None else normalized.resolved_model_id
-    certainty, limitation, _ = _identity(provider,resolved)
+    certainty, limitation, _ = _identity(provider, resolved)
     input_tokens = None if normalized is None else normalized.input_tokens
     output_tokens = None if normalized is None else normalized.output_tokens
     try:
-        cost = None if normalized is None else _cost(provider,input_tokens,output_tokens)
+        cost = None if normalized is None else _cost(provider, input_tokens, output_tokens)
     except BM1GlobalStop:
         cost = None
     final = None if normalized is None else normalized.final_text
     row = {
-        "schema_version":PUBLIC_RECEIPT_SCHEMA_VERSION,
-        "manifest_id":manifest["manifest_id"],"manifest_fingerprint":manifest["manifest_fingerprint"],
-        "attempt_id":attempt["attempt_id"],"trial_id":attempt["trial_id"],
-        "provider_id":provider["provider_id"],"endpoint_id":provider["endpoint_id"],
-        "requested_model_id":provider["requested_model_id"],"resolved_model_or_version_id":resolved,
-        "identity_certainty":certainty,"identity_limitation":limitation,
-        "provider_response_id":None if normalized is None else normalized.provider_response_id,
-        "adapter_id":provider["adapter_id"],"adapter_version":provider["adapter_version"],
-        "wrapper_id":WRAPPER_ID,"wrapper_fingerprint":wrapper_fingerprint(),
-        "runtime_controls_fingerprint":sha256_json({
-            "reasoning_control":provider["reasoning_control"],
-            "sampling_control":provider["sampling_control"],
-            "runtime_contract":manifest["runtime_contract"],
+        "schema_version": PUBLIC_RECEIPT_SCHEMA_VERSION,
+        "manifest_id": manifest["manifest_id"],
+        "manifest_fingerprint": manifest["manifest_fingerprint"],
+        "attempt_id": attempt["attempt_id"],
+        "trial_id": attempt["trial_id"],
+        "provider_id": provider["provider_id"],
+        "endpoint_id": provider["endpoint_id"],
+        "requested_model_id": provider["requested_model_id"],
+        "resolved_model_or_version_id": resolved,
+        "identity_certainty": certainty,
+        "identity_limitation": limitation,
+        "provider_response_id": None if normalized is None else normalized.provider_response_id,
+        "adapter_id": provider["adapter_id"],
+        "adapter_version": provider["adapter_version"],
+        "wrapper_id": WRAPPER_ID,
+        "wrapper_fingerprint": wrapper_fingerprint(),
+        "runtime_controls_fingerprint": sha256_json({
+            "reasoning_control": provider["reasoning_control"],
+            "sampling_control": provider["sampling_control"],
+            "runtime_contract": manifest["runtime_contract"],
         }),
-        "entry_id":ENTRY_ID,"family_id":FAMILY_ID,"case_id":attempt["case_id"],"variant":attempt["variant"],
-        "case_fingerprint":sha256_json(case),"prompt_fingerprint":_sha_text(render_case_prompt(case)),
-        "request_fingerprint":sha256_json(request_body),
-        "request_bytes":len(canonical_json(request_body).encode()),
-        "started_at":_iso(started),"completed_at":_iso(completed),
-        "latency_ms":max(0.0,(completed-started).total_seconds()*1000),
-        "provider_terminal_status":provider_terminal,
-        "provider_http_status":None if normalized is None else normalized.http_status,
-        "terminal_status":terminal,"terminal_reason":reason,"error_class":error_class,
-        "raw_response_fingerprint":None if evidence is None else evidence["response_fingerprint"],
-        "raw_response_bytes":0 if evidence is None else evidence["response_bytes"],
-        "final_content_present":bool(final and final.strip()),
-        "final_content_fingerprint":None if not final else _sha_text(final),
-        "final_content_bytes":0 if not final else len(final.encode()),
-        "finish_reason":None if normalized is None else normalized.finish_reason,
-        "usage":{
-            "attribution_status":"ATTRIBUTABLE" if input_tokens is not None and output_tokens is not None else "UNAVAILABLE",
-            "input_tokens":input_tokens,"output_tokens":output_tokens,
-            "total_tokens":input_tokens+output_tokens if input_tokens is not None and output_tokens is not None else None,
+        "entry_id": ENTRY_ID,
+        "family_id": FAMILY_ID,
+        "case_id": attempt["case_id"],
+        "variant": attempt["variant"],
+        "case_fingerprint": sha256_json(case),
+        "prompt_fingerprint": _sha_text(render_case_prompt(case)),
+        "request_fingerprint": sha256_json(request_body),
+        "request_bytes": len(canonical_json(request_body).encode()),
+        "attempt_claim_fingerprint": None if claim is None else claim["claim_fingerprint"],
+        "started_at": _iso(started),
+        "completed_at": _iso(completed),
+        "latency_ms": max(0.0, (completed - started).total_seconds() * 1000),
+        "provider_terminal_status": provider_terminal,
+        "provider_http_status": None if normalized is None else normalized.http_status,
+        "terminal_status": terminal,
+        "terminal_reason": reason,
+        "error_class": error_class,
+        "raw_response_fingerprint": None if evidence is None else evidence["response_fingerprint"],
+        "raw_response_bytes": 0 if evidence is None else evidence["response_bytes"],
+        "final_content_present": bool(final and final.strip()),
+        "final_content_fingerprint": None if not final else _sha_text(final),
+        "final_content_bytes": 0 if not final else len(final.encode()),
+        "finish_reason": None if normalized is None else normalized.finish_reason,
+        "usage": {
+            "attribution_status": (
+                "ATTRIBUTABLE" if input_tokens is not None and output_tokens is not None
+                else "UNAVAILABLE"
+            ),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": (
+                input_tokens + output_tokens
+                if input_tokens is not None and output_tokens is not None else None
+            ),
         },
-        "cost":{
-            "attribution_status":"ATTRIBUTABLE" if cost is not None else "UNAVAILABLE",
-            "currency":"USD" if cost is not None else None,"amount":cost,
-            "pricing_fingerprint":sha256_json(provider["pricing"]),
+        "cost": {
+            "attribution_status": "ATTRIBUTABLE" if cost is not None else "UNAVAILABLE",
+            "currency": "USD" if cost is not None else None,
+            "amount": cost,
+            "pricing_fingerprint": sha256_json(provider["pricing"]),
         },
-        "scorer_id":SCORER_ID,"scorer_fingerprint":scorer_fingerprint(),
-        "oracle_id":ORACLE_ID,"oracle_fingerprint":oracle_fingerprint(),
-        "scorer_status":None if scorer is None else scorer["scorer_status"],
-        "model_failure_value":None if scorer is None else scorer["model_failure_value"],
-        "hard_invariant_pass":None if scorer is None else scorer["hard_invariant_pass"],
-        "evidence_receipt_fingerprint":None if evidence is None else sha256_json(evidence),
-        "replay_available":evidence is not None and final is not None,
+        "scorer_id": SCORER_ID,
+        "scorer_fingerprint": scorer_fingerprint(),
+        "oracle_id": ORACLE_ID,
+        "oracle_fingerprint": oracle_fingerprint(),
+        "scorer_status": None if scorer is None else scorer["scorer_status"],
+        "model_failure_value": None if scorer is None else scorer["model_failure_value"],
+        "hard_invariant_pass": None if scorer is None else scorer["hard_invariant_pass"],
+        "evidence_receipt_fingerprint": None if evidence is None else sha256_json(evidence),
+        "replay_available": evidence is not None and final is not None,
     }
     assert_public_safe(row)
     row["receipt_fingerprint"] = sha256_json(row)
@@ -824,16 +1077,19 @@ class BM1Runner:
     def __init__(
         self, *, manifest: Mapping[str, Any], case_lookup: Mapping[str, Mapping[str, Any]],
         transports: Mapping[str, ProviderTransport], evidence_sink: RawEvidenceSink,
-        now_fn: Callable[[],datetime] = _now,
+        now_fn: Callable[[], datetime] = _now,
         live_authorization: Mapping[str, Any] | None = None,
-        execution_commit_sha: str | None = None, execution_tree_sha: str | None = None,
+        execution_commit_sha: str | None = None,
+        execution_tree_sha: str | None = None,
+        attempt_claim_store: AttemptClaimStore | None = None,
     ) -> None:
-        self.manifest = validate_manifest(manifest,case_lookup=case_lookup)
+        self.manifest = validate_manifest(manifest, case_lookup=case_lookup)
         self.case_lookup = dict(case_lookup)
         self.transports = dict(transports)
         self.evidence_sink = evidence_sink
         self.now_fn = now_fn
-        self.receipts: list[dict[str,Any]] = []
+        self.attempt_claim_store = attempt_claim_store or InMemoryAttemptClaimStore()
+        self.receipts: list[dict[str, Any]] = []
         self.provider_request_count = 0
         self.provider_local_error_count = 0
         self.global_stop_reason: str | None = None
@@ -842,105 +1098,148 @@ class BM1Runner:
             if not execution_commit_sha or not execution_tree_sha:
                 raise BM1AuthorizationError("execution head/tree required")
             self.live_authorization = validate_live_authorization(
-                live_authorization,manifest=self.manifest,
-                execution_commit_sha=execution_commit_sha,execution_tree_sha=execution_tree_sha,
+                live_authorization,
+                manifest=self.manifest,
+                execution_commit_sha=execution_commit_sha,
+                execution_tree_sha=execution_tree_sha,
                 now=now_fn(),
             )
 
-    def run_next(self, attempt_id: str) -> dict[str,Any]:
+    def _claim_before_call(
+        self, attempt: Mapping[str, Any], transport: ProviderTransport,
+    ) -> Mapping[str, Any]:
+        if getattr(transport, "is_live", False):
+            if self.live_authorization is None:
+                raise BM1AuthorizationError("live transport requires RUN-READY authorization")
+            if not getattr(self.attempt_claim_store, "is_durable", False):
+                raise BM1AuthorizationError("live transport requires durable pre-call attempt claim store")
+            if (
+                getattr(transport, "live_authorization_fingerprint", None)
+                != self.live_authorization["receipt_fingerprint"]
+            ):
+                raise BM1AuthorizationError("live transport authorization mismatch")
+        claim = build_attempt_claim(
+            manifest=self.manifest,
+            attempt=attempt,
+            live_authorization=self.live_authorization if getattr(transport, "is_live", False) else None,
+        )
+        return self.attempt_claim_store.claim(claim=claim)
+
+    def run_next(self, attempt_id: str) -> dict[str, Any]:
         if self.global_stop_reason:
             raise BM1GlobalStop(self.global_stop_reason)
         index = len(self.receipts)
-        if index >= 4:
+        if index >= MAX_PLANNED_ATTEMPTS:
             raise BM1GlobalStop("PLANNED_ATTEMPT_COUNT_EXHAUSTED")
         attempt = self.manifest["attempt_plan"][index]
         if attempt_id != attempt["attempt_id"]:
             raise BM1ContractError("attempt order/duplicate violation")
-        provider = _provider(self.manifest,attempt["provider_id"])
-        case = _case_lookup(self.case_lookup,attempt["case_id"])
+        provider = _provider(self.manifest, attempt["provider_id"])
+        case = _case_lookup(self.case_lookup, attempt["case_id"])
         prompt = render_case_prompt(case)
-        body = build_provider_request(provider,prompt)
+        body = build_provider_request(provider, prompt)
         transport = self.transports.get(provider["provider_id"])
         if transport is None:
             raise BM1ContractError("missing transport")
-        if getattr(transport,"is_live",False):
-            if self.live_authorization is None:
-                raise BM1AuthorizationError("live transport requires RUN-READY authorization")
-            if getattr(transport,"live_authorization_fingerprint",None) != self.live_authorization["receipt_fingerprint"]:
-                raise BM1AuthorizationError("live transport authorization mismatch")
-        remaining = sum(worst_case_attempt_cost_usd(_provider(self.manifest,a["provider_id"])) for a in self.manifest["attempt_plan"][index:])
-        actual = sum(float(r["cost"]["amount"] or 0.0) for r in self.receipts)
+
+        remaining = sum(
+            worst_case_attempt_cost_usd(_provider(self.manifest, row["provider_id"]))
+            for row in self.manifest["attempt_plan"][index:]
+        )
+        actual = sum(float(row["cost"]["amount"] or 0.0) for row in self.receipts)
         if actual + remaining > MAX_TOTAL_SMOKE_SPEND_USD + 1e-12:
             self.global_stop_reason = "COST_CEILING_GUARD"
             raise BM1GlobalStop("worst-case cost exceeds ceiling")
+
+        # Rerun/idempotency gate: the attempt is consumed durably before any live
+        # transport invocation. A crash after this point cannot make the same
+        # attempt_id reusable under the same or another authorization.
+        claim = self._claim_before_call(attempt, transport)
         started = self.now_fn()
         self.provider_request_count += 1
-        raw = None
-        normalized = None
-        error_class = None
+        raw: Mapping[str, Any] | None = None
+        normalized: NormalizedProviderResponse
+        error_class: str | None = None
         try:
             candidate = transport.call(
-                provider_id=provider["provider_id"],endpoint_id=provider["endpoint_id"],
-                request_body=body,timeout_seconds=TIMEOUT_SECONDS,
+                provider_id=provider["provider_id"],
+                endpoint_id=provider["endpoint_id"],
+                request_body=body,
+                timeout_seconds=TIMEOUT_SECONDS,
             )
-            if not isinstance(candidate,Mapping):
+            if not isinstance(candidate, Mapping):
                 raise TypeError("transport response must be object")
             raw = dict(candidate)
             if _secret_marker(raw):
                 self.global_stop_reason = "SECRET_LEAK_SUSPECTED"
                 return self._append_receipt(
-                    attempt,provider,case,body,None,None,None,started,
-                    "ERROR","SECRET_LEAK_SUSPECTED","RUNTIME_ERROR","SecretLeakGuard",
+                    attempt, provider, case, body, None, None, claim, None, started,
+                    "ERROR", "SECRET_LEAK_SUSPECTED", "RUNTIME_ERROR", "SecretLeakGuard",
                 )
-            normalized = normalize_provider_response(provider["provider_id"],raw)
+            normalized = normalize_provider_response(provider["provider_id"], raw)
         except TimeoutError:
             error_class = "TimeoutError"
-            normalized = NormalizedProviderResponse("NETWORK_ERROR",None,None,None,None,None,None,None,error_class)
-        except (ConnectionError,OSError):
+            normalized = NormalizedProviderResponse(
+                "NETWORK_ERROR", None, None, None, None, None, None, None, error_class
+            )
+        except (ConnectionError, OSError):
             error_class = "NetworkError"
-            normalized = NormalizedProviderResponse("NETWORK_ERROR",None,None,None,None,None,None,None,error_class)
+            normalized = NormalizedProviderResponse(
+                "NETWORK_ERROR", None, None, None, None, None, None, None, error_class
+            )
         except Exception as exc:
             error_class = type(exc).__name__
-            normalized = NormalizedProviderResponse("RUNTIME_ERROR",None,None,None,None,None,None,None,error_class)
+            normalized = NormalizedProviderResponse(
+                "RUNTIME_ERROR", None, None, None, None, None, None, None, error_class
+            )
+
         try:
             evidence = self.evidence_sink.write(
-                attempt_id=attempt["attempt_id"],request_body=body,raw_response=raw,
-                final_text=normalized.final_text,error_class=error_class or normalized.error_class,
+                attempt_id=attempt["attempt_id"],
+                request_body=body,
+                raw_response=raw,
+                final_text=normalized.final_text,
+                error_class=error_class or normalized.error_class,
             )
             if set(evidence) != {
-                "schema_version","attempt_id","request_fingerprint","request_bytes",
-                "response_fingerprint","response_bytes","final_content_fingerprint",
-                "final_content_bytes","error_class",
+                "schema_version", "attempt_id", "request_fingerprint", "request_bytes",
+                "response_fingerprint", "response_bytes", "final_content_fingerprint",
+                "final_content_bytes", "error_class",
             }:
                 raise BM1ContractError("evidence projection keys drift")
             assert_public_safe(evidence)
         except Exception:
             self.global_stop_reason = "EVIDENCE_WRITE_ERROR"
             return self._append_receipt(
-                attempt,provider,case,body,normalized,None,None,started,
-                "ERROR","EVIDENCE_WRITE_ERROR","RUNTIME_ERROR","EvidenceWriteError",
+                attempt, provider, case, body, normalized, None, claim, None, started,
+                "ERROR", "EVIDENCE_WRITE_ERROR", "RUNTIME_ERROR", "EvidenceWriteError",
             )
+
         provider_terminal = normalized.provider_terminal_status
-        _,_,identity_ok = _identity(provider,normalized.resolved_model_id)
-        scorer = None
+        _, _, identity_ok = _identity(provider, normalized.resolved_model_id)
+        scorer: Mapping[str, Any] | None = None
         if provider_terminal != "SUCCESS":
-            terminal,reason = "ERROR",provider_terminal
+            terminal, reason = "ERROR", provider_terminal
         elif not identity_ok:
-            terminal,reason = "NOT_EVALUABLE","IDENTITY_NOT_AUDITABLE"
+            terminal, reason = "NOT_EVALUABLE", "IDENTITY_NOT_AUDITABLE"
         elif not normalized.final_text or not normalized.final_text.strip():
-            terminal,reason = "NOT_EVALUABLE","EMPTY_FINAL_CONTENT"
+            terminal, reason = "NOT_EVALUABLE", "EMPTY_FINAL_CONTENT"
         else:
-            scorer = score_e11_output(case,normalized.final_text)
+            scorer = score_e11_output(case, normalized.final_text)
             terminal = scorer["terminal_status"]
             reason = scorer["reason"] if terminal != "NOT_EVALUABLE" else "SCORER_NOT_EVALUABLE"
         try:
-            _cost(provider,normalized.input_tokens,normalized.output_tokens)
+            _cost(provider, normalized.input_tokens, normalized.output_tokens)
         except BM1GlobalStop:
             self.global_stop_reason = "COST_CEILING_GUARD"
-            terminal,reason,provider_terminal,error_class = "ERROR","COST_CEILING_GUARD","RUNTIME_ERROR","TokenBudgetGuard"
+            terminal = "ERROR"
+            reason = "COST_CEILING_GUARD"
+            provider_terminal = "RUNTIME_ERROR"
+            error_class = "TokenBudgetGuard"
+
         receipt = self._append_receipt(
-            attempt,provider,case,body,normalized,evidence,scorer,started,
-            terminal,reason,provider_terminal,error_class or normalized.error_class,
+            attempt, provider, case, body, normalized, evidence, claim, scorer, started,
+            terminal, reason, provider_terminal, error_class or normalized.error_class,
         )
         if reason in _PROVIDER_LOCAL_FAILURES:
             self.provider_local_error_count += 1
@@ -949,36 +1248,57 @@ class BM1Runner:
         return receipt
 
     def _append_receipt(
-        self, attempt, provider, case, body, normalized, evidence, scorer, started,
+        self, attempt, provider, case, body, normalized, evidence, claim, scorer, started,
         terminal, reason, provider_terminal, error_class,
-    ) -> dict[str,Any]:
+    ) -> dict[str, Any]:
         receipt = _receipt(
-            manifest=self.manifest,attempt=attempt,provider=provider,case=case,
-            request_body=body,normalized=normalized,evidence=evidence,scorer=scorer,
-            started=started,completed=self.now_fn(),terminal=terminal,reason=reason,
-            provider_terminal=provider_terminal,error_class=error_class,
+            manifest=self.manifest,
+            attempt=attempt,
+            provider=provider,
+            case=case,
+            request_body=body,
+            normalized=normalized,
+            evidence=evidence,
+            claim=claim,
+            scorer=scorer,
+            started=started,
+            completed=self.now_fn(),
+            terminal=terminal,
+            reason=reason,
+            provider_terminal=provider_terminal,
+            error_class=error_class,
         )
         self.receipts.append(receipt)
         return receipt
 
-    def run_all(self) -> list[dict[str,Any]]:
-        while len(self.receipts) < 4:
+    def run_all(self) -> list[dict[str, Any]]:
+        while len(self.receipts) < MAX_PLANNED_ATTEMPTS:
             if self.global_stop_reason:
-                while len(self.receipts) < 4:
+                while len(self.receipts) < MAX_PLANNED_ATTEMPTS:
                     attempt = self.manifest["attempt_plan"][len(self.receipts)]
-                    provider = _provider(self.manifest,attempt["provider_id"])
-                    case = _case_lookup(self.case_lookup,attempt["case_id"])
+                    provider = _provider(self.manifest, attempt["provider_id"])
+                    case = _case_lookup(self.case_lookup, attempt["case_id"])
                     now = self.now_fn()
                     self.receipts.append(_receipt(
-                        manifest=self.manifest,attempt=attempt,provider=provider,case=case,
-                        request_body=build_provider_request(provider,render_case_prompt(case)),
-                        normalized=None,evidence=None,scorer=None,started=now,completed=now,
-                        terminal="BLOCKED",reason=self.global_stop_reason,
-                        provider_terminal="RUNTIME_ERROR",error_class="BM1GlobalStop",
+                        manifest=self.manifest,
+                        attempt=attempt,
+                        provider=provider,
+                        case=case,
+                        request_body=build_provider_request(provider, render_case_prompt(case)),
+                        normalized=None,
+                        evidence=None,
+                        claim=None,
+                        scorer=None,
+                        started=now,
+                        completed=now,
+                        terminal="BLOCKED",
+                        reason=self.global_stop_reason,
+                        provider_terminal="RUNTIME_ERROR",
+                        error_class="BM1GlobalStop",
                     ))
                 break
             self.run_next(self.manifest["attempt_plan"][len(self.receipts)]["attempt_id"])
-        if self.provider_request_count > 4:
+        if self.provider_request_count > MAX_PLANNED_ATTEMPTS:
             raise BM1GlobalStop("provider request count exceeded frozen matrix")
         return deepcopy(self.receipts)
 
@@ -986,37 +1306,44 @@ class BM1Runner:
 def replay_scorer(
     *, manifest: Mapping[str, Any], case_lookup: Mapping[str, Mapping[str, Any]],
     evidence_sink: RawEvidenceSink, public_receipt: Mapping[str, Any],
-) -> dict[str,Any]:
-    checked = validate_manifest(manifest,case_lookup=case_lookup)
+) -> dict[str, Any]:
+    checked = validate_manifest(manifest, case_lookup=case_lookup)
     if public_receipt.get("manifest_fingerprint") != checked["manifest_fingerprint"]:
         raise BM1ContractError("manifest/receipt mismatch")
     attempt_id = public_receipt.get("attempt_id")
-    attempt = next((a for a in checked["attempt_plan"] if a["attempt_id"] == attempt_id),None)
+    attempt = next(
+        (row for row in checked["attempt_plan"] if row["attempt_id"] == attempt_id), None
+    )
     if attempt is None:
         raise BM1ContractError("attempt not in manifest")
-    private = _object(evidence_sink.read_for_replay(attempt_id=attempt_id),"private_replay")
+    private = _object(evidence_sink.read_for_replay(attempt_id=attempt_id), "private_replay")
     request = private.get("request_body")
     raw = private.get("raw_response")
     final = private.get("final_text")
-    if not isinstance(request,Mapping) or public_receipt.get("request_fingerprint") != sha256_json(request):
+    if not isinstance(request, Mapping) or public_receipt.get("request_fingerprint") != sha256_json(request):
         raise BM1ContractError("request replay mismatch")
     if raw is not None and (
-        not isinstance(raw,Mapping) or public_receipt.get("raw_response_fingerprint") != sha256_json(raw)
+        not isinstance(raw, Mapping)
+        or public_receipt.get("raw_response_fingerprint") != sha256_json(raw)
     ):
         raise BM1ContractError("raw replay mismatch")
-    if not isinstance(final,str) or public_receipt.get("final_content_fingerprint") != _sha_text(final):
+    if not isinstance(final, str) or public_receipt.get("final_content_fingerprint") != _sha_text(final):
         raise BM1ContractError("final replay mismatch")
-    scorer = score_e11_output(_case_lookup(case_lookup,attempt["case_id"]),final)
+    scorer = score_e11_output(_case_lookup(case_lookup, attempt["case_id"]), final)
     row = {
-        "schema_version":REPLAY_RECEIPT_SCHEMA_VERSION,
-        "manifest_id":checked["manifest_id"],"manifest_fingerprint":checked["manifest_fingerprint"],
-        "attempt_id":attempt_id,"source_public_receipt_fingerprint":public_receipt.get("receipt_fingerprint"),
-        "source_raw_response_fingerprint":public_receipt.get("raw_response_fingerprint"),
-        "scorer_id":SCORER_ID,"scorer_fingerprint":scorer_fingerprint(),
-        "oracle_id":ORACLE_ID,"oracle_fingerprint":oracle_fingerprint(),
-        "terminal_status":scorer["terminal_status"],
-        "model_failure_value":scorer["model_failure_value"],
-        "hard_invariant_pass":scorer["hard_invariant_pass"],
+        "schema_version": REPLAY_RECEIPT_SCHEMA_VERSION,
+        "manifest_id": checked["manifest_id"],
+        "manifest_fingerprint": checked["manifest_fingerprint"],
+        "attempt_id": attempt_id,
+        "source_public_receipt_fingerprint": public_receipt.get("receipt_fingerprint"),
+        "source_raw_response_fingerprint": public_receipt.get("raw_response_fingerprint"),
+        "scorer_id": SCORER_ID,
+        "scorer_fingerprint": scorer_fingerprint(),
+        "oracle_id": ORACLE_ID,
+        "oracle_fingerprint": oracle_fingerprint(),
+        "terminal_status": scorer["terminal_status"],
+        "model_failure_value": scorer["model_failure_value"],
+        "hard_invariant_pass": scorer["hard_invariant_pass"],
     }
     assert_public_safe(row)
     row["replay_fingerprint"] = sha256_json(row)
@@ -1024,17 +1351,21 @@ def replay_scorer(
 
 
 __all__ = [
-    "APPROVED_PATHS","AUTOMATIC_RETRIES","BM1AuthorizationError","BM1ContractError",
-    "BM1GlobalStop","BM1Runner","CONTROL_CASE_ID","GOOGLE_CREDENTIAL_REFERENCE",
-    "GOOGLE_ENDPOINT_ID","GOOGLE_PROVIDER_ID","GOOGLE_REQUESTED_MODEL_ID",
-    "GoogleInteractionsHTTPTransport","IMPLEMENTATION_BASE_SHA","IMPLEMENTATION_BASE_TREE",
-    "InMemoryRawEvidenceSink","MAX_PLANNED_ATTEMPTS","MAX_TOTAL_SMOKE_SPEND_USD",
-    "OPENAI_CREDENTIAL_REFERENCE","OPENAI_ENDPOINT_ID","OPENAI_PROVIDER_ID",
-    "OPENAI_REQUESTED_MODEL_ID","OpenAIResponsesHTTPTransport","TARGET_CASE_ID",
-    "attributable_cost_usd","build_google_request","build_live_authorization_fingerprint",
-    "build_manifest_fingerprint","build_openai_request","build_provider_request",
-    "expected_decision_for_case","load_manifest_from_repo_root","normalize_google_response",
-    "normalize_openai_response","oracle_fingerprint","render_case_prompt","replay_scorer",
-    "score_e11_output","scorer_fingerprint","validate_live_authorization","validate_manifest",
-    "validate_symbolic_credential_presence","worst_case_attempt_cost_usd","wrapper_fingerprint",
+    "APPROVED_PATHS", "ATTEMPT_CLAIM_SCHEMA_VERSION", "AUTOMATIC_RETRIES",
+    "AttemptClaimStore", "BM1AuthorizationError", "BM1ContractError", "BM1GlobalStop",
+    "BM1Runner", "CONTROL_CASE_ID", "FileAttemptClaimStore",
+    "GOOGLE_CREDENTIAL_REFERENCE", "GOOGLE_ENDPOINT_ID", "GOOGLE_PROVIDER_ID",
+    "GOOGLE_REQUESTED_MODEL_ID", "GoogleInteractionsHTTPTransport",
+    "IMPLEMENTATION_BASE_SHA", "IMPLEMENTATION_BASE_TREE", "InMemoryAttemptClaimStore",
+    "InMemoryRawEvidenceSink", "LIVE_ATTEMPT_CLAIM_POLICY", "MAX_PLANNED_ATTEMPTS",
+    "MAX_TOTAL_SMOKE_SPEND_USD", "OPENAI_CREDENTIAL_REFERENCE", "OPENAI_ENDPOINT_ID",
+    "OPENAI_PROVIDER_ID", "OPENAI_REQUESTED_MODEL_ID", "OpenAIResponsesHTTPTransport",
+    "TARGET_CASE_ID", "attributable_cost_usd", "build_attempt_claim",
+    "build_google_request", "build_live_authorization_fingerprint",
+    "build_manifest_fingerprint", "build_openai_request", "build_provider_request",
+    "expected_decision_for_case", "load_manifest_from_repo_root", "normalize_google_response",
+    "normalize_openai_response", "oracle_fingerprint", "render_case_prompt", "replay_scorer",
+    "score_e11_output", "scorer_fingerprint", "validate_live_authorization",
+    "validate_manifest", "validate_symbolic_credential_presence", "worst_case_attempt_cost_usd",
+    "wrapper_fingerprint",
 ]

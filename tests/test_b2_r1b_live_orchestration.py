@@ -77,9 +77,12 @@ def python_heredocs(script: str) -> list[str]:
 
 def canonical_run_ready(environment: dict[str, str]) -> dict[str, object]:
     return {
+        "approval_channel": "chat-window-control-issue",
+        "approval_schema_version": "b2-r1b-window-approval/v1",
         "authorization_id": environment["AUTHORIZATION_ID"],
         "automatic_retries": 0,
         "bridge_main_sha": environment["BRIDGE_MAIN_SHA"],
+        "control_issue_number": 47,
         "context_bytes": int(environment["EXPECTED_CONTEXT_BYTES"]),
         "context_sha256": environment["EXPECTED_CONTEXT_SHA256"],
         "evaluation_run_id": environment["EVALUATION_RUN_ID"],
@@ -88,6 +91,7 @@ def canonical_run_ready(environment: dict[str, str]) -> dict[str, object]:
         "handoff_id": environment["APPROVED_HANDOFF_ID"],
         "handoff_ttl_seconds": int(environment["HANDOFF_TTL_SECONDS"]),
         "max_provider_attempts": 1,
+        "max_spend_usd": environment["MAX_SPEND_USD"],
         "mode": "live",
         "prompt_bytes": int(environment["EXPECTED_PROMPT_BYTES"]),
         "prompt_sha256": environment["EXPECTED_PROMPT_SHA256"],
@@ -105,11 +109,11 @@ def canonical_run_ready(environment: dict[str, str]) -> dict[str, object]:
         "repository": environment["GITHUB_REPOSITORY"],
         "requested_model_id": environment["REQUESTED_MODEL_ID"],
         "run_id": environment["RUN_ID"],
-        "schema_version": "b2-r1b-run-ready/v3",
-        "trigger_event": "workflow_dispatch",
+        "schema_version": "b2-r1b-run-ready/v4",
+        "trigger_event": "issue_comment",
         "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
         "workflow_run_attempt": 1,
-        "work_order": "WO-B2-BLIND-R1B-COMPAT-01 v0.1",
+        "work_order": "WO-B2-BLIND-R1B-WINDOW-CONTROL-01 v0.1",
     }
 
 
@@ -129,7 +133,21 @@ def bind_run_ready(
     digest = hashlib.sha256(receipt_bytes).hexdigest()
     environment["RUN_READY_RECEIPT_B64"] = base64.b64encode(receipt_bytes).decode("ascii")
     environment["RUN_READY_RECEIPT_SHA256"] = digest
-    environment["DISPATCH_RUN_READY_RECEIPT_SHA256"] = digest
+    approval = {
+        "approval_type": "B2-R1B-WINDOW-APPROVAL",
+        "authorization_id": environment["AUTHORIZATION_ID"],
+        "confirm_one_shot": True,
+        "max_spend_usd": environment["MAX_SPEND_USD"],
+        "run_ready_receipt_sha256": digest,
+        "schema_version": "b2-r1b-window-approval/v1",
+    }
+    approval_bytes = canonical_json_bytes(approval)
+    environment["APPROVAL_COMMENT_BODY"] = approval_bytes.decode("ascii")
+    environment["GUARDED_APPROVAL_COMMENT_ID"] = environment["APPROVAL_COMMENT_ID"]
+    environment["GUARDED_APPROVAL_COMMENT_SHA256"] = hashlib.sha256(
+        approval_bytes
+    ).hexdigest()
+    environment["GUARDED_RUN_READY_RECEIPT_SHA256"] = digest
     return receipt_bytes
 
 
@@ -139,6 +157,7 @@ def valid_preflight_environment() -> tuple[dict[str, str], bytes]:
         "EXECUTION_HEAD_SHA": "a" * 40,
         "BRIDGE_MAIN_SHA": "b" * 40,
         "AUTHORIZATION_ID": "R1B-AUTH-001",
+        "MAX_SPEND_USD": "1.36",
         "RUN_ID": "B2-R1B-RUN-001",
         "APPROVED_HANDOFF_ID": "B2-R1B-HANDOFF-001",
         "EVALUATION_RUN_ID": "B2-R1B-001",
@@ -156,12 +175,14 @@ def valid_preflight_environment() -> tuple[dict[str, str], bytes]:
         "PROVIDER_THINKING_MODE": "disabled",
         "PROVIDER_REASONING_EFFORT_JSON": "null",
         "HANDOFF_TTL_SECONDS": "3600",
-        "DISPATCH_RUN_ID": "B2-R1B-RUN-001",
-        "DISPATCH_EVALUATION_RUN_ID": "B2-R1B-001",
-        "DISPATCH_HANDOFF_ID": "B2-R1B-HANDOFF-001",
-        "DISPATCH_AUTHORIZATION_ID": "R1B-AUTH-001",
-        "DISPATCH_CONFIRM_ONE_SHOT": "true",
-        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "EVENT_ACTION": "created",
+        "EVENT_ISSUE_NUMBER": "47",
+        "EVENT_IS_PULL_REQUEST": "false",
+        "COMMENT_USER_LOGIN": "aerenkolstein-code",
+        "COMMENT_AUTHOR_ASSOCIATION": "OWNER",
+        "APPROVAL_COMMENT_ID": "987654321",
+        "GITHUB_ACTOR": "aerenkolstein-code",
+        "GITHUB_EVENT_NAME": "issue_comment",
         "GITHUB_REF": "refs/heads/main",
         "GITHUB_RUN_ATTEMPT": "1",
         "GITHUB_RUN_ID": "123456789",
@@ -171,6 +192,7 @@ def valid_preflight_environment() -> tuple[dict[str, str], bytes]:
             "aerenkolstein-code/llm-evaluation-lab/"
             ".github/workflows/b2_blind_handoff_v5_live.yml@refs/heads/main"
         ),
+        "GITHUB_OUTPUT": os.devnull,
     })
     return environment, bind_run_ready(environment)
 
@@ -231,22 +253,12 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
         cls.workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         cls.docs = DOC_PATH.read_text(encoding="utf-8")
 
-    def test_trigger_is_exactly_manual_dispatch(self):
+    def test_trigger_is_exactly_created_issue_comment(self):
         trigger = top_level_block(self.workflow, "on")
-        self.assertEqual(["workflow_dispatch"], first_level_keys(trigger))
-        dispatch_inputs = re.findall(r"(?m)^      ([a-z][a-z0-9_]*):$", trigger)
-        self.assertEqual(
-            [
-                "run_ready_receipt_sha256",
-                "run_id",
-                "evaluation_run_id",
-                "handoff_id",
-                "authorization_id",
-                "confirm_one_shot",
-            ],
-            dispatch_inputs,
-        )
+        self.assertEqual(["issue_comment"], first_level_keys(trigger))
+        self.assertIn("types: [created]", trigger)
         for forbidden in (
+            "workflow_dispatch:",
             "push:",
             "pull_request:",
             "schedule:",
@@ -259,6 +271,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
     def test_trigger_parser_detects_each_forbidden_adversarial_trigger(self):
         trigger = top_level_block(self.workflow, "on")
         for forbidden in (
+            "workflow_dispatch",
             "push",
             "pull_request",
             "schedule",
@@ -268,15 +281,34 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             candidate = trigger + f"  {forbidden}:\n"
             with self.subTest(forbidden=forbidden):
                 self.assertIn(forbidden, first_level_keys(candidate))
-                self.assertNotEqual(["workflow_dispatch"], first_level_keys(candidate))
+                self.assertNotEqual(["issue_comment"], first_level_keys(candidate))
 
-    def test_lane_is_protected_read_only_and_private_runner_only(self):
+    def test_public_gate_precedes_the_protected_private_runner(self):
         permissions = top_level_block(self.workflow, "permissions")
         self.assertEqual(["contents"], first_level_keys(permissions))
         self.assertIn("contents: read", permissions)
-        self.assertIn("environment: b2-r1b-live", self.workflow)
+        self.assertIn("runs-on: ubuntu-latest", self.workflow)
+        self.assertEqual(2, self.workflow.count("environment: b2-r1b-live"))
+        self.assertIn("needs: window-approval-gate", self.workflow)
+        self.assertLess(
+            self.workflow.index("window-approval-gate:"),
+            self.workflow.index("one-shot-live:"),
+        )
         for label in ("self-hosted", "linux", "x64", "b2-r1b-private"):
             self.assertRegex(self.workflow, rf"(?m)^      - {re.escape(label)}$")
+        for guard in (
+            "github.event.issue.number == 47",
+            "github.event.issue.pull_request == null",
+            "github.actor == 'aerenkolstein-code'",
+            "github.event.comment.user.login == 'aerenkolstein-code'",
+            "github.event.comment.author_association == 'OWNER'",
+            "needs.window-approval-gate.result == 'success'",
+        ):
+            self.assertIn(guard, self.workflow)
+        private_job_header = self.workflow.split("  one-shot-live:\n", 1)[1].split(
+            "    steps:\n", 1
+        )[0]
+        self.assertNotIn("vars.", private_job_header.split("    env:\n", 1)[0])
         self.assertIn("persist-credentials: false", self.workflow)
         self.assertIn("stat.S_ISGID", self.workflow)
         self.assertIn("exchange_root.chmod(0o2750)", self.workflow)
@@ -310,26 +342,29 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
                 compile(block, f"workflow-heredoc-{index}.py", "exec")
 
     def test_fresh_preflight_and_rerun_gates_precede_exchange(self):
-        preflight = self.workflow.index(
-            "Validate fresh run-ready and one-shot authorization gates"
-        )
+        preflight = self.workflow.index("Validate the exact public-safe window approval")
         exchange = self.workflow.index("Create isolated run-scoped exchange roots")
         key = self.workflow.index("Generate the run-unique input key and request")
         self.assertLess(preflight, exchange)
         self.assertLess(exchange, key)
         for required in (
-            'GITHUB_EVENT_NAME") != "workflow_dispatch"',
+            'GITHUB_EVENT_NAME") != "issue_comment"',
+            'EVENT_ACTION") != "created"',
+            'EVENT_ISSUE_NUMBER") != "47"',
+            'EVENT_IS_PULL_REQUEST") != "false"',
+            'GITHUB_ACTOR") != "aerenkolstein-code"',
+            'COMMENT_USER_LOGIN") != "aerenkolstein-code"',
+            'COMMENT_AUTHOR_ASSOCIATION") != "OWNER"',
             'GITHUB_REF") != "refs/heads/main"',
             'GITHUB_RUN_ATTEMPT") != "1"',
             'GITHUB_SHA") != os.environ["EXECUTION_HEAD_SHA"]',
-            "DISPATCH_RUN_READY_RECEIPT_SHA256",
-            "DISPATCH_RUN_ID",
-            "DISPATCH_EVALUATION_RUN_ID",
-            "DISPATCH_HANDOFF_ID",
-            "DISPATCH_AUTHORIZATION_ID",
-            "DISPATCH_CONFIRM_ONE_SHOT",
+            "APPROVAL_COMMENT_ID",
+            "APPROVAL_COMMENT_BODY",
+            "GUARDED_APPROVAL_COMMENT_ID",
+            "GUARDED_APPROVAL_COMMENT_SHA256",
             "B2_R1B_RUN_READY_RECEIPT_SHA256",
             "B2_R1B_AUTHORIZATION_ID",
+            "B2_R1B_MAX_SPEND_USD",
             "B2_R1B_RUN_ID",
             "B2_R1B_HANDOFF_ID",
             "B2_R1B_EXECUTION_HEAD_SHA",
@@ -339,7 +374,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             with self.subTest(required=required):
                 self.assertIn(required, self.workflow)
 
-    def test_preflight_accepts_only_the_exact_fresh_manual_run(self):
+    def test_preflight_accepts_only_the_exact_fresh_window_approval(self):
         script = run_scripts(self.workflow)[0]
         environment, _ = valid_preflight_environment()
 
@@ -351,16 +386,23 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
 
         adversarial = {
             "automatic event": ("GITHUB_EVENT_NAME", "push"),
+            "edited action": ("EVENT_ACTION", "edited"),
+            "wrong issue": ("EVENT_ISSUE_NUMBER", "48"),
+            "PR comment": ("EVENT_IS_PULL_REQUEST", "true"),
+            "wrong actor": ("GITHUB_ACTOR", "intruder"),
+            "wrong comment user": ("COMMENT_USER_LOGIN", "intruder"),
+            "non-owner association": ("COMMENT_AUTHOR_ASSOCIATION", "MEMBER"),
+            "invalid comment ID": ("APPROVAL_COMMENT_ID", "0"),
             "non-main ref": ("GITHUB_REF", "refs/heads/review"),
             "rerun": ("GITHUB_RUN_ATTEMPT", "2"),
             "invalid workflow run": ("GITHUB_RUN_ID", "not-a-run"),
             "wrong head": ("GITHUB_SHA", "f" * 40),
-            "stale receipt": ("DISPATCH_RUN_READY_RECEIPT_SHA256", "f" * 64),
-            "wrong run ID": ("DISPATCH_RUN_ID", "B2-R1B-RUN-002"),
-            "wrong evaluation ID": ("DISPATCH_EVALUATION_RUN_ID", "B2-R1B-002"),
-            "wrong handoff ID": ("DISPATCH_HANDOFF_ID", "B2-R1B-HANDOFF-002"),
-            "wrong authorization": ("DISPATCH_AUTHORIZATION_ID", "R1B-AUTH-002"),
-            "missing confirmation": ("DISPATCH_CONFIRM_ONE_SHOT", "false"),
+            "stale receipt": ("RUN_READY_RECEIPT_SHA256", "f" * 64),
+            "wrong run ID": ("RUN_ID", "B2-R1B-RUN-002"),
+            "wrong evaluation ID": ("EVALUATION_RUN_ID", "B2-R1B-002"),
+            "wrong handoff ID": ("APPROVED_HANDOFF_ID", "B2-R1B-HANDOFF-002"),
+            "wrong authorization": ("AUTHORIZATION_ID", "R1B-AUTH-002"),
+            "changed ceiling": ("MAX_SPEND_USD", "1.35"),
             "unsupported protocol": ("PROVIDER_PROTOCOL", "unsupported/v1"),
             "unsafe endpoint": ("PROVIDER_ENDPOINT", "http://provider.example/v1"),
             "nonzero temperature": ("PROVIDER_TEMPERATURE", "0.1"),
@@ -380,7 +422,46 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
                 )
                 self.assertNotEqual(0, rejected.returncode)
 
-    def test_second_dispatch_cannot_rebind_a_consumed_receipt_and_authorization(self):
+    def test_window_approval_json_is_closed_canonical_and_exact(self):
+        script = run_scripts(self.workflow)[0]
+        environment, _ = valid_preflight_environment()
+        baseline = json.loads(environment["APPROVAL_COMMENT_BODY"])
+
+        changed = {}
+        for label, key, value in (
+            ("receipt SHA", "run_ready_receipt_sha256", "f" * 64),
+            ("authorization", "authorization_id", "R1B-AUTH-002"),
+            ("ceiling", "max_spend_usd", "1.35"),
+            ("confirmation", "confirm_one_shot", False),
+            ("schema", "schema_version", "b2-r1b-window-approval/v2"),
+        ):
+            candidate = dict(baseline)
+            candidate[key] = value
+            changed[label] = canonical_json_bytes(candidate).decode("ascii")
+        with_extra = dict(baseline)
+        with_extra["run_id"] = environment["RUN_ID"]
+        changed["extra key"] = canonical_json_bytes(with_extra).decode("ascii")
+        without_type = dict(baseline)
+        without_type.pop("approval_type")
+        changed["missing key"] = canonical_json_bytes(without_type).decode("ascii")
+        changed["noncanonical whitespace"] = " " + environment["APPROVAL_COMMENT_BODY"]
+        first_member = '"approval_type":"B2-R1B-WINDOW-APPROVAL",'
+        changed["duplicate key"] = environment["APPROVAL_COMMENT_BODY"].replace(
+            first_member, first_member + first_member, 1
+        )
+        changed["malformed"] = "{"
+
+        for label, body in changed.items():
+            candidate = dict(environment)
+            candidate["APPROVAL_COMMENT_BODY"] = body
+            with self.subTest(label=label):
+                rejected = subprocess.run(
+                    ["bash"], input=script, text=True, capture_output=True,
+                    env=candidate, check=False,
+                )
+                self.assertNotEqual(0, rejected.returncode)
+
+    def test_second_comment_cannot_rebind_a_consumed_receipt_and_authorization(self):
         scripts = run_scripts(self.workflow)
         preflight_script = scripts[0]
         claim_script = scripts[1]
@@ -420,6 +501,11 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             )
             first_claim = json.loads(claim_files[0].read_bytes())
             self.assertEqual("123456789", first_claim["workflow_run_id"])
+            self.assertEqual(987654321, first_claim["approval_comment_id"])
+            self.assertEqual(
+                environment["GUARDED_APPROVAL_COMMENT_SHA256"],
+                first_claim["approval_comment_sha256"],
+            )
             self.assertEqual(
                 hashlib.sha256(receipt_bytes).hexdigest(),
                 first_claim["run_ready_receipt_sha256"],
@@ -427,7 +513,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
 
             second_dispatch = dict(environment)
             second_dispatch["GITHUB_RUN_ID"] = "123456790"
-            second_dispatch["EXPECTED_WORKFLOW_RUN_ID"] = "123456790"
+            second_dispatch["APPROVAL_COMMENT_ID"] = "987654322"
+            bind_run_ready(second_dispatch)
             second_github_env = root / "second-github-env"
             second_github_env.write_text("", encoding="ascii")
             second_dispatch["GITHUB_ENV"] = str(second_github_env)
@@ -447,7 +534,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
 
             reused_identity = dict(environment)
             reused_identity["AUTHORIZATION_ID"] = "R1B-AUTH-002"
-            reused_identity["DISPATCH_AUTHORIZATION_ID"] = "R1B-AUTH-002"
+            reused_identity["APPROVAL_COMMENT_ID"] = "987654323"
             reused_identity["GITHUB_RUN_ID"] = "123456791"
             bind_run_ready(reused_identity)
             third_github_env = root / "third-github-env"
@@ -530,7 +617,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
 
                 recovered = dict(environment)
                 recovered["AUTHORIZATION_ID"] = "R1B-AUTH-RECOVERY-002"
-                recovered["DISPATCH_AUTHORIZATION_ID"] = "R1B-AUTH-RECOVERY-002"
+                recovered["APPROVAL_COMMENT_ID"] = "987654322"
                 recovered["GITHUB_RUN_ID"] = "123456790"
                 recovered_github_env = root / "recovered-github-env"
                 recovered_github_env.write_text("", encoding="ascii")
@@ -555,13 +642,10 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
                     unrelated = dict(environment)
                     unrelated.update({
                         "AUTHORIZATION_ID": "R1B-AUTH-UNRELATED-003",
-                        "DISPATCH_AUTHORIZATION_ID": "R1B-AUTH-UNRELATED-003",
+                        "APPROVAL_COMMENT_ID": "987654323",
                         "RUN_ID": "B2-R1B-RUN-UNRELATED-003",
-                        "DISPATCH_RUN_ID": "B2-R1B-RUN-UNRELATED-003",
                         "EVALUATION_RUN_ID": "B2-R1B-UNRELATED-003",
-                        "DISPATCH_EVALUATION_RUN_ID": "B2-R1B-UNRELATED-003",
                         "APPROVED_HANDOFF_ID": "B2-R1B-HANDOFF-UNRELATED-003",
-                        "DISPATCH_HANDOFF_ID": "B2-R1B-HANDOFF-UNRELATED-003",
                         "GITHUB_RUN_ID": "123456791",
                     })
                     unrelated_github_env = root / "unrelated-github-env"
@@ -627,16 +711,9 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "thinking mode": ("PROVIDER_THINKING_MODE", "enabled"),
             "reasoning effort": ("PROVIDER_REASONING_EFFORT_JSON", '"high"'),
         }
-        dispatch_pair = {
-            "RUN_ID": "DISPATCH_RUN_ID",
-            "APPROVED_HANDOFF_ID": "DISPATCH_HANDOFF_ID",
-            "EVALUATION_RUN_ID": "DISPATCH_EVALUATION_RUN_ID",
-        }
         for label, (name, value) in receipt_bound_adversarial.items():
             candidate = dict(environment)
             candidate[name] = value
-            if name in dispatch_pair:
-                candidate[dispatch_pair[name]] = value
             with self.subTest(stale_receipt_changed_parameter=label):
                 rejected = subprocess.run(
                     ["bash"], input=script, text=True, capture_output=True,
@@ -652,7 +729,12 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
         script = run_scripts(self.workflow)[0]
         environment, receipt_bytes = valid_preflight_environment()
         receipt = json.loads(receipt_bytes)
-        self.assertEqual("b2-r1b-run-ready/v3", receipt["schema_version"])
+        self.assertEqual("b2-r1b-run-ready/v4", receipt["schema_version"])
+        self.assertEqual("issue_comment", receipt["trigger_event"])
+        self.assertEqual("chat-window-control-issue", receipt["approval_channel"])
+        self.assertEqual("b2-r1b-window-approval/v1", receipt["approval_schema_version"])
+        self.assertEqual(47, receipt["control_issue_number"])
+        self.assertEqual("1.36", receipt["max_spend_usd"])
         self.assertEqual("B2-R1B-RUN-001", receipt["run_id"])
         self.assertEqual("B2-R1B-001", receipt["evaluation_run_id"])
         self.assertEqual("B2-R1B-HANDOFF-001", receipt["handoff_id"])
@@ -666,11 +748,6 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
         ):
             candidate = dict(environment)
             candidate[name] = value
-            candidate[{
-                "RUN_ID": "DISPATCH_RUN_ID",
-                "EVALUATION_RUN_ID": "DISPATCH_EVALUATION_RUN_ID",
-                "APPROVED_HANDOFF_ID": "DISPATCH_HANDOFF_ID",
-            }[name]] = value
             with self.subTest(changed_protected_identity=name):
                 rejected = subprocess.run(
                     ["bash"], input=script, text=True, capture_output=True,
@@ -682,7 +759,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
                     rejected.stderr,
                 )
 
-    def test_disabled_thinking_effort_pair_and_old_v2_fail_closed(self):
+    def test_disabled_thinking_effort_pair_and_stale_v3_fail_closed(self):
         script = run_scripts(self.workflow)[0]
         environment, receipt_bytes = valid_preflight_environment()
 
@@ -698,16 +775,22 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "disabled thinking requires null reasoning effort", rejected.stderr
         )
 
-        old_v2 = json.loads(receipt_bytes)
-        old_v2.pop("provider_thinking_mode")
-        old_v2.pop("provider_reasoning_effort")
-        old_v2["schema_version"] = "b2-r1b-run-ready/v2"
-        old_v2["work_order"] = "WO-B2-BLIND-R1B-01 v0.1"
-        v2_environment = dict(environment)
-        bind_run_ready(v2_environment, old_v2)
+        old_v3 = json.loads(receipt_bytes)
+        for added_field in (
+            "approval_channel",
+            "approval_schema_version",
+            "control_issue_number",
+            "max_spend_usd",
+        ):
+            old_v3.pop(added_field)
+        old_v3["schema_version"] = "b2-r1b-run-ready/v3"
+        old_v3["trigger_event"] = "workflow_dispatch"
+        old_v3["work_order"] = "WO-B2-BLIND-R1B-COMPAT-01 v0.1"
+        v3_environment = dict(environment)
+        bind_run_ready(v3_environment, old_v3)
         rejected = subprocess.run(
             ["bash"], input=script, text=True, capture_output=True,
-            env=v2_environment, check=False,
+            env=v3_environment, check=False,
         )
         self.assertNotEqual(0, rejected.returncode)
         self.assertIn(
@@ -723,7 +806,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
         ]
         for required in (
             "B2_R1B_ONE_SHOT_CLAIM_BASE",
-            "b2-r1b-one-shot-claim/v1",
+            "b2-r1b-one-shot-claim/v2",
             "R1B-ONE-SHOT-AUTHORIZATION-CLAIM",
             "import fcntl",
             "fcntl.flock(lock_fd, fcntl.LOCK_EX)",
@@ -738,6 +821,8 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             "durable one-shot claim base overlaps an ephemeral root",
             "durable one-shot ledger contains an invalid claim",
             '"workflow_run_id": workflow_run_id',
+            '"approval_comment_id": approval_comment_id',
+            '"approval_comment_sha256": approval_comment_digest',
             '"run_identity_sha256": run_identity_digest',
             '"run_ready_receipt_sha256": receipt_digest',
         ):
@@ -796,7 +881,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             noncanonical_bytes
         ).decode("ascii")
         noncanonical["RUN_READY_RECEIPT_SHA256"] = noncanonical_digest
-        noncanonical["DISPATCH_RUN_READY_RECEIPT_SHA256"] = noncanonical_digest
+        noncanonical["GUARDED_RUN_READY_RECEIPT_SHA256"] = noncanonical_digest
         rejected = subprocess.run(
             ["bash"], input=script, text=True, capture_output=True,
             env=noncanonical, check=False,
@@ -818,7 +903,7 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
             duplicate_bytes
         ).decode("ascii")
         duplicate["RUN_READY_RECEIPT_SHA256"] = duplicate_digest
-        duplicate["DISPATCH_RUN_READY_RECEIPT_SHA256"] = duplicate_digest
+        duplicate["GUARDED_RUN_READY_RECEIPT_SHA256"] = duplicate_digest
         rejected = subprocess.run(
             ["bash"], input=script, text=True, capture_output=True,
             env=duplicate, check=False,
@@ -1047,26 +1132,32 @@ class R1bLiveOrchestrationTests(unittest.TestCase):
 
     def test_contract_records_authority_and_hard_stops(self):
         for required in (
-            "WO-B2-BLIND-R1B-COMPAT-01 v0.1",
-            "74304a23d7e542b28dcd519f9b58d394447fc696",
-            "84f5bc1a56f8c93c92717cf928dc928a63ab118f",
-            "workflow_dispatch",
+            "WO-B2-BLIND-R1B-WINDOW-CONTROL-01 v0.1",
+            "1UMen4kMvv9YF2L1-ljT3f8_KaR7YYRdhgH21MpKRIMA",
+            "8a1fe28f1cf79d9cf915abd2c5a37ba1a427a2f5",
+            "54c56f73e2f67e25d65d8214c8e30035b08ca50a",
+            "Control Issue `#47`",
+            "`tests/test_b2_blind_handoff.py`",
+            "issue_comment",
+            "types: [created]",
             "B2_R1B_RUN_READY_RECEIPT_SHA256",
             "B2_R1B_RUN_READY_RECEIPT_B64",
             "B2_R1B_ONE_SHOT_CLAIM_BASE",
+            "B2_R1B_MAX_SPEND_USD",
             "B2_R1B_RUN_ID",
             "B2_R1B_HANDOFF_ID",
-            "b2-r1b-run-ready/v3",
+            "b2-r1b-window-approval/v1",
+            "b2-r1b-run-ready/v4",
             "b2-blind-eval-bridge/v3",
             'provider_thinking_mode = "disabled"',
             "provider_reasoning_effort = null",
-            "b2-r1b-one-shot-claim/v1",
+            "b2-r1b-one-shot-claim/v2",
             "b2-r1b-live-request/v3",
             "B2_R1B_PROVIDER_API_KEY",
             "provider_attempts = 1",
             "automatic_retries = 0",
             "EMPTY_FINAL_CONTENT",
-            "READY FOR B2-BLIND-R1B-COMPAT INDEPENDENT QA",
+            "READY FOR B2-BLIND-R1B-WINDOW-CONTROL INDEPENDENT QA",
             "no live execution authority",
             "Historical Q1-R1 remains exactly",
         ):

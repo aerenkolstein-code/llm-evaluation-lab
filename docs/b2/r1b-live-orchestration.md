@@ -7,31 +7,46 @@ Authority:
 - `PLAN-B2-BLIND-R1b v0.1` — Drive `1fR125gjS2WqSJaedAuQAxw2pcvXK8WJN00v8Rd_gOh0`;
 - `WO-B2-BLIND-R1B-01 v0.1` — Drive `1v2X3H9Ke2Z1Veic7ZNMQRv09M12ix-7Ps1L0byFVzwg`;
 - `WO-B2-BLIND-R1B-COMPAT-01 v0.1` — Drive `1rZaLiVZVqE5Sb1GGcBelg1m4UHrOincM5H1unp3MMvU`;
-- compatibility implementation issue `#44`;
+- `WO-B2-BLIND-R1B-WINDOW-CONTROL-01 v0.1` — Drive `1UMen4kMvv9YF2L1-ljT3f8_KaR7YYRdhgH21MpKRIMA`;
+- frozen Window Approval Control Issue `#47`;
 - P0 baseline receipt — Drive `12GHMbw6jrAbF5A9bNo_KXpaxMqCpCfe5OYVy1iPYUjA`;
-- compatibility construction baseline
-  `main@74304a23d7e542b28dcd519f9b58d394447fc696`, tree
-  `84f5bc1a56f8c93c92717cf928dc928a63ab118f`.
+- window-control construction baseline
+  `main@8a1fe28f1cf79d9cf915abd2c5a37ba1a427a2f5`, tree
+  `54c56f73e2f67e25d65d8214c8e30035b08ca50a`.
 
-The A053 orchestration was accepted and merged through PR `#37`. A063 now
-authorizes a compatibility-only six-path repair covering the generic bridge,
-its tests/doc, and this workflow/test/doc. Core v5.2 handoff code, schemas,
-dependencies, ordinary CI, the deterministic smoke workflow, and BM0/BM1
+PR `#37` established the one-shot orchestration and PR `#45` merged the
+reasoning-compatibility repair. A078 authorizes this control-plane repair:
+create the single dedicated Control Issue and modify this workflow, its focused
+test, and this document. A subsequent explicit scope extension authorizes one fourth
+path, `tests/test_b2_blind_handoff.py`, solely to replace its obsolete
+`workflow_dispatch` trigger assertion with the new sole
+`issue_comment(created)` contract. Core v5.2 handoff code, generic blind-eval
+transport and test semantics, schemas, dependencies, ordinary CI,
+deterministic smoke, BM0/BM1, credentials, and private context/prompt bodies
 remain untouched.
 
 ## What this change does and does not do
 
 `.github/workflows/b2_blind_handoff_v5_live.yml` defines a reviewed future
-execution lane. Its only trigger is `workflow_dispatch`. It has no `push`,
+execution lane. Its only trigger is `issue_comment` with `types: [created]`.
+There is no retained `workflow_dispatch` live surface. It has no `push`,
 `pull_request`, `schedule`, `repository_dispatch`, or `workflow_run` entry, and
 therefore PRs, branch pushes, ordinary CI, documentation changes, and the
 deterministic smoke cannot enter its provider or credential step.
 
+The trigger is hard-bound to Control Issue `#47`, repository-owner identity
+`aerenkolstein-code`, `author_association = OWNER`, a non-PR issue comment, the
+default `main` ref/head, and strict canonical approval JSON. Obvious metadata
+mismatches skip before any runner. A public-safe `ubuntu-latest` gate performs
+the full approval/RUN-READY comparison before the protected private runner job
+can be scheduled.
+
 The workflow is not usable from this unmerged review branch. Even after a
 separately authorized merge, it remains closed until all protected environment
 configuration is freshly frozen, a distinct `R1B-RUN-READY` receipt exists, a
-one-shot authorization identifier is frozen, and the `b2-r1b-live` environment
-approval is granted for the exact dispatch. This implementation does not set
+one-shot authorization identifier is frozen, and a later user approval in the
+ChatGPT window is projected as one exact Control Issue comment. This
+implementation does not set
 any of those values, configure a provider, read a credential, call a provider,
 spend money, run R1b, score C1-C19, create BM1, or authorize merge.
 
@@ -46,7 +61,7 @@ the runner-service environment variable `B2_R1B_EXCHANGE_BASE`.
 
 `B2_R1B_EXCHANGE_BASE` is a private locator. It must be provisioned on the
 dedicated runner, must name a real absolute non-symlink directory, and must not
-be written to repository configuration, dispatch inputs, receipts, summaries,
+be written to repository configuration, approval comments, receipts, summaries,
 or logs. It must be owned by a dedicated setgid exchange group with group
 read/write/execute and no world permissions. The workflow masks the value,
 verifies that boundary, creates a group-readable runner publication directory
@@ -60,7 +75,7 @@ objects are never world-readable.
 The dedicated runner must also provision `B2_R1B_ONE_SHOT_CLAIM_BASE` as a
 real absolute, non-symlink, runner-owned mode-0700 directory. It is a durable,
 private authorization-claim ledger, not an exchange directory. After all
-canonical receipt and dispatch-identity checks pass, but before checkout or
+canonical receipt and window-approval checks pass, but before checkout or
 any exchange, secret, or provider step, the workflow takes an exclusive
 `ledger.lock`, scans every durable entry, and transactionally consumes one
 mode-0600 body-free claim. It first writes and file-plus-directory-fsyncs a
@@ -84,6 +99,7 @@ non-secret variables freeze only public-safe exact metadata:
 | `B2_R1B_RUN_READY_RECEIPT_SHA256` | lowercase SHA-256 of the exact canonical run-ready receipt bytes |
 | `B2_R1B_RUN_READY_RECEIPT_B64` | strict standard-base64 encoding of those exact public-safe canonical bytes |
 | `B2_R1B_AUTHORIZATION_ID` | unique one-shot authorization identifier |
+| `B2_R1B_MAX_SPEND_USD` | exact approved positive decimal string, bound into RUN-READY and the approval comment |
 | `B2_R1B_RUN_ID` | exact predeclared R1b run identifier |
 | `B2_R1B_HANDOFF_ID` | exact predeclared v5.2 handoff identifier |
 | `B2_R1B_EVALUATION_RUN_ID` | exact R1b evaluation run identifier |
@@ -103,14 +119,17 @@ non-secret variables freeze only public-safe exact metadata:
 ### Canonical RUN-READY machine binding
 
 `R1B-RUN-READY` is an exact public-safe JSON object, not a prose approval and
-not a digest standing alone. A063 replaces the unrepaired v2 semantics with the
-closed `b2-r1b-run-ready/v3` schema:
+not a digest standing alone. A078 introduces the closed
+`b2-r1b-run-ready/v4` schema without mutating v3 semantics:
 
 ```json
 {
+  "approval_channel": "chat-window-control-issue",
+  "approval_schema_version": "b2-r1b-window-approval/v1",
   "authorization_id": "<one-shot authorization ID>",
   "automatic_retries": 0,
   "bridge_main_sha": "<40 lowercase hex>",
+  "control_issue_number": 47,
   "context_bytes": 1,
   "context_sha256": "<64 lowercase hex>",
   "evaluation_run_id": "<evaluation ID>",
@@ -119,6 +138,7 @@ closed `b2-r1b-run-ready/v3` schema:
   "handoff_id": "<predeclared handoff ID>",
   "handoff_ttl_seconds": 3600,
   "max_provider_attempts": 1,
+  "max_spend_usd": "<exact approved decimal>",
   "mode": "live",
   "prompt_bytes": 1,
   "prompt_sha256": "<64 lowercase hex>",
@@ -134,11 +154,11 @@ closed `b2-r1b-run-ready/v3` schema:
   "repository": "aerenkolstein-code/llm-evaluation-lab",
   "requested_model_id": "<exact requested model ID>",
   "run_id": "<predeclared R1b run ID>",
-  "schema_version": "b2-r1b-run-ready/v3",
-  "trigger_event": "workflow_dispatch",
+  "schema_version": "b2-r1b-run-ready/v4",
+  "trigger_event": "issue_comment",
   "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
   "workflow_run_attempt": 1,
-  "work_order": "WO-B2-BLIND-R1B-COMPAT-01 v0.1"
+  "work_order": "WO-B2-BLIND-R1B-WINDOW-CONTROL-01 v0.1"
 }
 ```
 
@@ -160,29 +180,54 @@ canonical bytes byte-for-byte. Consequently a stale receipt cannot authorize a
 different provider label, requested model, endpoint, timeout, temperature,
 maximum token count, thinking mode, reasoning effort, TTL, input identity,
 bridge commit, execution head,
-R1b run identity, evaluation-run identity, handoff identity, or authorization
-ID. All of these checks finish before checkout, exchange-directory access,
-secret injection, or provider execution.
+R1b run identity, evaluation-run identity, handoff identity, spend ceiling, or
+authorization ID. These checks execute on the public-safe gate and finish
+before the private runner, checkout, exchange-directory access, secret
+injection, or provider execution.
 
 For this recovery lane, `provider_thinking_mode = "disabled"` and
 `provider_reasoning_effort = null` are fixed policy, not provider defaults.
 The protected effort variable must be the exact JSON bytes `null`; a non-null
-effort with disabled thinking fails closed. A canonical v2 receipt lacks these
-fields and cannot byte-match v3, even if its digest is freshly recomputed.
+effort with disabled thinking fails closed. A canonical v3
+`workflow_dispatch` receipt lacks the v4 approval fields and cannot authorize
+this lane even if its digest is freshly recomputed.
+
+### Canonical ChatGPT-window approval
+
+A later exact user authorization is projected as one issue comment on `#47`.
+The comment is canonical ASCII JSON with no Markdown wrapper, BOM, whitespace,
+newline, duplicate key, non-finite value, credential, private locator, or body:
+
+```json
+{"approval_type":"B2-R1B-WINDOW-APPROVAL","authorization_id":"<exact one-shot authorization ID>","confirm_one_shot":true,"max_spend_usd":"<exact approved decimal>","run_ready_receipt_sha256":"<exact RUN-READY v4 SHA-256>","schema_version":"b2-r1b-window-approval/v1"}
+```
+
+The hosted gate reconstructs those bytes from protected canonical state and
+requires byte-for-byte equality with the newly created comment. Wrong issue,
+PR comment, wrong actor, non-OWNER association, edited/deleted events,
+malformed/noncanonical JSON, changed digest, authorization, ceiling, schema,
+or confirmation fail before the private runner. The gate passes the actual
+comment ID, exact comment-body SHA-256, and RUN-READY digest as immutable job
+outputs to the private lane, which rehashes them before claim consumption.
+The private job-level condition depends only on the successful hosted gate. It
+does not read environment-level `vars` there, because GitHub makes those
+available only after the environment is declared by a runner. Once the private
+job starts, its first step compares the gate outputs against the now available
+protected variables before consuming the durable claim.
 
 The next step consumes the approved authorization exactly once. Under the
 exclusive ledger lock it validates every existing canonical
-`b2-r1b-one-shot-claim/v1` record or index and treats the body of any valid
+`b2-r1b-one-shot-claim/v2` record or index and treats the body of any valid
 entry as consuming both its authorization and run identity, even when a prior
 crash left only a subset of the expected names. It then commits one
 authoritative claim record with `O_EXCL`, mode 0600, file `fsync`, and directory
 `fsync`, before creating either identity index as a hard link to that same
 inode. Each index link is followed by another directory `fsync`. The claim
-binds the approved receipt digest and its
-run/evaluation/handoff/authorization/head identities to the first actual
-GitHub workflow run ID and attempt that reaches the gate.
+binds the approved receipt digest, actual approval comment ID and comment-body
+digest, and its run/evaluation/handoff/authorization/head identities to the
+first actual GitHub workflow run ID and attempt that reaches the gate.
 
-A second dispatch therefore fails closed if it reuses either the authorization
+A second valid-looking comment therefore fails closed if it reuses either the authorization
 or the run identity—even if an operator changes both the fresh
 `GITHUB_RUN_ID` and any obsolete out-of-band expected-run value together. If
 the process stops after the authoritative record or first index, the next
@@ -199,6 +244,8 @@ The exact closed claim object is canonical ASCII JSON with this shape:
 
 ```json
 {
+  "approval_comment_id": 123456789,
+  "approval_comment_sha256": "<SHA-256 of exact canonical approval comment bytes>",
   "authorization_id": "<approved authorization ID>",
   "bridge_main_sha": "<40 lowercase hex>",
   "evaluation_run_id": "<evaluation ID>",
@@ -209,7 +256,7 @@ The exact closed claim object is canonical ASCII JSON with this shape:
   "run_id": "<predeclared R1b run ID>",
   "run_identity_sha256": "<SHA-256 of canonical run/evaluation/handoff triple>",
   "run_ready_receipt_sha256": "<approved RUN-READY SHA-256>",
-  "schema_version": "b2-r1b-one-shot-claim/v1",
+  "schema_version": "b2-r1b-one-shot-claim/v2",
   "workflow_path": ".github/workflows/b2_blind_handoff_v5_live.yml",
   "workflow_run_attempt": 1,
   "workflow_run_id": "<first consuming GitHub run ID>"
@@ -234,8 +281,8 @@ the initial binding check. The following body-free v3 bridge receipt gate also
 derives its expected provider/model/reasoning/input/commit values from the same
 hashed canonical file.
 
-The GitHub-assigned workflow run ID does not exist when the immutable dispatch
-inputs are submitted, so the receipt does not pretend to predict it and there
+The GitHub-assigned workflow run ID does not exist when the approval comment is
+created, so the receipt does not pretend to predict it and there
 is no independently mutable `B2_R1B_WORKFLOW_RUN_ID`. Instead, the durable
 claim binds the already approved authorization and complete predeclared R1b
 identity to exactly the first actual GitHub run that consumes it. The request
@@ -249,32 +296,30 @@ verified the private side's one-time acknowledgement. It is not present in
 preflight, checkout, installation, input, challenge, result-encryption,
 publication-verification, summary, or cleanup steps.
 
-## Manual authorization gates
+## ChatGPT-window authorization gate
 
-Before dispatch, an authorized operator must freeze and review the canonical
-receipt, its base64, its digest, every matching protected parameter, and the
-unique one-shot authorization ID. The operator then dispatches the workflow on
-`main` with exactly six inputs:
+After merge and fresh preflight, the operator freezes and reviews RUN-READY
+v4, its base64/digest, every matching protected parameter, the exact spend
+ceiling, and the unique one-shot authorization ID. The user then approves that
+exact object in the ChatGPT window. ChatGPT projects the approval through the
+already governed issue-comment write as exactly one canonical JSON comment on
+Control Issue `#47`; the user does not need to open GitHub Actions.
 
-1. the SHA-256 of the already approved `R1B-RUN-READY` receipt;
-2. its exact predeclared R1b run ID;
-3. its exact evaluation run ID;
-4. its exact handoff ID;
-5. its exact one-shot authorization identifier;
-6. the explicit boolean one-shot confirmation.
+GitHub's `issue_comment(created)` event binds the actual comment ID, actor,
+association, default ref/head, and workflow run. The public-safe gate requires
+the exact owner identity and canonical bytes before the private job can run.
+The RUN-READY digest is recomputed from protected bytes and every provider,
+runtime, input, head, run/evaluation/handoff, approval-channel, issue-number,
+and spend value must match. `GITHUB_RUN_ATTEMPT` must equal `1`. A rerun fails;
+a second valid-looking comment with the same authorization or run identity
+fails at the durable claim gate before checkout, exchange, secret, or provider.
+A new attempt requires a new receipt, authorization, run/evaluation/handoff
+identity, and a new explicit ChatGPT-window approval.
 
-The first five inputs must byte-for-byte equal the protected environment values.
-The receipt digest must also equal the digest recomputed from the protected
-canonical receipt bytes, and the parsed receipt must exactly equal all matching
-protected provider/runtime/input/head/run/evaluation/handoff values.
-The selected commit must equal `B2_R1B_EXECUTION_HEAD_SHA`; the run ref must be
-`refs/heads/main`; and `GITHUB_RUN_ATTEMPT` must be `1`. The protected
-environment must require a human reviewer. A rerun fails the attempt gate; a
-second dispatch with the same authorization fails the durable `O_EXCL` claim
-gate before checkout or exchange creation. A new attempt therefore requires a
-new run-ready receipt, new run/evaluation/handoff identities, a new
-authorization identifier, a fresh manual dispatch, and fresh environment
-approval.
+This workflow does not change the `b2-r1b-live` environment protection rules.
+After merge, pre-live inspection must determine whether a required reviewer or
+Prevent self-review rule still adds a GitHub approval step. If so, stop for a
+separate governance decision; do not remove or bypass that rule here.
 
 The checkout disables persisted Git credentials. Before any handoff object is
 created, the workflow proves that the accepted bridge commit is an ancestor of
@@ -301,10 +346,10 @@ claim, or an expired/not-yet-valid object fail closed.
 
 | Order | Side | Create-once object or gate | Provider credential present? |
 |---:|---|---|---:|
-| 1 | runner | verify canonical run-ready bytes/digest and exact provider/runtime/input/head/run/evaluation/handoff binding; validate dispatch | no |
-| 2 | runner | lock and recover the durable ledger, then commit one authoritative claim plus both identity indexes | no |
-| 3 | runner | exact-head/core-blob checks; fresh input key | no |
-| 4 | runner → private | `runner/input-public.pem`, then v3 `runner/request.json` containing the exact run-ready object, durable claim, and both digests | no |
+| 1 | hosted gate | require created non-PR comment on `#47` by owner; reconstruct and byte-compare approval plus RUN-READY v4 | no |
+| 2 | private runner | rebind actual comment ID/body digest and lock/recover the durable ledger; commit one authoritative claim plus both identity indexes | no |
+| 3 | private runner | exact-head/core-blob checks; fresh input key | no |
+| 4 | runner → private | `runner/input-public.pem`, then v3 `runner/request.json` containing the exact run-ready object, v2 claim, and both digests | no |
 | 5 | private → runner | v5.2 `private/payload.json` | no |
 | 6 | runner | `accept-input`; exact binding/freshness/input verification | no |
 | 7 | runner → private | fresh `runner/challenge.enc.json` | no |
@@ -333,9 +378,10 @@ The private side must use the same exact v5.2 source and treat
 rule above, recompute and compare `run_ready_receipt_sha256`, and compare both
 against its independently held approved receipt. It must also canonicalize the
 nested `one_shot_claim`, recompute `one_shot_claim_sha256`, require the exact
-closed `b2-r1b-one-shot-claim/v1` schema, and verify that its receipt digest,
-authorization/run/evaluation/handoff identities, execution/bridge heads,
-repository/workflow, actual workflow run ID, and attempt match the request.
+closed `b2-r1b-one-shot-claim/v2` schema, and verify that its approval comment
+ID/body digest, receipt digest, authorization/run/evaluation/handoff identities,
+execution/bridge heads, repository/workflow, actual workflow run ID, and
+attempt match the request.
 It must then compare every overlapping top-level request identity—including
 execution/bridge commits, input hashes and sizes, mode, R1b run ID, evaluation
 ID, handoff ID, workflow run ID, and authorization ID—to those two bound
@@ -387,9 +433,10 @@ ephemeral roots and are intentionally retained; deleting any of them would
 weaken replay evidence and is not part of run cleanup.
 
 The final GitHub step summary is body-free. It contains only R1b run,
-evaluation, handoff, workflow-run and execution-head identities, the consumed
-claim status, terminal status, the fixed one-attempt/zero-retry counters, and
-boolean verification labels for result publication and cleanup.
+evaluation, handoff, workflow-run, approval-comment ID/body digest, and
+execution-head identities, the consumed claim status, terminal status, the
+fixed one-attempt/zero-retry counters, and boolean verification labels for
+result publication and cleanup.
 It contains no context/prompt/reasoning/final body, key, credential,
 authorization header, endpoint, model response body, score, or private locator.
 
@@ -409,14 +456,16 @@ Engineering must bind its receipt to the exact PR head/tree and record:
 - the existing deterministic `b2.blind_handoff deterministic-smoke` with
   `provider_attempts = 0`, `credential_lookups = 0`, zero retries, return-key
   possession proof, result decryptability, and verified cleanup;
-- static manual-trigger/no-retry/post-ACK-secret ordering audits;
-- canonical receipt digest/parse/equality tests, including stale-digest and
+- static sole-`issue_comment(created)`/no-retry/post-ACK-secret ordering audits;
+- canonical approval and receipt digest/parse/equality tests, including wrong
+  issue, PR comment, actor/association, malformed/duplicate/noncanonical JSON,
+  changed receipt SHA/authorization/ceiling/confirmation, stale-digest and
   valid-but-changed provider/model/endpoint/runtime/thinking/effort/run/handoff
   adversarial cases, non-null effort with disabled thinking, and rejection of
-  the unrepaired v2 RUN-READY shape;
-- a two-dispatch replay test in which both the actual and legacy expected
-  workflow-run variables move together while the approved receipt/digest and
-  authorization stay unchanged; the second dispatch must fail at the durable
+  stale v3 `workflow_dispatch` RUN-READY;
+- a two-comment replay test in which the second actual comment and workflow-run
+  identities change while the approved receipt/digest and authorization stay
+  unchanged; the second comment must fail at the durable
   claim gate before checkout, exchange, secret, or provider;
 - crash/restart injection immediately after the first identity index becomes
   durable, proving that a fresh authorization cannot reuse the recorded
@@ -427,11 +476,13 @@ Engineering must bind its receipt to the exact PR head/tree and record:
 - repository leak and changed-path-envelope scans.
 
 Only after those checks may engineering emit
-`READY FOR B2-BLIND-R1B-COMPAT INDEPENDENT QA` and stop. Distinct exact-head IQA PASS is
+`READY FOR B2-BLIND-R1B-WINDOW-CONTROL INDEPENDENT QA` and stop. Distinct exact-head IQA PASS is
 required before a separate merge decision. Merge would still not authorize a
 provider run; fresh provider/model/endpoint/runtime preflight, exact
-`R1B-RUN-READY`, protected-environment approval, and separate one-shot live
-authorization would remain mandatory.
+`R1B-RUN-READY` v4, environment inspection, and separate exact ChatGPT-window
+one-shot live authorization would remain mandatory. The prior P4 SHA
+`a289a3f73eac981bc36c501d0e4ac2a1b115837006248e179b939ee70003376a`
+is invalid for the repaired lane and must not be reused.
 
 Historical Q1-R1 remains exactly:
 

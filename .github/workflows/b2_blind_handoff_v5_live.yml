@@ -1,33 +1,8 @@
 name: B2 Blind Handoff v5 R1b One-Shot Live
 
 on:
-  workflow_dispatch:
-    inputs:
-      run_ready_receipt_sha256:
-        description: Exact SHA-256 of the separately approved R1B-RUN-READY receipt
-        required: true
-        type: string
-      run_id:
-        description: Exact predeclared R1b run identifier in the approved receipt
-        required: true
-        type: string
-      evaluation_run_id:
-        description: Exact evaluation identifier in the approved receipt
-        required: true
-        type: string
-      handoff_id:
-        description: Exact predeclared v5.2 handoff identifier in the approved receipt
-        required: true
-        type: string
-      authorization_id:
-        description: Exact one-shot authorization identifier frozen for this run
-        required: true
-        type: string
-      confirm_one_shot:
-        description: Confirm that this dispatch is the separately authorized one-shot run
-        required: true
-        default: false
-        type: boolean
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -37,27 +12,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  one-shot-live:
-    name: Protected one-shot live lane
+  window-approval-gate:
+    name: Public-safe window approval gate
+    if: >-
+      github.event.action == 'created' &&
+      github.event.issue.number == 47 &&
+      github.event.issue.pull_request == null &&
+      github.actor == 'aerenkolstein-code' &&
+      github.event.comment.user.login == 'aerenkolstein-code' &&
+      github.event.comment.author_association == 'OWNER'
     environment: b2-r1b-live
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
-      - b2-r1b-private
-    timeout-minutes: 180
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      approval_comment_id: ${{ steps.authorize.outputs.approval_comment_id }}
+      approval_comment_sha256: ${{ steps.authorize.outputs.approval_comment_sha256 }}
+      run_ready_receipt_sha256: ${{ steps.authorize.outputs.run_ready_receipt_sha256 }}
     env:
-      DISPATCH_RUN_READY_RECEIPT_SHA256: ${{ inputs.run_ready_receipt_sha256 }}
-      DISPATCH_RUN_ID: ${{ inputs.run_id }}
-      DISPATCH_EVALUATION_RUN_ID: ${{ inputs.evaluation_run_id }}
-      DISPATCH_HANDOFF_ID: ${{ inputs.handoff_id }}
-      DISPATCH_AUTHORIZATION_ID: ${{ inputs.authorization_id }}
-      DISPATCH_CONFIRM_ONE_SHOT: ${{ inputs.confirm_one_shot }}
+      EVENT_ACTION: ${{ github.event.action }}
+      EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+      EVENT_IS_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
+      COMMENT_USER_LOGIN: ${{ github.event.comment.user.login }}
+      COMMENT_AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+      APPROVAL_COMMENT_ID: ${{ github.event.comment.id }}
+      APPROVAL_COMMENT_BODY: ${{ github.event.comment.body }}
       EXECUTION_HEAD_SHA: ${{ vars.B2_R1B_EXECUTION_HEAD_SHA }}
       BRIDGE_MAIN_SHA: ${{ vars.B2_R1B_BRIDGE_MAIN_SHA }}
       RUN_READY_RECEIPT_SHA256: ${{ vars.B2_R1B_RUN_READY_RECEIPT_SHA256 }}
       RUN_READY_RECEIPT_B64: ${{ vars.B2_R1B_RUN_READY_RECEIPT_B64 }}
       AUTHORIZATION_ID: ${{ vars.B2_R1B_AUTHORIZATION_ID }}
+      MAX_SPEND_USD: ${{ vars.B2_R1B_MAX_SPEND_USD }}
       RUN_ID: ${{ vars.B2_R1B_RUN_ID }}
       APPROVED_HANDOFF_ID: ${{ vars.B2_R1B_HANDOFF_ID }}
       EVALUATION_RUN_ID: ${{ vars.B2_R1B_EVALUATION_RUN_ID }}
@@ -77,7 +61,8 @@ jobs:
       HANDOFF_TTL_SECONDS: ${{ vars.B2_R1B_HANDOFF_TTL_SECONDS }}
 
     steps:
-      - name: Validate fresh run-ready and one-shot authorization gates
+      - id: authorize
+        name: Validate the exact public-safe window approval
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -88,14 +73,23 @@ jobs:
           import os
           import re
           from decimal import Decimal, InvalidOperation
+          from pathlib import Path
           from urllib.parse import urlsplit
 
           required = (
+              "EVENT_ACTION",
+              "EVENT_ISSUE_NUMBER",
+              "EVENT_IS_PULL_REQUEST",
+              "COMMENT_USER_LOGIN",
+              "COMMENT_AUTHOR_ASSOCIATION",
+              "APPROVAL_COMMENT_ID",
+              "APPROVAL_COMMENT_BODY",
               "EXECUTION_HEAD_SHA",
               "BRIDGE_MAIN_SHA",
               "RUN_READY_RECEIPT_SHA256",
               "RUN_READY_RECEIPT_B64",
               "AUTHORIZATION_ID",
+              "MAX_SPEND_USD",
               "RUN_ID",
               "APPROVED_HANDOFF_ID",
               "EVALUATION_RUN_ID",
@@ -116,6 +110,8 @@ jobs:
           )
           if any(not os.environ.get(name) for name in required):
               raise SystemExit("protected R1b preflight configuration is incomplete")
+          if len(os.environ["APPROVAL_COMMENT_BODY"]) > 2048:
+              raise SystemExit("window approval comment is oversized")
           if len(os.environ["RUN_READY_RECEIPT_B64"]) > 16384:
               raise SystemExit("canonical RUN-READY receipt is oversized")
           if any(
@@ -123,8 +119,25 @@ jobs:
               for name in required
           ):
               raise SystemExit("protected R1b preflight configuration contains controls")
-          if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
-              raise SystemExit("R1b live execution requires manual dispatch")
+          if os.environ.get("GITHUB_EVENT_NAME") != "issue_comment":
+              raise SystemExit("R1b live execution requires an issue comment")
+          if os.environ.get("EVENT_ACTION") != "created":
+              raise SystemExit("only a newly created issue comment can authorize R1b")
+          if os.environ.get("EVENT_ISSUE_NUMBER") != "47":
+              raise SystemExit("window approval came from the wrong control issue")
+          if os.environ.get("EVENT_IS_PULL_REQUEST") != "false":
+              raise SystemExit("pull-request comments cannot authorize R1b")
+          if (
+              os.environ.get("GITHUB_ACTOR") != "aerenkolstein-code"
+              or os.environ.get("COMMENT_USER_LOGIN") != "aerenkolstein-code"
+              or os.environ.get("COMMENT_AUTHOR_ASSOCIATION") != "OWNER"
+          ):
+              raise SystemExit("window approval actor is not the frozen repository owner")
+          if (
+              re.fullmatch(r"[1-9][0-9]*", os.environ.get("APPROVAL_COMMENT_ID", ""))
+              is None
+          ):
+              raise SystemExit("approval comment ID is not a canonical positive decimal")
           if os.environ.get("GITHUB_REF") != "refs/heads/main":
               raise SystemExit("R1b live execution is restricted to main")
           if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
@@ -135,9 +148,6 @@ jobs:
               or str(int(os.environ["GITHUB_RUN_ID"])) != os.environ["GITHUB_RUN_ID"]
           ):
               raise SystemExit("workflow run ID is not a canonical positive decimal")
-          if os.environ.get("DISPATCH_CONFIRM_ONE_SHOT", "").lower() != "true":
-              raise SystemExit("one-shot confirmation is absent")
-
           encoded_receipt = os.environ["RUN_READY_RECEIPT_B64"]
           try:
               receipt_bytes = base64.b64decode(encoded_receipt, validate=True)
@@ -246,6 +256,7 @@ jobs:
           try:
               timeout = int(os.environ["PROVIDER_TIMEOUT_SECONDS"])
               temperature = Decimal(os.environ["PROVIDER_TEMPERATURE"])
+              max_spend_usd = Decimal(os.environ["MAX_SPEND_USD"])
               max_tokens = int(os.environ["PROVIDER_MAX_TOKENS"])
               ttl = int(os.environ["HANDOFF_TTL_SECONDS"])
           except (InvalidOperation, ValueError) as exc:
@@ -254,6 +265,15 @@ jobs:
               raise SystemExit("provider timeout is outside the allowed range")
           if temperature != Decimal("0") or os.environ["PROVIDER_TEMPERATURE"] != "0":
               raise SystemExit("R1b temperature must be exactly zero")
+          if (
+              not max_spend_usd.is_finite()
+              or max_spend_usd <= 0
+              or re.fullmatch(
+                  r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?",
+                  os.environ["MAX_SPEND_USD"],
+              ) is None
+          ):
+              raise SystemExit("R1b maximum spend is not a canonical positive decimal")
           if not (1 <= max_tokens <= 262144):
               raise SystemExit("max token count is outside the allowed range")
           if not (300 <= ttl <= 21600):
@@ -268,17 +288,8 @@ jobs:
           ):
               raise SystemExit("a numeric provider or freshness value is not canonical")
 
-          exact_pairs = (
-              ("DISPATCH_RUN_READY_RECEIPT_SHA256", "RUN_READY_RECEIPT_SHA256"),
-              ("DISPATCH_RUN_ID", "RUN_ID"),
-              ("DISPATCH_EVALUATION_RUN_ID", "EVALUATION_RUN_ID"),
-              ("DISPATCH_HANDOFF_ID", "APPROVED_HANDOFF_ID"),
-              ("DISPATCH_AUTHORIZATION_ID", "AUTHORIZATION_ID"),
-          )
-          if any(os.environ.get(left) != os.environ.get(right) for left, right in exact_pairs):
-              raise SystemExit("dispatch does not match the protected one-shot authorization")
           if os.environ.get("GITHUB_SHA") != os.environ["EXECUTION_HEAD_SHA"]:
-              raise SystemExit("dispatch head does not match the fresh preflight")
+              raise SystemExit("default-branch head does not match the fresh preflight")
 
           workflow_path = ".github/workflows/b2_blind_handoff_v5_live.yml"
           if os.environ.get("GITHUB_REPOSITORY") != "aerenkolstein-code/llm-evaluation-lab":
@@ -290,9 +301,12 @@ jobs:
               raise SystemExit("R1b execution is not using the reviewed workflow on main")
 
           expected_receipt = {
+              "approval_channel": "chat-window-control-issue",
+              "approval_schema_version": "b2-r1b-window-approval/v1",
               "authorization_id": os.environ["AUTHORIZATION_ID"],
               "automatic_retries": 0,
               "bridge_main_sha": os.environ["BRIDGE_MAIN_SHA"],
+              "control_issue_number": 47,
               "context_bytes": int(os.environ["EXPECTED_CONTEXT_BYTES"]),
               "context_sha256": os.environ["EXPECTED_CONTEXT_SHA256"],
               "evaluation_run_id": os.environ["EVALUATION_RUN_ID"],
@@ -301,6 +315,7 @@ jobs:
               "handoff_id": os.environ["APPROVED_HANDOFF_ID"],
               "handoff_ttl_seconds": ttl,
               "max_provider_attempts": 1,
+              "max_spend_usd": os.environ["MAX_SPEND_USD"],
               "mode": "live",
               "prompt_bytes": int(os.environ["EXPECTED_PROMPT_BYTES"]),
               "prompt_sha256": os.environ["EXPECTED_PROMPT_SHA256"],
@@ -316,11 +331,11 @@ jobs:
               "repository": os.environ["GITHUB_REPOSITORY"],
               "requested_model_id": os.environ["REQUESTED_MODEL_ID"],
               "run_id": os.environ["RUN_ID"],
-              "schema_version": "b2-r1b-run-ready/v3",
-              "trigger_event": "workflow_dispatch",
+              "schema_version": "b2-r1b-run-ready/v4",
+              "trigger_event": "issue_comment",
               "workflow_path": workflow_path,
               "workflow_run_attempt": 1,
-              "work_order": "WO-B2-BLIND-R1B-COMPAT-01 v0.1",
+              "work_order": "WO-B2-BLIND-R1B-WINDOW-CONTROL-01 v0.1",
           }
           expected_receipt_bytes = json.dumps(
               expected_receipt,
@@ -336,8 +351,85 @@ jobs:
               raise SystemExit("R1b thinking mode must be explicitly disabled")
           if reasoning_effort is not None:
               raise SystemExit("R1b disabled thinking requires null reasoning effort")
+
+          try:
+              approval_comment_bytes = os.environ["APPROVAL_COMMENT_BODY"].encode("ascii")
+              approval_comment = json.loads(
+                  approval_comment_bytes.decode("ascii"),
+                  object_pairs_hook=reject_duplicate_keys,
+                  parse_constant=reject_nonfinite,
+              )
+          except (UnicodeEncodeError, ValueError) as exc:
+              raise SystemExit("window approval is not strict ASCII JSON") from exc
+          expected_approval = {
+              "approval_type": "B2-R1B-WINDOW-APPROVAL",
+              "authorization_id": os.environ["AUTHORIZATION_ID"],
+              "confirm_one_shot": True,
+              "max_spend_usd": os.environ["MAX_SPEND_USD"],
+              "run_ready_receipt_sha256": os.environ["RUN_READY_RECEIPT_SHA256"],
+              "schema_version": "b2-r1b-window-approval/v1",
+          }
+          expected_approval_bytes = json.dumps(
+              expected_approval,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii")
+          if approval_comment != expected_approval or approval_comment_bytes != expected_approval_bytes:
+              raise SystemExit(
+                  "window approval does not exactly match protected canonical state"
+              )
+          approval_comment_sha256 = hashlib.sha256(approval_comment_bytes).hexdigest()
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="ascii") as handle:
+              handle.write(f"approval_comment_id={os.environ['APPROVAL_COMMENT_ID']}\n")
+              handle.write(f"approval_comment_sha256={approval_comment_sha256}\n")
+              handle.write(
+                  f"run_ready_receipt_sha256={os.environ['RUN_READY_RECEIPT_SHA256']}\n"
+              )
           PY
 
+  one-shot-live:
+    name: Protected one-shot live lane
+    needs: window-approval-gate
+    if: needs.window-approval-gate.result == 'success'
+    environment: b2-r1b-live
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - b2-r1b-private
+    timeout-minutes: 180
+    env:
+      APPROVAL_COMMENT_ID: ${{ github.event.comment.id }}
+      APPROVAL_COMMENT_BODY: ${{ github.event.comment.body }}
+      GUARDED_APPROVAL_COMMENT_ID: ${{ needs.window-approval-gate.outputs.approval_comment_id }}
+      GUARDED_APPROVAL_COMMENT_SHA256: ${{ needs.window-approval-gate.outputs.approval_comment_sha256 }}
+      GUARDED_RUN_READY_RECEIPT_SHA256: ${{ needs.window-approval-gate.outputs.run_ready_receipt_sha256 }}
+      EXECUTION_HEAD_SHA: ${{ vars.B2_R1B_EXECUTION_HEAD_SHA }}
+      BRIDGE_MAIN_SHA: ${{ vars.B2_R1B_BRIDGE_MAIN_SHA }}
+      RUN_READY_RECEIPT_SHA256: ${{ vars.B2_R1B_RUN_READY_RECEIPT_SHA256 }}
+      RUN_READY_RECEIPT_B64: ${{ vars.B2_R1B_RUN_READY_RECEIPT_B64 }}
+      AUTHORIZATION_ID: ${{ vars.B2_R1B_AUTHORIZATION_ID }}
+      MAX_SPEND_USD: ${{ vars.B2_R1B_MAX_SPEND_USD }}
+      RUN_ID: ${{ vars.B2_R1B_RUN_ID }}
+      APPROVED_HANDOFF_ID: ${{ vars.B2_R1B_HANDOFF_ID }}
+      EVALUATION_RUN_ID: ${{ vars.B2_R1B_EVALUATION_RUN_ID }}
+      EXPECTED_CONTEXT_SHA256: ${{ vars.B2_R1B_CONTEXT_SHA256 }}
+      EXPECTED_CONTEXT_BYTES: ${{ vars.B2_R1B_CONTEXT_BYTES }}
+      EXPECTED_PROMPT_SHA256: ${{ vars.B2_R1B_PROMPT_SHA256 }}
+      EXPECTED_PROMPT_BYTES: ${{ vars.B2_R1B_PROMPT_BYTES }}
+      PROVIDER_LABEL: ${{ vars.B2_R1B_PROVIDER_LABEL }}
+      PROVIDER_PROTOCOL: ${{ vars.B2_R1B_PROVIDER_PROTOCOL }}
+      REQUESTED_MODEL_ID: ${{ vars.B2_R1B_REQUESTED_MODEL_ID }}
+      PROVIDER_ENDPOINT: ${{ vars.B2_R1B_PROVIDER_ENDPOINT }}
+      PROVIDER_TIMEOUT_SECONDS: ${{ vars.B2_R1B_TIMEOUT_SECONDS }}
+      PROVIDER_TEMPERATURE: ${{ vars.B2_R1B_TEMPERATURE }}
+      PROVIDER_MAX_TOKENS: ${{ vars.B2_R1B_MAX_TOKENS }}
+      PROVIDER_THINKING_MODE: ${{ vars.B2_R1B_THINKING_MODE }}
+      PROVIDER_REASONING_EFFORT_JSON: ${{ vars.B2_R1B_REASONING_EFFORT_JSON }}
+      HANDOFF_TTL_SECONDS: ${{ vars.B2_R1B_HANDOFF_TTL_SECONDS }}
+
+    steps:
       - name: Atomically consume the durable one-shot authorization claim
         run: |
           set -euo pipefail
@@ -400,6 +492,39 @@ jobs:
           ).encode("ascii") != receipt_bytes:
               raise SystemExit("RUN-READY receipt lost canonical form before authorization claim")
 
+          approval_comment_id_text = os.environ.get("APPROVAL_COMMENT_ID", "")
+          if re.fullmatch(r"[1-9][0-9]*", approval_comment_id_text) is None:
+              raise SystemExit("approval comment ID changed before authorization claim")
+          approval_comment_id = int(approval_comment_id_text)
+          try:
+              approval_comment_bytes = os.environ["APPROVAL_COMMENT_BODY"].encode("ascii")
+          except UnicodeEncodeError as exc:
+              raise SystemExit("approval comment changed before authorization claim") from exc
+          expected_approval = {
+              "approval_type": "B2-R1B-WINDOW-APPROVAL",
+              "authorization_id": run_ready["authorization_id"],
+              "confirm_one_shot": True,
+              "max_spend_usd": run_ready["max_spend_usd"],
+              "run_ready_receipt_sha256": receipt_digest,
+              "schema_version": "b2-r1b-window-approval/v1",
+          }
+          if approval_comment_bytes != json.dumps(
+              expected_approval,
+              ensure_ascii=True,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("ascii"):
+              raise SystemExit("approval comment changed before authorization claim")
+          approval_comment_digest = hashlib.sha256(approval_comment_bytes).hexdigest()
+          if (
+              os.environ.get("GUARDED_APPROVAL_COMMENT_ID") != approval_comment_id_text
+              or os.environ.get("GUARDED_APPROVAL_COMMENT_SHA256")
+              != approval_comment_digest
+              or os.environ.get("GUARDED_RUN_READY_RECEIPT_SHA256") != receipt_digest
+              or os.environ.get("RUN_READY_RECEIPT_SHA256") != receipt_digest
+          ):
+              raise SystemExit("public-safe approval gate binding changed before claim")
+
           workflow_run_id = os.environ["GITHUB_RUN_ID"]
           workflow_run_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
           run_identity = {
@@ -416,6 +541,8 @@ jobs:
               ).encode("ascii")
           ).hexdigest()
           claim = {
+              "approval_comment_id": approval_comment_id,
+              "approval_comment_sha256": approval_comment_digest,
               "authorization_id": run_ready["authorization_id"],
               "bridge_main_sha": run_ready["bridge_main_sha"],
               "evaluation_run_id": run_ready["evaluation_run_id"],
@@ -426,7 +553,7 @@ jobs:
               "run_id": run_ready["run_id"],
               "run_identity_sha256": run_identity_digest,
               "run_ready_receipt_sha256": receipt_digest,
-              "schema_version": "b2-r1b-one-shot-claim/v1",
+              "schema_version": "b2-r1b-one-shot-claim/v2",
               "workflow_path": run_ready["workflow_path"],
               "workflow_run_attempt": workflow_run_attempt,
               "workflow_run_id": workflow_run_id,
@@ -438,7 +565,7 @@ jobs:
               separators=(",", ":"),
           ).encode("ascii")
           authorization_index = "authorization-" + hashlib.sha256(
-              ("b2-r1b-one-shot/v1\0" + run_ready["authorization_id"]).encode("ascii")
+              ("b2-r1b-one-shot/v2\0" + run_ready["authorization_id"]).encode("ascii")
           ).hexdigest() + ".json"
           run_identity_index = "run-identity-" + run_identity_digest + ".json"
           claim_digest = hashlib.sha256(claim_bytes).hexdigest()
@@ -450,6 +577,8 @@ jobs:
           lock_fd = None
 
           claim_keys = {
+              "approval_comment_id",
+              "approval_comment_sha256",
               "authorization_id",
               "bridge_main_sha",
               "evaluation_run_id",
@@ -510,8 +639,14 @@ jobs:
                       sort_keys=True,
                       separators=(",", ":"),
                   ).encode("ascii") != entry_bytes
-                  or existing.get("schema_version") != "b2-r1b-one-shot-claim/v1"
+                  or existing.get("schema_version") != "b2-r1b-one-shot-claim/v2"
                   or existing.get("receipt_type") != "R1B-ONE-SHOT-AUTHORIZATION-CLAIM"
+                  or not isinstance(existing.get("approval_comment_id"), int)
+                  or isinstance(existing.get("approval_comment_id"), bool)
+                  or existing["approval_comment_id"] <= 0
+                  or re.fullmatch(
+                      r"[0-9a-f]{64}", existing.get("approval_comment_sha256", "")
+                  ) is None
                   or existing.get("workflow_run_attempt") != 1
                   or not isinstance(existing.get("workflow_run_id"), str)
                   or re.fullmatch(r"[1-9][0-9]*", existing["workflow_run_id"]) is None
@@ -534,7 +669,7 @@ jobs:
                   raise SystemExit("durable one-shot ledger contains an invalid claim")
               existing_claim_digest = hashlib.sha256(entry_bytes).hexdigest()
               expected_authorization_index = "authorization-" + hashlib.sha256(
-                  ("b2-r1b-one-shot/v1\0" + existing["authorization_id"]).encode("ascii")
+                  ("b2-r1b-one-shot/v2\0" + existing["authorization_id"]).encode("ascii")
               ).hexdigest() + ".json"
               valid_entry_names = {
                   "claim-" + existing_claim_digest + ".json",
@@ -631,6 +766,8 @@ jobs:
               os.close(directory_fd)
 
           bound = {
+              "BOUND_APPROVAL_COMMENT_ID": approval_comment_id,
+              "BOUND_APPROVAL_COMMENT_SHA256": approval_comment_digest,
               "BOUND_AUTHORIZATION_ID": run_ready["authorization_id"],
               "BOUND_BRIDGE_MAIN_SHA": run_ready["bridge_main_sha"],
               "BOUND_CONTEXT_BYTES": run_ready["context_bytes"],
@@ -783,7 +920,7 @@ jobs:
           ).encode("ascii") != receipt_bytes:
               raise SystemExit("RUN-READY receipt lost canonical form after preflight")
           authorization_index = "authorization-" + hashlib.sha256(
-              ("b2-r1b-one-shot/v1\0" + run_ready["authorization_id"]).encode("ascii")
+              ("b2-r1b-one-shot/v2\0" + run_ready["authorization_id"]).encode("ascii")
           ).hexdigest() + ".json"
           run_identity_digest = hashlib.sha256(
               json.dumps(
@@ -810,7 +947,12 @@ jobs:
               raise SystemExit("durable one-shot claim changed after consumption")
           claim = json.loads(claim_bytes.decode("ascii"))
           if (
-              claim.get("authorization_id") != run_ready["authorization_id"]
+              claim.get("schema_version") != "b2-r1b-one-shot-claim/v2"
+              or claim.get("approval_comment_id")
+              != int(os.environ["BOUND_APPROVAL_COMMENT_ID"])
+              or claim.get("approval_comment_sha256")
+              != os.environ["BOUND_APPROVAL_COMMENT_SHA256"]
+              or claim.get("authorization_id") != run_ready["authorization_id"]
               or claim.get("run_id") != run_ready["run_id"]
               or claim.get("evaluation_run_id") != run_ready["evaluation_run_id"]
               or claim.get("handoff_id") != run_ready["handoff_id"]
@@ -1194,6 +1336,8 @@ jobs:
             printf -- '- evaluation run: `%s`\n' "$BOUND_EVALUATION_RUN_ID"
             printf -- '- handoff: `%s`\n' "$HANDOFF_ID"
             printf -- '- workflow run: `%s`\n' "$BOUND_WORKFLOW_RUN_ID"
+            printf -- '- approval comment: `%s`\n' "$BOUND_APPROVAL_COMMENT_ID"
+            printf -- '- approval comment SHA-256: `%s`\n' "$BOUND_APPROVAL_COMMENT_SHA256"
             printf -- '- execution head: `%s`\n' "$BOUND_EXECUTION_HEAD_SHA"
             printf -- '- one-shot authorization claim: `CONSUMED`\n'
             printf -- '- terminal status: `%s`\n' "$terminal_status"

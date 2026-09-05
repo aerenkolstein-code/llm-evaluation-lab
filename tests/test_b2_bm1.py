@@ -8,7 +8,6 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-import b2.bm1 as bm1_mod
 from b2.bm1 import (
     APPROVED_PATHS, BM1AuthorizationError, BM1ContractError, BM1GlobalStop, BM1Runner,
     CLAIM_STORE_STORAGE_KIND, CONTROL_CASE_ID, FileAttemptClaimStore, FileRawEvidenceSink,
@@ -173,6 +172,17 @@ class Clock:
     def __call__(self): return self.value
 
 
+class ExpiringClaimStore(FileAttemptClaimStore):
+    def __init__(self, directory, *, store_id, clock):
+        super().__init__(directory, store_id=store_id)
+        self.clock = clock
+
+    def claim(self, *, claim):
+        checked = super().claim(claim=claim)
+        self.clock.value = EXPIRED_NOW
+        return checked
+
+
 class FailingSink(InMemoryRawEvidenceSink):
     def write(self, **kwargs): raise OSError("synthetic")
 
@@ -286,31 +296,64 @@ class BM1LiveTests(unittest.TestCase):
         with self.assertRaises(BM1AuthorizationError):
             validate_live_authorization(self.auth, manifest=self.manifest, execution_commit_sha=EXECUTION_COMMIT, execution_tree_sha=EXECUTION_TREE, run_ready_receipt=self.rr, authority_verifier=RejectVerifier(), now=FIXED_NOW)
 
-    def test_direct_transport_and_forged_capability_zero_opener(self):
+    def test_direct_transport_and_separate_network_helpers_are_fail_closed(self):
         opener = Opener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
         runner = self.runner(opener, Opener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")))
         transport = runner.transports["openai"]
         body = build_openai_request(requested_model_id=OPENAI_REQUESTED_MODEL_ID, prompt=render_case_prompt(self.cases["B2-QA2-R-CONSTRAINT-KB-001"]), max_output_tokens=2000)
         with self.assertRaises(BM1AuthorizationError): transport.call(provider_id="openai", endpoint_id="responses-api:/responses", request_body=body, timeout_seconds=120)
-        a = self.manifest["attempt_plan"][0]; raw = self.rr["raw_bundle_destination"]; claims = self.rr["attempt_claim_store"]
-        forged = bm1_mod._PreparedLiveCall(attempt_id=a["attempt_id"], trial_id=a["trial_id"], sequence=1, provider_id="openai", endpoint_id="responses-api:/responses", requested_model_id=OPENAI_REQUESTED_MODEL_ID, case_id=a["case_id"], request_fingerprint=sha256_json(body), claim_fingerprint="sha256:" + "f" * 64, live_authorization_fingerprint=self.auth["receipt_fingerprint"], run_ready_receipt_fingerprint=self.rr["receipt_fingerprint"], user_authorization_fingerprint=USER_AUTH_FP, raw_bundle_destination_fingerprint=raw["label_fingerprint"], raw_storage_authority_fingerprint=raw["storage_authority_fingerprint"], claim_store_fingerprint=claims["label_fingerprint"], claim_storage_authority_fingerprint=claims["storage_authority_fingerprint"], request_ordinal=1)
-        runner.provider_request_count = 1
-        with self.assertRaises(BM1AuthorizationError): runner._send_live(transport=transport, capability=forged, request_body=body, timeout_seconds=120)
+        for name in ("_claim_and_prepare", "_consume_capability", "_send_live"):
+            self.assertFalse(hasattr(runner, name))
         self.assertEqual(opener.requests, [])
         self.assertEqual(list(Path(self.claim.name).iterdir()), [])
 
-    def test_registered_capability_is_request_and_claim_bound_and_one_shot(self):
+    def test_post_claim_expiry_emits_bound_terminal_receipt_and_blocks_replay(self):
+        clock = Clock(FIXED_NOW)
         opener = Opener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        runner = self.runner(opener, Opener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")))
-        a = self.manifest["attempt_plan"][0]; provider = next(x for x in self.manifest["providers"] if x["provider_id"] == "openai")
-        body = bm1_mod.build_provider_request(provider, render_case_prompt(self.cases[a["case_id"]]))
-        claim, cap = runner._claim_and_prepare(a, runner.transports["openai"], body)
-        self.assertTrue(runner.attempt_claim_store.verify_claim(claim=claim))
-        runner.provider_request_count = 1
-        tampered = copy.deepcopy(body); tampered["model"] = "tampered"
-        with self.assertRaises(BM1AuthorizationError): runner._send_live(transport=runner.transports["openai"], capability=cap, request_body=tampered, timeout_seconds=120)
-        with self.assertRaises(BM1AuthorizationError): runner._send_live(transport=runner.transports["openai"], capability=cap, request_body=body, timeout_seconds=120)
+        store = ExpiringClaimStore(
+            self.claim.name, store_id=CLAIM_STORE_ID, clock=clock,
+        )
+        runner = self.runner(
+            opener,
+            Opener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")),
+            store=store, clock=clock,
+        )
+        attempt_id = self.manifest["attempt_plan"][0]["attempt_id"]
+        with self.assertRaises(BM1AuthorizationError):
+            runner.run_next(attempt_id)
+
+        claim_files = list(Path(self.claim.name).glob("attempt-*.json"))
+        self.assertEqual(len(claim_files), 1)
+        claim = load_json(claim_files[0])
+        self.assertTrue(store.verify_claim(claim=claim))
+        self.assertEqual(len(runner.receipts), 1)
+        receipt = runner.receipts[0]
+        self.assertEqual(
+            (receipt["terminal_status"], receipt["terminal_reason"]),
+            ("ERROR", "LIVE_AUTHORIZATION_STOP"),
+        )
+        self.assertEqual(receipt["provider_terminal_status"], "RUNTIME_ERROR")
+        self.assertIsNone(receipt["provider_http_status"])
+        self.assertEqual(receipt["attempt_claim_fingerprint"], claim["claim_fingerprint"])
+        unsigned_receipt = copy.deepcopy(receipt)
+        unsigned_receipt.pop("receipt_fingerprint")
+        self.assertEqual(receipt["receipt_fingerprint"], sha256_json(unsigned_receipt))
+        self.assertEqual(runner.provider_request_count, 0)
+        self.assertEqual(runner.global_stop_reason, "LIVE_AUTHORIZATION_STOP")
         self.assertEqual(opener.requests, [])
+
+        with self.assertRaises(BM1GlobalStop):
+            runner.run_next(attempt_id)
+        clock.value = FIXED_NOW
+        replay_opener = Opener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        replay_runner = self.runner(
+            replay_opener,
+            Opener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP")),
+            store=self.store(), clock=clock,
+        )
+        with self.assertRaises(BM1AuthorizationError):
+            replay_runner.run_next(attempt_id)
+        self.assertEqual(replay_opener.requests, [])
 
     def test_wrong_raw_directory_same_label_rejected(self):
         opener = Opener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
@@ -365,8 +408,29 @@ class BM1StaticTests(unittest.TestCase):
             if isinstance(node, ast.Import): imported.update(x.name.split(".")[0] for x in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module: imported.add(node.module.split(".")[0])
         self.assertFalse({"requests", "httpx", "aiohttp", "socket"} & imported)
-        for marker in ("os.environ", "os.getenv", "class LiveAuthorityAnchor", "def _send_prepared"):
+        for marker in (
+            "os.environ", "os.getenv", "class LiveAuthorityAnchor",
+            "class _PreparedLiveCall", "def _claim_and_prepare",
+            "def _consume_capability", "def _send_live", "def _send_prepared",
+        ):
             self.assertNotIn(marker, source)
+        parents = {}
+        for parent in ast.walk(tree):
+            for child in ast.iter_child_nodes(parent):
+                parents[child] = parent
+        opener_call_owners = []
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "_opener"
+            ):
+                continue
+            owner = parents.get(node)
+            while owner is not None and not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                owner = parents.get(owner)
+            opener_call_owners.append(None if owner is None else owner.name)
+        self.assertEqual(opener_call_owners, ["run_next"])
         self.assertEqual(APPROVED_PATHS, ("b2/bm1.py", "schemas/bm1_live_smoke_manifest.schema.json", "cases/b2/public-safe/benchmark/bm1-live-smoke-manifest.json", "tests/test_b2_bm1.py", "docs/b2/bm1-live-multi-model.md"))
 
 

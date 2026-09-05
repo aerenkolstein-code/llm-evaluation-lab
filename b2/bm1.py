@@ -2,7 +2,7 @@
 
 Live networking is fail-closed behind an externally supplied authority verifier,
 exact RUN-READY storage Authority, durable pre-call claims, durable replay evidence,
-and a runner-registered one-shot network capability.
+and one canonical ``BM1Runner.run_next()`` transaction.
 """
 from __future__ import annotations
 
@@ -164,41 +164,6 @@ class NormalizedProviderResponse:
     input_tokens: int | None
     output_tokens: int | None
     error_class: str | None = None
-
-
-class _PreparedLiveCall:
-    """Opaque-by-identity runner registration record.
-
-    Structural similarity is insufficient: BM1Runner stores the exact object in
-    an internal registry and atomically removes it before any opener invocation.
-    """
-
-    __slots__ = (
-        "attempt_id", "trial_id", "sequence", "provider_id", "endpoint_id",
-        "requested_model_id", "case_id", "request_fingerprint",
-        "claim_fingerprint", "live_authorization_fingerprint",
-        "run_ready_receipt_fingerprint", "user_authorization_fingerprint",
-        "raw_bundle_destination_fingerprint",
-        "raw_storage_authority_fingerprint", "claim_store_fingerprint",
-        "claim_storage_authority_fingerprint", "request_ordinal",
-    )
-
-    def __init__(
-        self, *, attempt_id: str, trial_id: str, sequence: int,
-        provider_id: str, endpoint_id: str, requested_model_id: str,
-        case_id: str, request_fingerprint: str, claim_fingerprint: str,
-        live_authorization_fingerprint: str,
-        run_ready_receipt_fingerprint: str,
-        user_authorization_fingerprint: str,
-        raw_bundle_destination_fingerprint: str,
-        raw_storage_authority_fingerprint: str,
-        claim_store_fingerprint: str,
-        claim_storage_authority_fingerprint: str,
-        request_ordinal: int,
-    ) -> None:
-        for name, value in locals().copy().items():
-            if name != "self":
-                setattr(self, name, value)
 
 
 def _now() -> datetime:
@@ -1322,7 +1287,6 @@ class BM1Runner:
         self.authority_verifier = authority_verifier
         self.execution_commit_sha = execution_commit_sha
         self.execution_tree_sha = execution_tree_sha
-        self._prepared: dict[int, tuple[_PreparedLiveCall, dict[str, Any]]] = {}
 
         flags = {provider_id: bool(getattr(transport, "is_live", False)) for provider_id, transport in self.transports.items()}
         live = any(flags.values())
@@ -1408,126 +1372,6 @@ class BM1Runner:
         ):
             raise BM1AuthorizationError("live durable storage Authority gate lost")
 
-    def _claim_and_prepare(
-        self, attempt: Mapping[str, Any], transport: ProviderTransport,
-        request_body: Mapping[str, Any],
-    ) -> tuple[Mapping[str, Any], _PreparedLiveCall | None]:
-        live = getattr(transport, "is_live", False)
-        if live:
-            self._revalidate_live()
-            self._live_storage_gate()
-        claim = self.attempt_claim_store.claim(claim=build_attempt_claim(
-            manifest=self.manifest, attempt=attempt,
-            live_authorization=self.live_authorization if live else None,
-            request_body=request_body,
-        ))
-        if not live:
-            return claim, None
-        if not self.attempt_claim_store.verify_claim(claim=claim):
-            raise BM1GlobalStop("durable claim verification failed before capability registration")
-        provider = _provider(self.manifest, attempt["provider_id"])
-        capability = _PreparedLiveCall(
-            attempt_id=attempt["attempt_id"], trial_id=attempt["trial_id"],
-            sequence=attempt["sequence"], provider_id=attempt["provider_id"],
-            endpoint_id=provider["endpoint_id"], requested_model_id=attempt["requested_model_id"],
-            case_id=attempt["case_id"], request_fingerprint=sha256_json(request_body),
-            claim_fingerprint=claim["claim_fingerprint"],
-            live_authorization_fingerprint=self.live_authorization["receipt_fingerprint"],
-            run_ready_receipt_fingerprint=self.run_ready_receipt["receipt_fingerprint"],
-            user_authorization_fingerprint=self.live_authorization["user_authorization_fingerprint"],
-            raw_bundle_destination_fingerprint=self.live_authorization["raw_bundle_destination_fingerprint"],
-            raw_storage_authority_fingerprint=self.live_authorization["raw_storage_authority_fingerprint"],
-            claim_store_fingerprint=self.live_authorization["attempt_claim_store_fingerprint"],
-            claim_storage_authority_fingerprint=self.live_authorization["claim_storage_authority_fingerprint"],
-            request_ordinal=self.provider_request_count + 1,
-        )
-        self._prepared[id(capability)] = (
-            capability,
-            {
-                "claim": deepcopy(dict(claim)),
-                "request_fingerprint": sha256_json(request_body),
-                "attempt_id": attempt["attempt_id"], "trial_id": attempt["trial_id"],
-                "sequence": attempt["sequence"], "provider_id": attempt["provider_id"],
-                "endpoint_id": provider["endpoint_id"],
-                "requested_model_id": attempt["requested_model_id"],
-                "case_id": attempt["case_id"],
-                "request_ordinal": self.provider_request_count + 1,
-            },
-        )
-        return claim, capability
-
-    def _consume_capability(
-        self, capability: _PreparedLiveCall, request_body: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        entry = self._prepared.pop(id(capability), None)
-        if entry is None or entry[0] is not capability:
-            raise BM1AuthorizationError("prepared live capability was not runner-registered or was already consumed")
-        expected = entry[1]
-        if (
-            capability.attempt_id != expected["attempt_id"]
-            or capability.trial_id != expected["trial_id"]
-            or capability.sequence != expected["sequence"]
-            or capability.provider_id != expected["provider_id"]
-            or capability.endpoint_id != expected["endpoint_id"]
-            or capability.requested_model_id != expected["requested_model_id"]
-            or capability.case_id != expected["case_id"]
-            or capability.request_fingerprint != expected["request_fingerprint"]
-            or sha256_json(request_body) != expected["request_fingerprint"]
-            or capability.request_ordinal != expected["request_ordinal"]
-            or self.provider_request_count != expected["request_ordinal"]
-            or len(self.receipts) + 1 != expected["sequence"]
-        ):
-            raise BM1AuthorizationError("prepared live capability exact request/order binding mismatch")
-        claim = expected["claim"]
-        if capability.claim_fingerprint != claim.get("claim_fingerprint"):
-            raise BM1AuthorizationError("prepared live capability claim mismatch")
-        if claim.get("request_fingerprint") != expected["request_fingerprint"]:
-            raise BM1AuthorizationError("durable claim/request fingerprint mismatch")
-        if not self.attempt_claim_store.verify_claim(claim=claim):
-            raise BM1AuthorizationError("prepared capability has no matching durable claim")
-        if (
-            capability.live_authorization_fingerprint != self.live_authorization["receipt_fingerprint"]
-            or capability.run_ready_receipt_fingerprint != self.run_ready_receipt["receipt_fingerprint"]
-            or capability.user_authorization_fingerprint != self.live_authorization["user_authorization_fingerprint"]
-            or capability.raw_bundle_destination_fingerprint != self.live_authorization["raw_bundle_destination_fingerprint"]
-            or capability.raw_storage_authority_fingerprint != self.live_authorization["raw_storage_authority_fingerprint"]
-            or capability.claim_store_fingerprint != self.live_authorization["attempt_claim_store_fingerprint"]
-            or capability.claim_storage_authority_fingerprint != self.live_authorization["claim_storage_authority_fingerprint"]
-        ):
-            raise BM1AuthorizationError("prepared capability Authority binding mismatch")
-        return claim
-
-    def _send_live(
-        self, *, transport: _AuthorizedHTTPTransport,
-        capability: _PreparedLiveCall, request_body: Mapping[str, Any],
-        timeout_seconds: int,
-    ) -> Mapping[str, Any]:
-        self._consume_capability(capability, request_body)
-        self._revalidate_live()
-        self._live_storage_gate()
-        transport.revalidate()
-        assert_public_safe(request_body)
-        request = urllib_request.Request(
-            transport.url,
-            data=canonical_json(request_body).encode("utf-8"),
-            headers=dict(transport.headers()),
-            method="POST",
-        )
-        try:
-            response = transport._opener(request, timeout=timeout_seconds)
-            with response:
-                status = getattr(response, "status", None)
-                if not isinstance(status, int):
-                    status = response.getcode()
-                body = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
-                return _decode_json(body, int(status))
-        except urllib_error.HTTPError as exc:
-            result = dict(_decode_json(exc.read(MAX_PROVIDER_RESPONSE_BYTES + 1), int(exc.code)))
-            result.setdefault("error", {"type": "HTTP_ERROR", "status": int(exc.code)})
-            return result
-        except urllib_error.URLError as exc:
-            raise ConnectionError("provider network request failed") from exc
-
     def run_next(self, attempt_id: str) -> dict[str, Any]:
         if self.global_stop_reason:
             raise BM1GlobalStop(self.global_stop_reason)
@@ -1551,17 +1395,81 @@ class BM1Runner:
         if actual + remaining > MAX_TOTAL_SMOKE_SPEND_USD + 1e-12:
             self.global_stop_reason = "COST_CEILING_GUARD"
             raise BM1GlobalStop("worst-case cost exceeds ceiling")
-        claim, capability = self._claim_and_prepare(attempt, transport, body)
         started = self.now_fn()
+        live = bool(getattr(transport, "is_live", False))
+        if live:
+            self._revalidate_live()
+            self._live_storage_gate()
+        claim = self.attempt_claim_store.claim(claim=build_attempt_claim(
+            manifest=self.manifest, attempt=attempt,
+            live_authorization=self.live_authorization if live else None,
+            request_body=body,
+        ))
         raw: Mapping[str, Any] | None = None
         error_class: str | None = None
+
+        if live:
+            try:
+                # This final gate, request construction, and the opener invocation
+                # intentionally live in the same canonical run_next transaction.
+                # There is no separately callable prepare/consume/send helper.
+                if not self.attempt_claim_store.verify_claim(claim=claim):
+                    raise BM1AuthorizationError(
+                        "durable claim verification failed before provider boundary"
+                    )
+                self._revalidate_live()
+                self._live_storage_gate()
+                transport.revalidate()
+                if (
+                    claim.get("attempt_id") != attempt["attempt_id"]
+                    or claim.get("request_fingerprint") != sha256_json(body)
+                    or not self.attempt_claim_store.verify_claim(claim=claim)
+                ):
+                    raise BM1AuthorizationError("durable claim lost exact attempt/request binding")
+                assert_public_safe(body)
+                request = urllib_request.Request(
+                    transport.url,
+                    data=canonical_json(body).encode("utf-8"),
+                    headers=dict(transport.headers()),
+                    method="POST",
+                )
+            except BM1AuthorizationError:
+                self.global_stop_reason = "LIVE_AUTHORIZATION_STOP"
+                self._append(
+                    attempt, provider, case, body, None, None, claim, None, started,
+                    "ERROR", "LIVE_AUTHORIZATION_STOP", "RUNTIME_ERROR",
+                    "BM1AuthorizationError",
+                )
+                raise
+            except Exception as exc:
+                self.global_stop_reason = "LIVE_PRE_PROVIDER_STOP"
+                self._append(
+                    attempt, provider, case, body, None, None, claim, None, started,
+                    "ERROR", "LIVE_PRE_PROVIDER_STOP", "RUNTIME_ERROR",
+                    type(exc).__name__,
+                )
+                raise BM1GlobalStop("live pre-provider preparation failed") from exc
+
         try:
             self.provider_request_count += 1
-            if getattr(transport, "is_live", False):
-                candidate = self._send_live(
-                    transport=transport, capability=capability,
-                    request_body=body, timeout_seconds=TIMEOUT_SECONDS,
-                )
+            if live:
+                try:
+                    response = transport._opener(request, timeout=TIMEOUT_SECONDS)
+                    with response:
+                        status = getattr(response, "status", None)
+                        if not isinstance(status, int):
+                            status = response.getcode()
+                        response_body = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
+                        candidate = _decode_json(response_body, int(status))
+                except urllib_error.HTTPError as exc:
+                    candidate = dict(_decode_json(
+                        exc.read(MAX_PROVIDER_RESPONSE_BYTES + 1), int(exc.code),
+                    ))
+                    candidate.setdefault(
+                        "error", {"type": "HTTP_ERROR", "status": int(exc.code)},
+                    )
+                except urllib_error.URLError as exc:
+                    raise ConnectionError("provider network request failed") from exc
             else:
                 candidate = transport.call(
                     provider_id=provider["provider_id"], endpoint_id=provider["endpoint_id"],

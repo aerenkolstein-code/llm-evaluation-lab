@@ -1,6 +1,6 @@
 # BM1 — Live Multi-Model Harness + Provenance Smoke
 
-**Status:** P2 offline implementation / Pre-Live IQA Round 2 repair candidate. This document authorizes no credential lookup, authenticated provider request, live execution, spend, merge, RUN-READY, BM2 result, ranking, or release.
+**Status:** P2 offline implementation / Pre-Live IQA Round 3 repair candidate. This document authorizes no credential lookup, authenticated provider request, live execution, spend, merge, RUN-READY, BM2 result, ranking, or release.
 
 BM1 carries the frozen BM0 E11 TARGET/CONTROL measurement object across OpenAI and Google provider protocols while preserving model identity, request/response provenance, durable raw evidence, scorer replay, one-shot semantics, and typed failure boundaries. The objective is evidence integrity, not model ranking.
 
@@ -29,17 +29,25 @@ The wrapper emits deterministic JSON. TARGET expects `DECLINE_CONFLICTING_ASSIST
 
 Attempt order remains exactly OpenAI TARGET, OpenAI CONTROL, Google TARGET, Google CONTROL. Limits remain four planned requests, zero automatic retries, one provider request per attempt, 8,000 input tokens, 2,000 output tokens, 120 seconds, zero fallback/model substitution, second provider-local error as global stop, and USD 0.20 as a future ceiling rather than spending authority.
 
-## 3. Round 2 repair: network capability is identity-registered and claim-bound
+## 3. Round 3 repair: one canonical live transaction
 
-The provider transport no longer owns any internal callable send method. Its public `call()` remains fail-closed. The actual `urllib` opener invocation exists only inside `BM1Runner._send_live()`.
+The provider transport owns no callable send method and its public `call()` remains fail-closed. `_PreparedLiveCall`, the runner registration map, and the separately callable `_claim_and_prepare()`, `_consume_capability()`, and `_send_live()` paths are removed.
 
-For a live attempt, the runner first revalidates external authority and storage bindings, writes the exact durable attempt claim, reads the claim back, and verifies it. Only then does it create `_PreparedLiveCall` and place the **exact object identity** in a runner-private registration map together with the canonical attempt/trial/sequence/provider/endpoint/requested-model/case/request-fingerprint/claim/request-ordinal record.
+The actual `urllib` opener invocation now appears only inside `BM1Runner.run_next()`. That single transaction selects the exact current manifest attempt from `len(receipts)`, verifies the caller-supplied attempt ID, constructs the canonical request, enforces the four-attempt/request and worst-case cost ceilings, revalidates authority and storage, writes and reads back the exact durable claim, and then repeats the authority/storage/claim checks immediately before constructing the HTTP request and reaching the opener.
 
-Before network send, the runner atomically removes that exact capability object from its registry. A structurally identical forged object is rejected. The consumed capability must match the canonical request fingerprint, requested model, case, sequence and request ordinal, and its claim must still be present byte-for-byte in the durable claim store. Request-body mutation, claim substitution, capability reuse, or direct transport invocation therefore fails before the opener.
+There is consequently no harness helper that a caller can invoke to prepare or send a caller-supplied attempt outside the canonical sequence, and no capability or counter combination that can reconnect such a helper to the opener. A static AST regression requires every opener call site in this module to be owned by `run_next()` and rejects reintroduction of the removed helper/class names. Python callers can always ignore BM1 and invoke a networking library themselves; the machine-enforced claim concerns the BM1 live execution surface, not arbitrary hostile code outside the harness.
 
-This is the R2-1 closure. Python callers can always ignore BM1 and invoke a networking library themselves; the machine-enforced claim concerns the BM1 live execution surface, not arbitrary hostile code outside the harness.
+This is the R3-1 closure.
 
-## 4. Round 2 repair: external authority verifier, not a self-minted SHA anchor
+## 4. Round 3 repair: every committed claim receives a terminal account
+
+The durable claim is still exclusive-created, file-`fsync`ed, directory-`fsync`ed, and read back before provider traffic. Once that commit/readback succeeds, every later pre-provider failure is terminally accounted.
+
+If final live-authorization, external-verifier, storage-Authority, or exact claim/request revalidation fails, `run_next()` appends an immutable `ERROR / LIVE_AUTHORIZATION_STOP` public receipt with `provider_terminal_status=RUNTIME_ERROR`, `provider_http_status=null`, and the exact durable `attempt_claim_fingerprint`. It then sets the global stop and re-raises the authorization error. Other post-claim request-construction failures close as `ERROR / LIVE_PRE_PROVIDER_STOP` before raising a global stop. In both cases the provider request counter and opener count remain zero, while the durable claim prevents restart/retry reuse.
+
+This is the R3-2 closure.
+
+## 5. Round 2 repair: external authority verifier, not a self-minted SHA anchor
 
 `LiveAuthorityAnchor` is removed. BM1 provides no concrete self-mintable trust object.
 
@@ -55,7 +63,7 @@ The repository contains only the verifier interface; production trust-source imp
 
 This is the R2-2 closure.
 
-## 5. Round 2 repair: exact durable claim-store Authority is frozen by RUN-READY
+## 6. Round 2 repair: exact durable claim-store Authority is frozen by RUN-READY
 
 RUN-READY advances to `b2-bm1-run-ready/v2`. It now freezes both storage Authorities:
 
@@ -70,7 +78,7 @@ A restart using the same authorization and attempt IDs but a different empty cla
 
 This is the R2-3 closure.
 
-## 6. Round 2 repair: raw evidence binds actual storage, not caller label
+## 7. Round 2 repair: raw evidence binds actual storage, not caller label
 
 `FileRawEvidenceSink(directory, destination_id=...)` independently derives:
 
@@ -83,26 +91,27 @@ For a called attempt, the durable raw file is exclusive-created, file-`fsync`ed,
 
 This is the R2-4 closure.
 
-## 7. Authority and expiry chain
+## 8. Authority and expiry chain
 
 A later live admission must therefore satisfy one single chain:
 
-`external AuthorityVerifier` → exact RUN-READY v2 → exact live authorization v3 → exact execution commit/tree → exact four attempt IDs/limits → exact raw-storage Authority + exact claim-store Authority → durable claim v3 with exact request fingerprint → runner-registered one-shot capability → provider send → durable raw evidence → replay.
+`external AuthorityVerifier` → exact RUN-READY v2 → exact live authorization v3 → exact execution commit/tree → exact four attempt IDs/limits → exact raw-storage Authority + exact claim-store Authority → canonical `run_next()` selection/request/cost checks → durable claim v3 with exact request fingerprint → final authority/storage/claim revalidation → provider send → durable raw evidence → replay.
 
-Authorization expiry is checked during object construction, immediately before durable claim/capability preparation, and immediately before opener invocation. An authorization that expires after initialization therefore creates neither a new claim nor provider traffic.
+Authorization expiry is checked during object construction, immediately before durable claim creation, and again immediately before opener invocation. Expiry before claim therefore creates neither a claim nor provider traffic. Expiry after a successful claim creates no provider traffic but does create the claim-bound terminal public receipt required for reconciliation.
 
-## 8. Public/private boundary
+## 9. Public/private boundary
 
 Public receipts contain no request body, provider response body, final answer body, reasoning body, credential value, authorization header, raw filesystem path, or private storage locator. They carry fingerprints, byte counts, typed metadata, storage-Authority fingerprints, attempt-claim fingerprint, identity, usage/cost and scorer/oracle provenance.
 
 Secrets exist only in the live transport's credential field and generated network headers. Headers do not enter request fingerprints, raw evidence receipts, public receipts, durable claims, or scorer replay.
 
-## 9. Deterministic verification
+## 10. Deterministic verification
 
-`tests/test_b2_bm1.py` remains provider-free. In addition to the frozen manifest/case/model/path checks, four-attempt offline traversal, identity substitution, first/second-error semantics, no fifth request, evidence failure, token guard, replay/tamper, credential ambiguity and header isolation, the Round 2 repair adds adversarial proofs that:
+`tests/test_b2_bm1.py` remains provider-free. In addition to the frozen manifest/case/model/path checks, four-attempt offline traversal, identity substitution, first/second-error semantics, no fifth request, evidence failure, token guard, replay/tamper, credential ambiguity and header isolation, the repair suite proves that:
 
-- a forged `_PreparedLiveCall` cannot invoke the runner's internal network path;
-- a registered capability cannot be reused or paired with a modified request body;
+- direct transport invocation remains fail-closed and the old prepare/consume/send helper surface does not exist;
+- the only module-owned opener call site is lexically inside `BM1Runner.run_next()`;
+- expiry after durable claim readback yields one typed immutable claim-bound receipt, zero provider/opener calls, global stop, and durable replay denial;
 - a fully self-consistent self-minted RUN-READY/user-auth/live-auth chain is rejected by the independently provisioned verifier;
 - a fresh empty claim directory with the correct claim-store label cannot replay the authorized attempt;
 - a wrong raw directory with the correct raw-destination label cannot pass storage admission;
@@ -111,17 +120,17 @@ Secrets exist only in the live transport's credential field and generated networ
 
 Ordinary repository CI remains offline. No workflow change belongs to this repair.
 
-## 10. Ordered gates
+## 11. Ordered gates
 
 1. P2 offline implementation / repairs inside the exact five paths.
 2. Fresh engineering exact-head verification: focused adversarial tests, full suite, scope/leak check and current-main merge-ref CI.
-3. Distinct Pre-Live Independent QA Round 3 on the sealed repaired head/tree.
+3. Distinct Pre-Live Independent QA Round 4 on the sealed repaired head/tree.
 4. IQA PASS, if obtained, still requires a separate user merge authorization.
 5. Only after guarded merge may RUN-READY refresh provider/model/API/region/pricing, credential presence/type without values, exact external Authority verifier source, exact raw storage and exact claim-store storage.
 6. Actual bounded live execution requires another explicit user authorization and remains limited to the four predeclared attempts with zero retry/fallback/substitution.
 7. Final IQA reconciles all claims, raw evidence, replay, identity, cost and typed terminals.
 
-## 11. Claim ceiling
+## 12. Claim ceiling
 
 BM1 may eventually support the claim that a vendor-neutral live evaluation harness preserved model identity, externally anchored authorization, durable one-shot execution, storage-bound provenance and replayable scoring across two provider protocols on the same frozen public-safe TARGET/CONTROL pair.
 

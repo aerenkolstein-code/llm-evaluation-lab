@@ -1,0 +1,649 @@
+name: B2 Blind Handoff v5 R1b One-Shot Live
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_ready_receipt_sha256:
+        description: Exact SHA-256 of the separately approved R1B-RUN-READY receipt
+        required: true
+        type: string
+      authorization_id:
+        description: Exact one-shot authorization identifier frozen for this run
+        required: true
+        type: string
+      confirm_one_shot:
+        description: Confirm that this dispatch is the separately authorized one-shot run
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b2-blind-r1b-one-shot
+  cancel-in-progress: false
+
+jobs:
+  one-shot-live:
+    name: Protected one-shot live lane
+    environment: b2-r1b-live
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - b2-r1b-private
+    timeout-minutes: 180
+    env:
+      DISPATCH_RUN_READY_RECEIPT_SHA256: ${{ inputs.run_ready_receipt_sha256 }}
+      DISPATCH_AUTHORIZATION_ID: ${{ inputs.authorization_id }}
+      DISPATCH_CONFIRM_ONE_SHOT: ${{ inputs.confirm_one_shot }}
+      EXECUTION_HEAD_SHA: ${{ vars.B2_R1B_EXECUTION_HEAD_SHA }}
+      BRIDGE_MAIN_SHA: ${{ vars.B2_R1B_BRIDGE_MAIN_SHA }}
+      EXPECTED_WORKFLOW_RUN_ID: ${{ vars.B2_R1B_WORKFLOW_RUN_ID }}
+      RUN_READY_RECEIPT_SHA256: ${{ vars.B2_R1B_RUN_READY_RECEIPT_SHA256 }}
+      AUTHORIZATION_ID: ${{ vars.B2_R1B_AUTHORIZATION_ID }}
+      EVALUATION_RUN_ID: ${{ vars.B2_R1B_EVALUATION_RUN_ID }}
+      EXPECTED_CONTEXT_SHA256: ${{ vars.B2_R1B_CONTEXT_SHA256 }}
+      EXPECTED_CONTEXT_BYTES: ${{ vars.B2_R1B_CONTEXT_BYTES }}
+      EXPECTED_PROMPT_SHA256: ${{ vars.B2_R1B_PROMPT_SHA256 }}
+      EXPECTED_PROMPT_BYTES: ${{ vars.B2_R1B_PROMPT_BYTES }}
+      PROVIDER_LABEL: ${{ vars.B2_R1B_PROVIDER_LABEL }}
+      PROVIDER_PROTOCOL: ${{ vars.B2_R1B_PROVIDER_PROTOCOL }}
+      REQUESTED_MODEL_ID: ${{ vars.B2_R1B_REQUESTED_MODEL_ID }}
+      PROVIDER_ENDPOINT: ${{ vars.B2_R1B_PROVIDER_ENDPOINT }}
+      PROVIDER_TIMEOUT_SECONDS: ${{ vars.B2_R1B_TIMEOUT_SECONDS }}
+      PROVIDER_TEMPERATURE: ${{ vars.B2_R1B_TEMPERATURE }}
+      PROVIDER_MAX_TOKENS: ${{ vars.B2_R1B_MAX_TOKENS }}
+      HANDOFF_TTL_SECONDS: ${{ vars.B2_R1B_HANDOFF_TTL_SECONDS }}
+
+    steps:
+      - name: Validate fresh run-ready and one-shot authorization gates
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          from decimal import Decimal, InvalidOperation
+          from urllib.parse import urlsplit
+
+          required = (
+              "EXECUTION_HEAD_SHA",
+              "BRIDGE_MAIN_SHA",
+              "EXPECTED_WORKFLOW_RUN_ID",
+              "RUN_READY_RECEIPT_SHA256",
+              "AUTHORIZATION_ID",
+              "EVALUATION_RUN_ID",
+              "EXPECTED_CONTEXT_SHA256",
+              "EXPECTED_CONTEXT_BYTES",
+              "EXPECTED_PROMPT_SHA256",
+              "EXPECTED_PROMPT_BYTES",
+              "PROVIDER_LABEL",
+              "PROVIDER_PROTOCOL",
+              "REQUESTED_MODEL_ID",
+              "PROVIDER_ENDPOINT",
+              "PROVIDER_TIMEOUT_SECONDS",
+              "PROVIDER_TEMPERATURE",
+              "PROVIDER_MAX_TOKENS",
+              "HANDOFF_TTL_SECONDS",
+          )
+          if any(not os.environ.get(name) for name in required):
+              raise SystemExit("protected R1b preflight configuration is incomplete")
+          if any(
+              any(ord(character) < 32 or ord(character) == 127 for character in os.environ[name])
+              for name in required
+          ):
+              raise SystemExit("protected R1b preflight configuration contains controls")
+          if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+              raise SystemExit("R1b live execution requires manual dispatch")
+          if os.environ.get("GITHUB_REF") != "refs/heads/main":
+              raise SystemExit("R1b live execution is restricted to main")
+          if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
+              raise SystemExit("workflow reruns are disabled for the one-shot lane")
+          if (
+              not os.environ["EXPECTED_WORKFLOW_RUN_ID"].isdigit()
+              or int(os.environ["EXPECTED_WORKFLOW_RUN_ID"]) <= 0
+              or str(int(os.environ["EXPECTED_WORKFLOW_RUN_ID"]))
+              != os.environ["EXPECTED_WORKFLOW_RUN_ID"]
+              or os.environ.get("GITHUB_RUN_ID") != os.environ["EXPECTED_WORKFLOW_RUN_ID"]
+          ):
+              raise SystemExit("workflow run is not the protected one-shot run")
+          if os.environ.get("DISPATCH_CONFIRM_ONE_SHOT", "").lower() != "true":
+              raise SystemExit("one-shot confirmation is absent")
+
+          hex40 = re.compile(r"[0-9a-f]{40}")
+          hex64 = re.compile(r"[0-9a-f]{64}")
+          token = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,127}")
+          run_id = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}")
+          if hex40.fullmatch(os.environ["EXECUTION_HEAD_SHA"]) is None:
+              raise SystemExit("execution head is not an exact commit")
+          if hex40.fullmatch(os.environ["BRIDGE_MAIN_SHA"]) is None:
+              raise SystemExit("bridge main is not an exact commit")
+          for name in (
+              "RUN_READY_RECEIPT_SHA256",
+              "EXPECTED_CONTEXT_SHA256",
+              "EXPECTED_PROMPT_SHA256",
+          ):
+              if hex64.fullmatch(os.environ[name]) is None:
+                  raise SystemExit("an exact SHA-256 preflight binding is invalid")
+          for name in ("AUTHORIZATION_ID", "EVALUATION_RUN_ID", "PROVIDER_LABEL"):
+              if run_id.fullmatch(os.environ[name]) is None:
+                  raise SystemExit("a preflight identifier is invalid")
+          if token.fullmatch(os.environ["REQUESTED_MODEL_ID"]) is None:
+              raise SystemExit("requested model ID violates the strict token policy")
+          if os.environ["PROVIDER_PROTOCOL"] != "openai-compatible-chat-completions/v1":
+              raise SystemExit("provider protocol is not supported by this bridge")
+
+          endpoint = urlsplit(os.environ["PROVIDER_ENDPOINT"])
+          if (
+              endpoint.scheme != "https"
+              or not endpoint.hostname
+              or endpoint.username is not None
+              or endpoint.password is not None
+              or endpoint.query
+              or endpoint.fragment
+          ):
+              raise SystemExit("provider endpoint is not a bounded HTTPS endpoint")
+          try:
+              endpoint.port
+          except ValueError as exc:
+              raise SystemExit("provider endpoint port is invalid") from exc
+
+          for name in ("EXPECTED_CONTEXT_BYTES", "EXPECTED_PROMPT_BYTES"):
+              try:
+                  value = int(os.environ[name])
+              except ValueError as exc:
+                  raise SystemExit("an input byte count is invalid") from exc
+              if value <= 0 or str(value) != os.environ[name]:
+                  raise SystemExit("an input byte count is not canonical")
+          try:
+              timeout = Decimal(os.environ["PROVIDER_TIMEOUT_SECONDS"])
+              temperature = Decimal(os.environ["PROVIDER_TEMPERATURE"])
+              max_tokens = int(os.environ["PROVIDER_MAX_TOKENS"])
+              ttl = int(os.environ["HANDOFF_TTL_SECONDS"])
+          except (InvalidOperation, ValueError) as exc:
+              raise SystemExit("numeric preflight configuration is invalid") from exc
+          if not (Decimal("1") <= timeout <= Decimal("600")):
+              raise SystemExit("provider timeout is outside the allowed range")
+          if temperature != Decimal("0"):
+              raise SystemExit("R1b temperature must be exactly zero")
+          if not (1 <= max_tokens <= 262144):
+              raise SystemExit("max token count is outside the allowed range")
+          if not (300 <= ttl <= 21600):
+              raise SystemExit("handoff TTL is outside the v5.2 freshness range")
+          if str(max_tokens) != os.environ["PROVIDER_MAX_TOKENS"]:
+              raise SystemExit("max token count is not canonical")
+          if str(ttl) != os.environ["HANDOFF_TTL_SECONDS"]:
+              raise SystemExit("handoff TTL is not canonical")
+
+          exact_pairs = (
+              ("DISPATCH_RUN_READY_RECEIPT_SHA256", "RUN_READY_RECEIPT_SHA256"),
+              ("DISPATCH_AUTHORIZATION_ID", "AUTHORIZATION_ID"),
+          )
+          if any(os.environ.get(left) != os.environ.get(right) for left, right in exact_pairs):
+              raise SystemExit("dispatch does not match the protected one-shot authorization")
+          if os.environ.get("GITHUB_SHA") != os.environ["EXECUTION_HEAD_SHA"]:
+              raise SystemExit("dispatch head does not match the fresh preflight")
+          PY
+
+      - name: Check out the exact authorized execution head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Bind execution head to the accepted v5.2 bridge
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD_SHA"
+          git merge-base --is-ancestor "$BRIDGE_MAIN_SHA" "$EXECUTION_HEAD_SHA"
+          test "$(git rev-parse "$BRIDGE_MAIN_SHA:b2/blind_eval.py")" = "$(git hash-object b2/blind_eval.py)"
+          test "$(git rev-parse "$BRIDGE_MAIN_SHA:b2/blind_handoff.py")" = "$(git hash-object b2/blind_handoff.py)"
+
+      - name: Verify the preprovisioned reviewed handoff runtime
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from importlib.metadata import version
+
+          from b2.blind_eval import AUTOMATIC_RETRIES
+          from b2.blind_handoff import PROTOCOL_VERSION
+
+          cryptography_major = int(version("cryptography").split(".", 1)[0])
+          if not 42 <= cryptography_major < 47:
+              raise SystemExit("preprovisioned cryptography version is outside the reviewed range")
+          if PROTOCOL_VERSION != "b2-blind-handoff/v5.2" or AUTOMATIC_RETRIES != 0:
+              raise SystemExit("checked-out runtime is not the reviewed zero-retry v5.2 bridge")
+          PY
+
+      - name: Create isolated run-scoped exchange roots
+        run: |
+          set -euo pipefail
+          test -n "${B2_R1B_EXCHANGE_BASE:-}"
+          printf '::add-mask::%s\n' "$B2_R1B_EXCHANGE_BASE"
+          python - <<'PY'
+          import os
+          import stat
+          from pathlib import Path
+
+          base = Path(os.environ["B2_R1B_EXCHANGE_BASE"]).expanduser()
+          runner_temp = Path(os.environ["RUNNER_TEMP"]).expanduser()
+          for path, label in ((base, "private exchange base"), (runner_temp, "runner temp")):
+              if (
+                  any(ord(character) < 32 or ord(character) == 127 for character in str(path))
+                  or any(item.is_symlink() for item in (path, *path.parents))
+                  or not path.is_absolute()
+                  or not path.is_dir()
+                  or path != path.resolve(strict=True)
+                  or len(path.parts) < 3
+              ):
+                  raise SystemExit(f"{label} is not a real absolute directory")
+          base_mode = base.stat().st_mode
+          if (
+              not base_mode & stat.S_ISGID
+              or base_mode & 0o007
+              or base_mode & 0o070 != 0o070
+          ):
+              raise SystemExit("private exchange base lacks the dedicated setgid-group boundary")
+          suffix = "-".join((
+              os.environ["GITHUB_RUN_ID"],
+              os.environ["GITHUB_RUN_ATTEMPT"],
+              os.environ["GITHUB_SHA"],
+          ))
+          exchange_root = base / suffix
+          runner_root = runner_temp / f"b2-r1b-{suffix}"
+          for root in (exchange_root, runner_root):
+              if root.exists() or root.is_symlink():
+                  raise SystemExit("run-scoped root already exists")
+          exchange_root.mkdir(mode=0o750)
+          exchange_root.chmod(0o2750)
+          runner_root.mkdir(mode=0o700)
+          runner_root.chmod(0o700)
+          (exchange_root / "runner").mkdir(mode=0o750)
+          (exchange_root / "runner").chmod(0o2750)
+          (exchange_root / "private").mkdir(mode=0o770)
+          (exchange_root / "private").chmod(0o2770)
+          if exchange_root.stat().st_gid != base.stat().st_gid:
+              raise SystemExit("run-scoped exchange root did not inherit the private group")
+          handoff_id = f"B2-R1B-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{os.environ['GITHUB_SHA'][:12]}"
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"EXCHANGE_ROOT={exchange_root}\n")
+              handle.write(f"RUNNER_ROOT={runner_root}\n")
+              handle.write(f"HANDOFF_ID={handoff_id}\n")
+          print(f"::add-mask::{exchange_root}")
+          PY
+
+      - name: Generate the run-unique input key and request
+        run: |
+          set -euo pipefail
+          issued_at_unix="$(date +%s)"
+          expires_at_unix="$((issued_at_unix + HANDOFF_TTL_SECONDS))"
+          python -m b2.blind_handoff generate-input-key \
+            --private-key "$RUNNER_ROOT/input-private.pem" \
+            --public-key "$RUNNER_ROOT/input-public.pem" \
+            --fingerprint-output "$RUNNER_ROOT/input-public.sha256" \
+            > "$RUNNER_ROOT/input-key-receipt.json"
+          input_key_sha="$(tr -d '\n' < "$RUNNER_ROOT/input-public.sha256")"
+          test "${#input_key_sha}" -eq 64
+          {
+            printf 'INPUT_KEY_SHA=%s\n' "$input_key_sha"
+            printf 'ISSUED_AT_UNIX=%s\n' "$issued_at_unix"
+            printf 'EXPIRES_AT_UNIX=%s\n' "$expires_at_unix"
+          } >> "$GITHUB_ENV"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          runner_root = Path(os.environ["RUNNER_ROOT"])
+          exchange_runner = Path(os.environ["EXCHANGE_ROOT"]) / "runner"
+          public_key = (runner_root / "input-public.pem").read_bytes()
+          request = {
+              "schema_version": "b2-r1b-live-request/v1",
+              "protocol": "b2-blind-handoff/v5.2",
+              "handoff_id": os.environ["HANDOFF_ID"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": 1,
+              "execution_head_sha": os.environ["EXECUTION_HEAD_SHA"],
+              "bridge_main_sha": os.environ["BRIDGE_MAIN_SHA"],
+              "input_public_key_sha256": hashlib.sha256(public_key).hexdigest(),
+              "context_sha256": os.environ["EXPECTED_CONTEXT_SHA256"],
+              "context_bytes": int(os.environ["EXPECTED_CONTEXT_BYTES"]),
+              "prompt_sha256": os.environ["EXPECTED_PROMPT_SHA256"],
+              "prompt_bytes": int(os.environ["EXPECTED_PROMPT_BYTES"]),
+              "mode": "live",
+              "evaluation_run_id": os.environ["EVALUATION_RUN_ID"],
+              "issued_at_unix": int(os.environ["ISSUED_AT_UNIX"]),
+              "expires_at_unix": int(os.environ["EXPIRES_AT_UNIX"]),
+              "run_ready_receipt_sha256": os.environ["RUN_READY_RECEIPT_SHA256"],
+              "authorization_id": os.environ["AUTHORIZATION_ID"],
+          }
+
+          def create(path: Path, data: bytes, mode: int) -> None:
+              flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+              fd = os.open(path, flags, mode)
+              with os.fdopen(fd, "wb") as handle:
+                  os.fchmod(handle.fileno(), mode)
+                  handle.write(data)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+
+          create(exchange_runner / "input-public.pem", public_key, 0o640)
+          create(
+              exchange_runner / "request.json",
+              (json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+              0o640,
+          )
+          PY
+
+      - name: Wait for and accept the exact encrypted input payload
+        run: |
+          set -euo pipefail
+          python - "$EXCHANGE_ROOT/private/payload.json" "$EXPIRES_AT_UNIX" <<'PY'
+          import os
+          import stat
+          import sys
+          import time
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          deadline = int(sys.argv[2])
+          while time.time() <= deadline:
+              try:
+                  info = path.lstat()
+              except FileNotFoundError:
+                  time.sleep(5)
+                  continue
+              if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                  raise SystemExit("payload publication is not a regular file")
+              if info.st_size <= 0 or info.st_size > 4 * 1024 * 1024:
+                  raise SystemExit("payload publication has an invalid size")
+              break
+          else:
+              raise SystemExit("run-scoped payload did not arrive before expiry")
+          PY
+          python -m b2.blind_handoff accept-input \
+            --input-private-key "$RUNNER_ROOT/input-private.pem" \
+            --payload "$EXCHANGE_ROOT/private/payload.json" \
+            --state-dir "$RUNNER_ROOT/runner-state" \
+            --handoff-id "$HANDOFF_ID" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --execution-head-sha "$EXECUTION_HEAD_SHA" \
+            --bridge-main-sha "$BRIDGE_MAIN_SHA" \
+            --input-public-key-sha256 "$INPUT_KEY_SHA" \
+            --context-sha256 "$EXPECTED_CONTEXT_SHA256" \
+            --context-bytes "$EXPECTED_CONTEXT_BYTES" \
+            --prompt-sha256 "$EXPECTED_PROMPT_SHA256" \
+            --prompt-bytes "$EXPECTED_PROMPT_BYTES" \
+            --mode live \
+            --evaluation-run-id "$EVALUATION_RUN_ID" \
+            --issued-at-unix "$ISSUED_AT_UNIX" \
+            --expires-at-unix "$EXPIRES_AT_UNIX" \
+            > "$RUNNER_ROOT/input-accept-receipt.json"
+
+      - name: Publish a runner-generated return-key possession challenge
+        run: |
+          set -euo pipefail
+          python -m b2.blind_handoff encrypt-challenge \
+            --state-dir "$RUNNER_ROOT/runner-state" \
+            --output "$RUNNER_ROOT/challenge.enc.json" \
+            > "$RUNNER_ROOT/challenge-receipt.json"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          source = Path(os.environ["RUNNER_ROOT"]) / "challenge.enc.json"
+          target = Path(os.environ["EXCHANGE_ROOT"]) / "runner" / "challenge.enc.json"
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          fd = os.open(target, flags, 0o640)
+          with os.fdopen(fd, "wb") as handle:
+              os.fchmod(handle.fileno(), 0o640)
+              handle.write(source.read_bytes())
+              handle.flush()
+              os.fsync(handle.fileno())
+          PY
+
+      - name: Verify the one-time private-key acknowledgement
+        run: |
+          set -euo pipefail
+          python - "$EXCHANGE_ROOT/private/challenge-ack.json" "$EXPIRES_AT_UNIX" <<'PY'
+          import stat
+          import sys
+          import time
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          deadline = int(sys.argv[2])
+          while time.time() <= deadline:
+              try:
+                  info = path.lstat()
+              except FileNotFoundError:
+                  time.sleep(5)
+                  continue
+              if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                  raise SystemExit("acknowledgement publication is not a regular file")
+              if info.st_size <= 0 or info.st_size > 4 * 1024 * 1024:
+                  raise SystemExit("acknowledgement publication has an invalid size")
+              break
+          else:
+              raise SystemExit("run-scoped acknowledgement did not arrive before expiry")
+          PY
+          python -m b2.blind_handoff verify-ack \
+            --state-dir "$RUNNER_ROOT/runner-state" \
+            --challenge-envelope "$RUNNER_ROOT/challenge.enc.json" \
+            --acknowledgement "$EXCHANGE_ROOT/private/challenge-ack.json" \
+            > "$RUNNER_ROOT/ack-receipt.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = json.loads((Path(os.environ["RUNNER_ROOT"]) / "ack-receipt.json").read_text())
+          if receipt != {"status": "PROVIDER_GATE_OPEN"}:
+              raise SystemExit("provider gate did not open exactly once")
+          PY
+
+      - name: Execute exactly one authorized provider attempt
+        env:
+          B2_R1B_PROVIDER_API_KEY: ${{ secrets.B2_R1B_PROVIDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${B2_R1B_PROVIDER_API_KEY:-}"
+          set +e
+          python -m b2.blind_eval \
+            --context-file "$RUNNER_ROOT/runner-state/context.txt" \
+            --prompt-file "$RUNNER_ROOT/runner-state/prompt.txt" \
+            --provider "$PROVIDER_LABEL" \
+            --protocol "$PROVIDER_PROTOCOL" \
+            --model "$REQUESTED_MODEL_ID" \
+            --endpoint "$PROVIDER_ENDPOINT" \
+            --api-key-env B2_R1B_PROVIDER_API_KEY \
+            --run-id "$EVALUATION_RUN_ID" \
+            --git-commit "$BRIDGE_MAIN_SHA" \
+            --timeout "$PROVIDER_TIMEOUT_SECONDS" \
+            --temperature "$PROVIDER_TEMPERATURE" \
+            --max-tokens "$PROVIDER_MAX_TOKENS" \
+            --raw-output "$RUNNER_ROOT/run.raw.txt" \
+            --receipt-output "$RUNNER_ROOT/run.receipt.json" \
+            --authorize-live-call \
+            > "$RUNNER_ROOT/bridge-stdout.json"
+          bridge_code=$?
+          set -e
+          case "$bridge_code" in
+            0|2|3) ;;
+            *) exit 76 ;;
+          esac
+          printf '%s\n' "$bridge_code" > "$RUNNER_ROOT/bridge-exit-code.txt"
+          test -s "$RUNNER_ROOT/run.receipt.json"
+
+      - name: Validate the body-free bridge receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = json.loads((Path(os.environ["RUNNER_ROOT"]) / "run.receipt.json").read_text())
+          exact = {
+              "run_id": os.environ["EVALUATION_RUN_ID"],
+              "provider_label": os.environ["PROVIDER_LABEL"],
+              "provider_protocol": os.environ["PROVIDER_PROTOCOL"],
+              "requested_model_id": os.environ["REQUESTED_MODEL_ID"],
+              "context_sha256": "sha256:" + os.environ["EXPECTED_CONTEXT_SHA256"],
+              "context_bytes": int(os.environ["EXPECTED_CONTEXT_BYTES"]),
+              "prompt_sha256": "sha256:" + os.environ["EXPECTED_PROMPT_SHA256"],
+              "prompt_bytes": int(os.environ["EXPECTED_PROMPT_BYTES"]),
+              "git_commit": os.environ["BRIDGE_MAIN_SHA"],
+              "provider_attempts": 1,
+              "automatic_retries": 0,
+              "quality_score": None,
+          }
+          if any(receipt.get(key) != value for key, value in exact.items()):
+              raise SystemExit("bridge receipt does not match the authorized one-shot run")
+          if receipt.get("terminal_status") not in {"PASS", "NOT_EVALUABLE", "ERROR"}:
+              raise SystemExit("bridge receipt has an invalid terminal status")
+          forbidden = {
+              "context", "prompt", "reasoning", "reasoning_content", "analysis",
+              "content", "raw_answer", "authorization", "api_key", "endpoint",
+              "signed_locator",
+          }
+          if forbidden.intersection(receipt):
+              raise SystemExit("bridge receipt contains a private or secret-bearing field")
+          PY
+
+      - name: Encrypt and publish the complete private result evidence
+        run: |
+          set -euo pipefail
+          python -m b2.blind_handoff make-live-result \
+            --state-dir "$RUNNER_ROOT/runner-state" \
+            --receipt "$RUNNER_ROOT/run.receipt.json" \
+            --raw-answer "$RUNNER_ROOT/run.raw.txt" \
+            --bridge-stdout "$RUNNER_ROOT/bridge-stdout.json" \
+            --bridge-exit-code "$RUNNER_ROOT/bridge-exit-code.txt" \
+            --output "$RUNNER_ROOT/result.enc.json" \
+            > "$RUNNER_ROOT/result-encryption-receipt.json"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          source = Path(os.environ["RUNNER_ROOT"]) / "result.enc.json"
+          target = Path(os.environ["EXCHANGE_ROOT"]) / "runner" / "result.enc.json"
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+          fd = os.open(target, flags, 0o640)
+          with os.fdopen(fd, "wb") as handle:
+              os.fchmod(handle.fileno(), 0o640)
+              handle.write(source.read_bytes())
+              handle.flush()
+              os.fsync(handle.fileno())
+          PY
+
+      - name: Require private result verification, atomic publication, and cleanup
+        run: |
+          set -euo pipefail
+          python - "$EXCHANGE_ROOT/private/private-cleanup-receipt.json" "$EXPIRES_AT_UNIX" <<'PY'
+          import stat
+          import sys
+          import time
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          deadline = int(sys.argv[2])
+          while time.time() <= deadline:
+              try:
+                  info = path.lstat()
+              except FileNotFoundError:
+                  time.sleep(5)
+                  continue
+              if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                  raise SystemExit("private finalization marker is not a regular file")
+              if info.st_size <= 0 or info.st_size > 4096:
+                  raise SystemExit("private finalization marker has an invalid size")
+              break
+          else:
+              raise SystemExit("private result finalization did not complete before expiry")
+          PY
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          exchange = Path(os.environ["EXCHANGE_ROOT"])
+          runner = Path(os.environ["RUNNER_ROOT"])
+          private = exchange / "private"
+          result = (runner / "result.enc.json").read_bytes()
+          binding = json.loads((runner / "runner-state" / "binding.json").read_text())
+          binding_hash = hashlib.sha256(
+              json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+          ).hexdigest()
+          result_hash = hashlib.sha256(result).hexdigest()
+
+          accepted = json.loads((private / "result-accepted.json").read_text())
+          if set(accepted) != {"protocol", "claim", "binding_sha256", "artifact_sha256"}:
+              raise SystemExit("private result-accept marker contains unexpected fields")
+          if accepted != {
+              "protocol": "b2-blind-handoff/v5.2",
+              "claim": "result-accepted",
+              "binding_sha256": binding_hash,
+              "artifact_sha256": result_hash,
+          }:
+              raise SystemExit("private result-accept marker is not bound to this run")
+
+          verified = json.loads((private / "result-verification-receipt.json").read_text())
+          if set(verified) != {
+              "status", "mode", "terminal_status", "provider_attempts",
+              "result_envelope_sha256",
+          }:
+              raise SystemExit("private result receipt contains unexpected fields")
+          if (
+              verified["status"] != "RESULT_VERIFIED"
+              or verified["mode"] != "live"
+              or verified["terminal_status"] not in {"PASS", "NOT_EVALUABLE", "ERROR"}
+              or verified["provider_attempts"] != 1
+              or verified["result_envelope_sha256"] != result_hash
+          ):
+              raise SystemExit("private result verification does not match this run")
+
+          cleanup = json.loads((private / "private-cleanup-receipt.json").read_text())
+          if cleanup != {"status": "EPHEMERAL_CLEANUP_COMPLETE"}:
+              raise SystemExit("private ephemeral state cleanup is not verified")
+          (runner / "terminal-status.txt").write_text(verified["terminal_status"] + "\n")
+          PY
+
+      - name: Emit a body-free run receipt
+        run: |
+          set -euo pipefail
+          terminal_status="$(tr -d '\n' < "$RUNNER_ROOT/terminal-status.txt")"
+          {
+            printf '## B2 R1b one-shot handoff\n\n'
+            printf -- '- workflow run: `%s`\n' "$GITHUB_RUN_ID"
+            printf -- '- execution head: `%s`\n' "$EXECUTION_HEAD_SHA"
+            printf -- '- terminal status: `%s`\n' "$terminal_status"
+            printf -- '- provider attempts: `1`\n'
+            printf -- '- automatic retries: `0`\n'
+            printf -- '- private result decryptability/publication: `VERIFIED`\n'
+            printf -- '- private ephemeral state cleanup: `VERIFIED`\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify-clean all runner and exchange objects
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          runner_root="${RUNNER_TEMP}/b2-r1b-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          cleanup_failed=0
+          python -m b2.blind_handoff cleanup --ephemeral-root "$runner_root" \
+            > /dev/null || cleanup_failed=1
+          test ! -e "$runner_root" || cleanup_failed=1
+          if test -n "${B2_R1B_EXCHANGE_BASE:-}"; then
+            exchange_root="${B2_R1B_EXCHANGE_BASE}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+            printf '::add-mask::%s\n' "$exchange_root"
+            python -m b2.blind_handoff cleanup --ephemeral-root "$exchange_root" \
+              > /dev/null || cleanup_failed=1
+            test ! -e "$exchange_root" || cleanup_failed=1
+          else
+            cleanup_failed=1
+          fi
+          exit "$cleanup_failed"

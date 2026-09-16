@@ -1,0 +1,14 @@
+{
+  "observed_at": "2026-09-15T19:11:57.030Z",
+  "a1_pr_url": "https://github.com/aerenkolstein-code/Companion-Mind/pull/27",
+  "a1_pr_state": "open",
+  "a1_pr_draft": true,
+  "a1_head": "36c138f53912821732683d40cf994cc776cd1fc9",
+  "a1_base": "5c56be41973b43836f62df18bc4ee1495c5719fe",
+  "a1_ci_run_id": 34992621405,
+  "a1_ci_conclusion": "success",
+  "a1_ci_head": "36c138f53912821732683d40cf994cc776cd1fc9",
+  "a2_executed_head": "1e002c0e7995a44eac15ddeb0d48d66369e265d7",
+  "contract_commit": "63ac8d7de8eb35915cc291b0f7ea67c33b366922",
+  "drift": false
+}

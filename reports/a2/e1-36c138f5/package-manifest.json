@@ -1,0 +1,18 @@
+{
+  "package_version": "a2-e1-return/1",
+  "executed_source_commit": "1e002c0e7995a44eac15ddeb0d48d66369e265d7",
+  "executed_source_tree": "77960381b86030a48dd3fb4760203b9a9ce286fa",
+  "evaluated_a1_head": "36c138f53912821732683d40cf994cc776cd1fc9",
+  "verdict": "PASS",
+  "files": {
+    "README.md": "ee372157809a177e47684c41126fa92eae6e2c7e3c30fc9b7d3370102f8b84a8",
+    "normalized-result.json": "91f3bec691c04f05bdaef7fd68ff2d07bef67c0b22a42c906eef29e50d7cee88",
+    "observations.jsonl.gz": "69f6c5c3d1429d7111845beb6836ccef0ba8d115572b141d833c65617f44a96c",
+    "postflight.json": "a6d261d0f5ea433d2413b3a196246564190cbe523daa2ea99feb8cca9afe3ebd",
+    "receipt.json": "fc6ee4a9ba84a4bade1fc139bf9348a4e8627de22a6ba2a043c3c9427a905424",
+    "run-lineage.json": "ad495217dee4342c13b6f5cb292bd235a99c276c1e794a34120cc529dc78915d",
+    "SHA256SUMS.json": "7036b3e1648e434586695371b76660533f7aa04ae7ede28efd21ef9447bba9a6"
+  },
+  "ledger_encoding": "gzip; uncompressed SHA256 in receipt.json.ledger_sha256",
+  "self_hash": "excluded; final package commit/tree in Draft PR"
+}

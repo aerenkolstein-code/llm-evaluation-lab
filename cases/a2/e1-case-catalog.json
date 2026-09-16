@@ -1,0 +1,27 @@
+{
+  "catalog_version": "a2-e1-cases/1",
+  "work_order": "ENG-A2-E1-01",
+  "fixture_source": "independently authored synthetic mappings; no copied A1 fixtures or private archive bodies",
+  "contract_authority": "aerenkolstein-code/Companion-Mind@63ac8d7de8eb35915cc291b0f7ea67c33b366922 canonical_event/v1",
+  "sut": "aerenkolstein-code/Companion-Mind@36c138f53912821732683d40cf994cc776cd1fc9",
+  "oracle_version": "a2-e1-input-derived/1",
+  "fresh_runs": 2,
+  "turns_per_run": 120,
+  "terminal_outcomes": {"complete": 100, "partial": 10, "failed": 10},
+  "batch_case_ids": "batch-000 through batch-119; identical inputs in fresh stores",
+  "normalization": "No canonical event field is removed or normalized. Runtime store/remote IDs remain in raw receipts; deterministic comparison uses input/expected/export fingerprints and semantic checks.",
+  "required_sections": ["smoke", "ordering_correction", "batch_1", "batch_2", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "APPEND_BEFORE_COMMIT", "replica_errors", "boundaries", "retry_template_boundary", "secrets"],
+  "rubric": [
+    {"id": "DURABILITY", "sections": ["smoke", "batch_1", "batch_2"], "oracle": "every acknowledged input-derived event retains its complete canonical mapping and fingerprint"},
+    {"id": "ORDERING", "sections": ["ordering_correction", "batch_1", "batch_2"], "oracle": "canonical key order; separately check physical arrival order; preserve intentional 1/5/9 gaps"},
+    {"id": "DEDUPE", "sections": ["smoke", "ordering_correction", "batch_1", "batch_2", "retry_template_boundary"], "oracle": "same identity returns original receipt, conflicting identity/sequence rejected, same attempt no re-invocation"},
+    {"id": "CRASH", "sections": ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "APPEND_BEFORE_COMMIT"], "oracle": "hard exit86; input-derived status/payload; no phantom completion or automatic provider replay; atomic append leaves no event/outbox"},
+    {"id": "RESTART", "sections": ["batch_1", "batch_2", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8"], "oracle": "three separate-process reopens preserve complete canonical events and report zero provider invocations"},
+    {"id": "CORRECTION", "sections": ["ordering_correction"], "oracle": "original/correction/revert all retained; absent target rejected; delete unsupported"},
+    {"id": "SECRET", "sections": ["secrets"], "oracle": "synthetic structured/split-frame sentinels redacted or envelope rejected; no forbidden sentinel in outputs or evidence"},
+    {"id": "UNKNOWN", "sections": ["boundaries", "batch_1", "batch_2", "F2", "F3"], "oracle": "four explicit states remain distinct; no negative fact synthesized; local failure does not imply external failure"},
+    {"id": "REPLICA", "sections": ["replica_errors", "F7", "F8", "batch_1", "batch_2"], "oracle": "compare after READBACK_VERIFIED in high-water envelope; identical complete canonical events; repeat remote IDs stable"},
+    {"id": "AUTHORITY_PROVENANCE", "sections": ["boundaries", "retry_template_boundary"], "oracle": "A018/A019/A020 provenance compatibility; reject relabeling/mutation metadata/unsupported authority operations"}
+  ],
+  "verdict_rule": "all-of; any measured failure FAIL; missing evidence NOT_EVALUABLE; preflight drift BLOCKED; otherwise PASS; A2 PASS does not make E1 GREEN"
+}

@@ -1,0 +1,24 @@
+{
+  "initial_local_run": {
+    "a2_execution_head": "3f9c696022249ae51cceec4ae6f63ab72c11a109",
+    "a2_execution_tree": "77960381b86030a48dd3fb4760203b9a9ce286fa",
+    "harness_sha256": "d0e3fe67460620ee141a7b56df2fb39364a3641287963542d8c0efaa4268c6ac",
+    "verdict": "PASS",
+    "started_at": "2026-09-15T19:02:08.951051+00:00",
+    "finished_at": "2026-09-15T19:03:38.312392+00:00",
+    "normalized_result_fingerprint": "9cdd63f5fbd9e81170aafd414aff4c4373bf52d7a927a3e757596f4e0af32f8b"
+  },
+  "final_remote_run": {
+    "a2_execution_head": "1e002c0e7995a44eac15ddeb0d48d66369e265d7",
+    "a2_execution_tree": "77960381b86030a48dd3fb4760203b9a9ce286fa",
+    "harness_sha256": "d0e3fe67460620ee141a7b56df2fb39364a3641287963542d8c0efaa4268c6ac",
+    "verdict": "PASS",
+    "started_at": "2026-09-15T19:09:27.362398+00:00",
+    "finished_at": "2026-09-15T19:10:54.218318+00:00",
+    "normalized_result_fingerprint": "9cdd63f5fbd9e81170aafd414aff4c4373bf52d7a927a3e757596f4e0af32f8b"
+  },
+  "reason_for_repeat": "Git-data publication changed commit identity while preserving exact source tree; rerun binds final evidence to reachable remote commit. No code change or result selection.",
+  "same_source_tree": true,
+  "same_harness_bytes": true,
+  "same_normalized_result": true
+}

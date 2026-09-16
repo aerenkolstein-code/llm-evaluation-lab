@@ -48,6 +48,36 @@ jobs:
         working-directory: llm-evaluation-lab
         run: python -m unittest discover -s tests -v
 
+      - name: Verify SEARCH-CUP v2.3 protocol-only receipt
+        working-directory: llm-evaluation-lab
+        run: |
+          python -m search_cup.v23_offline receipt > /tmp/search-cup-v23-protocol.json
+          python -m search_cup.v23_offline schema > /tmp/searchspec-v2.schema.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path('/tmp/search-cup-v23-protocol.json').read_text())
+          expected = json.loads(Path('results/search-cup/v23-protocol-offline.json').read_text())
+          assert receipt == expected
+          assert receipt['execution_allowed'] is False
+          assert receipt['instance_selected'] is False
+          assert receipt['official_prompt_consumed'] is False
+          assert receipt['hidden_registry_loaded'] is False
+          assert all(receipt[k] == 0 for k in ('live_provider_calls', 'live_search_calls', 'judge_calls', 'credit_consumption'))
+          assert all(item['gate']['terminal_status'] == 'BLOCKED' for item in receipt['track_contracts'])
+          assert json.loads(Path('/tmp/searchspec-v2.schema.json').read_text()) == json.loads(Path('schemas/searchspec_v2.schema.json').read_text())
+          PY
+
+      - name: Preserve SEARCH-CUP v2.3 offline conformance receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-protocol-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            /tmp/search-cup-v23-protocol.json
+            /tmp/searchspec-v2.schema.json
+          if-no-files-found: error
+
       - name: Run SEARCH-CUP-02 P0 regression and P1 offline gates
         working-directory: llm-evaluation-lab
         run: |

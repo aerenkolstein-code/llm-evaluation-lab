@@ -1,0 +1,339 @@
+{
+  "baseline": "6229e8d164831b8433c62b7d90820d4b0b4ce225",
+  "canonical_fingerprint": "c106755638a3264f1461216b3542a6fe41fd200669eb7fbea682661c617958dc",
+  "credit_consumption": 0,
+  "execution_allowed": false,
+  "hidden_registry_loaded": false,
+  "instance_selected": false,
+  "judge_calls": 0,
+  "live_provider_calls": 0,
+  "live_search_calls": 0,
+  "mode": "SYNTHETIC_PROTOCOL_VALIDATION_ONLY",
+  "official_prompt_consumed": false,
+  "protocol_schema_fingerprint": "e1dc00b0a00a51280798b419a5856b56122dc65f619df0798ee537bb3802b516",
+  "review_status": "AWAITING_BOARD_VERIFICATION",
+  "schema_id": "search-protocol-conformance/v2",
+  "secret_exclusion": {
+    "scanner": "public-safe-patterns/v1",
+    "status": "PASS"
+  },
+  "synthetic_judgment_package_fingerprint": "4983f63cff2139322854e952b42359ae8f9c3db502532a36c4345c8701817f53",
+  "track_contracts": [
+    {
+      "gate": {
+        "canonical_fingerprint": "d8c6e2e672784a8484d4f837fe11111b91d632a14352d6f2af24a2646e3852e4",
+        "execution_allowed": false,
+        "hidden_registry_loaded": false,
+        "judge_calls": 0,
+        "missing_decisions": [
+          "D1",
+          "D2",
+          "D5",
+          "D6",
+          "D7"
+        ],
+        "official_prompt_consumed": false,
+        "provider_calls": 0,
+        "reason_codes": [
+          "INSTANCE_BINDINGS_MISSING",
+          "T1_IMPLEMENTATION_ONLY"
+        ],
+        "schema_id": "search-execution-gate/v2",
+        "search_calls": 0,
+        "spec_fingerprint": "93c97c8f5fd71c035ddba36cd71bb11db4678ab1134483fca827ae6e37873e82",
+        "terminal_status": "BLOCKED",
+        "track_id": "E1_LIVE"
+      },
+      "spec_fingerprint": "93c97c8f5fd71c035ddba36cd71bb11db4678ab1134483fca827ae6e37873e82",
+      "track_id": "E1_LIVE"
+    },
+    {
+      "gate": {
+        "canonical_fingerprint": "a65fede5ae7a63f1fcabcb117404849d513da8bd187f931ae91dd29176d3ba4e",
+        "execution_allowed": false,
+        "hidden_registry_loaded": false,
+        "judge_calls": 0,
+        "missing_decisions": [
+          "D1",
+          "D2",
+          "D4",
+          "D5",
+          "D6",
+          "D7"
+        ],
+        "official_prompt_consumed": false,
+        "provider_calls": 0,
+        "reason_codes": [
+          "INSTANCE_BINDINGS_MISSING",
+          "T1_IMPLEMENTATION_ONLY"
+        ],
+        "schema_id": "search-execution-gate/v2",
+        "search_calls": 0,
+        "spec_fingerprint": "a11228c8a04cc61c86b305dc2267b408c9b565a780711a5ac8a698c6d7a6f3ba",
+        "terminal_status": "BLOCKED",
+        "track_id": "E1_FROZEN"
+      },
+      "spec_fingerprint": "a11228c8a04cc61c86b305dc2267b408c9b565a780711a5ac8a698c6d7a6f3ba",
+      "track_id": "E1_FROZEN"
+    },
+    {
+      "gate": {
+        "canonical_fingerprint": "dc8e09825a33a0c75aeb50a176712dfd3445db8bb0ebe808bfda27ceb253c1c4",
+        "execution_allowed": false,
+        "hidden_registry_loaded": false,
+        "judge_calls": 0,
+        "missing_decisions": [
+          "D1",
+          "D2",
+          "D4",
+          "D5",
+          "D7",
+          "D8"
+        ],
+        "official_prompt_consumed": false,
+        "provider_calls": 0,
+        "reason_codes": [
+          "INSTANCE_BINDINGS_MISSING",
+          "T1_IMPLEMENTATION_ONLY"
+        ],
+        "schema_id": "search-execution-gate/v2",
+        "search_calls": 0,
+        "spec_fingerprint": "e135989f1425a1e009924e674f54f6526f2dd07d927a956195130aaeebb38543",
+        "terminal_status": "BLOCKED",
+        "track_id": "E2_RETRIEVER"
+      },
+      "spec_fingerprint": "e135989f1425a1e009924e674f54f6526f2dd07d927a956195130aaeebb38543",
+      "track_id": "E2_RETRIEVER"
+    },
+    {
+      "gate": {
+        "canonical_fingerprint": "3f1d78cda77f5e63d69ca7dee78ab570caa90bd1df0bbc80f9978bf39a4c33cd",
+        "execution_allowed": false,
+        "hidden_registry_loaded": false,
+        "judge_calls": 0,
+        "missing_decisions": [
+          "D1",
+          "D2",
+          "D3",
+          "D5",
+          "D7"
+        ],
+        "official_prompt_consumed": false,
+        "provider_calls": 0,
+        "reason_codes": [
+          "INSTANCE_BINDINGS_MISSING",
+          "T1_IMPLEMENTATION_ONLY"
+        ],
+        "schema_id": "search-execution-gate/v2",
+        "search_calls": 0,
+        "spec_fingerprint": "a349bc87763b97413b6ee8b9a7a8b5f98c866caf4e059abe353b03a230dcbb1e",
+        "terminal_status": "BLOCKED",
+        "track_id": "JUDGMENT_ONLY"
+      },
+      "spec_fingerprint": "a349bc87763b97413b6ee8b9a7a8b5f98c866caf4e059abe353b03a230dcbb1e",
+      "track_id": "JUDGMENT_ONLY"
+    },
+    {
+      "gate": {
+        "canonical_fingerprint": "7f69131d7f54b13424adbaa19941514a09b4d4b1db2dbbe43378638668981c79",
+        "execution_allowed": false,
+        "hidden_registry_loaded": false,
+        "judge_calls": 0,
+        "missing_decisions": [
+          "D1",
+          "D2",
+          "D4",
+          "D5",
+          "D7",
+          "D8"
+        ],
+        "official_prompt_consumed": false,
+        "provider_calls": 0,
+        "reason_codes": [
+          "INSTANCE_BINDINGS_MISSING",
+          "T1_IMPLEMENTATION_ONLY"
+        ],
+        "schema_id": "search-execution-gate/v2",
+        "search_calls": 0,
+        "spec_fingerprint": "3009fab980ee08e41d55c57b131d28166d516645ede56cec03899e0853fe67aa",
+        "terminal_status": "BLOCKED",
+        "track_id": "E_PLUS_J"
+      },
+      "spec_fingerprint": "3009fab980ee08e41d55c57b131d28166d516645ede56cec03899e0853fe67aa",
+      "track_id": "E_PLUS_J"
+    },
+    {
+      "gate": {
+        "canonical_fingerprint": "ac86fa12adc17259264287ddbb2ac04e1f4671ac78f58a444253f8e246ffa9a1",
+        "execution_allowed": false,
+        "hidden_registry_loaded": false,
+        "judge_calls": 0,
+        "missing_decisions": [
+          "D1",
+          "D2",
+          "D4",
+          "D5",
+          "D7",
+          "D8"
+        ],
+        "official_prompt_consumed": false,
+        "provider_calls": 0,
+        "reason_codes": [
+          "INSTANCE_BINDINGS_MISSING",
+          "T1_IMPLEMENTATION_ONLY"
+        ],
+        "schema_id": "search-execution-gate/v2",
+        "search_calls": 0,
+        "spec_fingerprint": "0a91afbf9d5ece675c9236a20ae001611f745c1baea00c82efe9ec730eb93a6a",
+        "terminal_status": "BLOCKED",
+        "track_id": "GLM_SEARCH_STACK"
+      },
+      "spec_fingerprint": "0a91afbf9d5ece675c9236a20ae001611f745c1baea00c82efe9ec730eb93a6a",
+      "track_id": "GLM_SEARCH_STACK"
+    },
+    {
+      "gate": {
+        "canonical_fingerprint": "06dc60134874e2ee49e27446b8034c0b0bfb7548a7dab83835af20e038b350de",
+        "execution_allowed": false,
+        "hidden_registry_loaded": false,
+        "judge_calls": 0,
+        "missing_decisions": [
+          "D1",
+          "D2",
+          "D4",
+          "D5",
+          "D7",
+          "D8"
+        ],
+        "official_prompt_consumed": false,
+        "provider_calls": 0,
+        "reason_codes": [
+          "INSTANCE_BINDINGS_MISSING",
+          "T1_IMPLEMENTATION_ONLY"
+        ],
+        "schema_id": "search-execution-gate/v2",
+        "search_calls": 0,
+        "spec_fingerprint": "e8bfb52ae7f805b8b48e5349b73f14ab9e86acc06a2e4d9732eb87db26476cd5",
+        "terminal_status": "BLOCKED",
+        "track_id": "SYSTEM_PLAYOFF"
+      },
+      "spec_fingerprint": "e8bfb52ae7f805b8b48e5349b73f14ab9e86acc06a2e4d9732eb87db26476cd5",
+      "track_id": "SYSTEM_PLAYOFF"
+    },
+    {
+      "gate": {
+        "canonical_fingerprint": "d2d041c50acb1c198c282d79d590d328d9ef28f2c19e9ed05bc76857efa3437b",
+        "execution_allowed": false,
+        "hidden_registry_loaded": false,
+        "judge_calls": 0,
+        "missing_decisions": [
+          "D1",
+          "D2",
+          "D4",
+          "D5",
+          "D7",
+          "D8"
+        ],
+        "official_prompt_consumed": false,
+        "provider_calls": 0,
+        "reason_codes": [
+          "INSTANCE_BINDINGS_MISSING",
+          "T1_IMPLEMENTATION_ONLY"
+        ],
+        "schema_id": "search-execution-gate/v2",
+        "search_calls": 0,
+        "spec_fingerprint": "a0b0759bf0d719a408acdc5a61ad77968f10475224f4acde9985ba2cba53abc5",
+        "terminal_status": "BLOCKED",
+        "track_id": "ECONOMIC_TRACK"
+      },
+      "spec_fingerprint": "a0b0759bf0d719a408acdc5a61ad77968f10475224f4acde9985ba2cba53abc5",
+      "track_id": "ECONOMIC_TRACK"
+    }
+  ],
+  "work_order": "ENG-B1-SC-V23-T1",
+  "zero_event_resource_receipt": {
+    "automatic_retries": 0,
+    "canonical_fingerprint": "08f767b62fff3e0941af3e6af3453db02aa6c8ac93f6a97873acb03810a81586",
+    "elapsed_ms": 0,
+    "entrant_fingerprint": "7576f30de6a93a3718593b52107712206f8e9f99cddc76db0901aac9e64fd911",
+    "events": [],
+    "evidence_kind": "OFFLINE_SUPPLIED_ACCOUNTING_FACTS_NOT_EXECUTION",
+    "fairness_mode": "F1",
+    "follow_links": 0,
+    "infrastructure_failures": 0,
+    "manual_retries": 0,
+    "money": {
+      "reason": "sum of raw observed components",
+      "state": "KNOWN",
+      "unit": "USD",
+      "value": 0
+    },
+    "money_by_class": {
+      "MODEL": {
+        "reason": "sum of raw observed components",
+        "state": "KNOWN",
+        "unit": "USD",
+        "value": 0
+      },
+      "SEARCH": {
+        "reason": "sum of raw observed components",
+        "state": "KNOWN",
+        "unit": "USD",
+        "value": 0
+      },
+      "VERIFY": {
+        "reason": "sum of raw observed components",
+        "state": "KNOWN",
+        "unit": "USD",
+        "value": 0
+      }
+    },
+    "operator_ms": {
+      "reason": "observed fixture value",
+      "state": "KNOWN",
+      "unit": "ms",
+      "value": 0
+    },
+    "outcome_inputs": {},
+    "paid_failed_attempts": [],
+    "price_evidence": [],
+    "provider_requests": 0,
+    "quality_score": null,
+    "reason_codes": [],
+    "resource_contract_fingerprint": "25280ce49f14d32cb6720b350dd08dbc1222aa1c47c5cda96ace7371c3fc89cc",
+    "results": 0,
+    "retriever_fingerprint": null,
+    "retry_policy": {
+      "fingerprint": "90b4e94d8deeaf35192ad616a30f4347c174a8a29072066c48bbdd57de1cf258",
+      "id": "synthetic-no-auto-retries",
+      "version": "1"
+    },
+    "run_id": "SYNTHETIC-NO-EXECUTION",
+    "schema_id": "search-resource-receipt/v2",
+    "search_attempted": 0,
+    "search_failed": 0,
+    "search_remaining": 0,
+    "search_succeeded": 0,
+    "search_turns": 0,
+    "search_unit": "NONE",
+    "secret_exclusion": {
+      "scanner": "public-safe-patterns/v1",
+      "status": "PASS"
+    },
+    "spec_fingerprint": "a349bc87763b97413b6ee8b9a7a8b5f98c866caf4e059abe353b03a230dcbb1e",
+    "terminal_status": "PASS",
+    "tokens": {
+      "reason": "sum of raw observed components",
+      "state": "KNOWN",
+      "unit": "tokens",
+      "value": 0
+    },
+    "track_id": "JUDGMENT_ONLY",
+    "waiting_ms": {
+      "reason": "observed fixture value",
+      "state": "KNOWN",
+      "unit": "ms",
+      "value": 0
+    }
+  }
+}

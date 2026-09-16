@@ -10,7 +10,7 @@ permissions:
 jobs:
   blackbox:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out evaluation harness
         uses: actions/checkout@v4
@@ -39,16 +39,21 @@ jobs:
           test "$(git -C Companion-Mind rev-parse HEAD)" = "b57c4cb21a64992ea338ce9f6e60199d9b5254cb"
           test "$(git -C Companion-Mind rev-parse HEAD^{tree})" = "2efaa0bacd726d5c1506a33ea39da17529559ee7"
 
-      - name: Run A2 black-box probe from outside runtime checkout
+      - name: Run final A2 TS1 black-box verification from outside runtime checkout
         working-directory: /tmp
         run: |
-          python "$GITHUB_WORKSPACE/tools/a2_owned_home_blackbox_probe.py" \
+          WHEEL=$(echo /tmp/a2-wheels/companion_mind-*.whl)
+          python "$GITHUB_WORKSPACE/tools/a2_owned_home_blackbox_verify.py" \
             --python /tmp/a2-venv/bin/python \
-            --output /tmp/a2-owned-home-probe.json
+            --wheel "$WHEEL" \
+            --candidate-sha b57c4cb21a64992ea338ce9f6e60199d9b5254cb \
+            --candidate-tree 2efaa0bacd726d5c1506a33ea39da17529559ee7 \
+            --output /tmp/a2-a029-s1-blackbox-receipt.json
 
-      - name: Upload probe receipt
+      - name: Upload exact-head A2 receipt
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: a2-a029-s1-blackbox-probe-${{ github.event.pull_request.head.sha || github.sha }}
-          path: /tmp/a2-owned-home-probe.json
-          if-no-files-found: error
+          name: a2-a029-s1-blackbox-final-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/a2-a029-s1-blackbox-receipt.json
+          if-no-files-found: warn

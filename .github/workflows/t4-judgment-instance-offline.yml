@@ -1,0 +1,67 @@
+name: T4 Judgment-only Instance Offline
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t4_instance.py"
+      - "tests/test_search_cup_v23_t4_instance.py"
+      - "docs/search-cup-v23-t4-judgment-pv-001.md"
+      - ".github/workflows/t4-judgment-instance-offline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  t4-instance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: python -m pip install -e .
+
+      - name: Run focused T4 tests
+        run: python -m unittest discover -s tests -p 'test_search_cup_v23_t4_instance.py' -v
+
+      - name: Build exact T4 instance bundle
+        run: |
+          rm -rf /tmp/search-cup-v23-t4
+          python -m search_cup.v23_t4_instance bundle --output-dir /tmp/search-cup-v23-t4
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('/tmp/search-cup-v23-t4')
+          receipt = json.loads((root / 'receipt.json').read_text())
+          bindings = json.loads((root / 'instance-bindings.json').read_text())
+          assert receipt['execution_allowed'] is False
+          assert receipt['provider_calls'] == 0
+          assert receipt['search_calls'] == 0
+          assert receipt['judge_calls'] == 0
+          assert receipt['credit_consumption'] == 0
+          assert receipt['spend']['value'] == 0
+          assert receipt['official_prompt_consumed'] is False
+          assert receipt['hidden_registry_loaded'] is False
+          assert receipt['real_world_candidate_claim'] is False
+          assert receipt['execution_gate']['missing_decisions'] == []
+          assert receipt['execution_gate']['reason_codes'] == ['T1_IMPLEMENTATION_ONLY']
+          assert {k: bindings['decisions'][k]['status'] for k in ('D1','D2','D3','D5','D7')} == {
+              'D1': 'FROZEN', 'D2': 'FROZEN', 'D3': 'FROZEN', 'D5': 'FROZEN', 'D7': 'FROZEN'
+          }
+          assert all(bindings['decisions'][k]['status'] == 'NOT_APPLICABLE' for k in ('D4','D6','D8'))
+          PY
+
+      - name: Upload exact-head T4 instance bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t4-judgment-pv-001-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/search-cup-v23-t4
+          if-no-files-found: error

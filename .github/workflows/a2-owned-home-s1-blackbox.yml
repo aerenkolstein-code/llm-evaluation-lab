@@ -1,0 +1,54 @@
+name: A2 A029 S1 OwnedHome Black-box
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  blackbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out evaluation harness
+        uses: actions/checkout@v4
+
+      - name: Check out exact Companion-Mind candidate
+        uses: actions/checkout@v4
+        with:
+          repository: aerenkolstein-code/Companion-Mind
+          ref: b57c4cb21a64992ea338ce9f6e60199d9b5254cb
+          path: Companion-Mind
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build exact candidate wheel
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip wheel --no-deps --no-build-isolation -w /tmp/a2-wheels Companion-Mind
+          python -m venv /tmp/a2-venv
+          /tmp/a2-venv/bin/python -m pip install --no-index --no-deps /tmp/a2-wheels/companion_mind-*.whl
+
+      - name: Verify exact candidate identity without implementation oracle
+        run: |
+          test "$(git -C Companion-Mind rev-parse HEAD)" = "b57c4cb21a64992ea338ce9f6e60199d9b5254cb"
+          test "$(git -C Companion-Mind rev-parse HEAD^{tree})" = "2efaa0bacd726d5c1506a33ea39da17529559ee7"
+
+      - name: Run A2 black-box probe from outside runtime checkout
+        working-directory: /tmp
+        run: |
+          python "$GITHUB_WORKSPACE/tools/a2_owned_home_blackbox_probe.py" \
+            --python /tmp/a2-venv/bin/python \
+            --output /tmp/a2-owned-home-probe.json
+
+      - name: Upload probe receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2-a029-s1-blackbox-probe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/a2-owned-home-probe.json
+          if-no-files-found: error

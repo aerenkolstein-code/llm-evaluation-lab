@@ -43,7 +43,7 @@ jobs:
         working-directory: /tmp
         run: |
           WHEEL=$(echo /tmp/a2-wheels/companion_mind-*.whl)
-          python "$GITHUB_WORKSPACE/tools/a2_owned_home_blackbox_verify.py" \
+          python "$GITHUB_WORKSPACE/tools/a2_owned_home_blackbox_verify_v2.py" \
             --python /tmp/a2-venv/bin/python \
             --wheel "$WHEEL" \
             --candidate-sha b57c4cb21a64992ea338ce9f6e60199d9b5254cb \
@@ -56,4 +56,4 @@ jobs:
         with:
           name: a2-a029-s1-blackbox-final-${{ github.event.pull_request.head.sha || github.sha }}
           path: /tmp/a2-a029-s1-blackbox-receipt.json
-          if-no-files-found: warn
+          if-no-files-found: error

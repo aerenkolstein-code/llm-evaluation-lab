@@ -736,11 +736,25 @@ class OfflineBoundaryTests(unittest.TestCase):
     def test_new_modules_have_no_transport_environment_runner_or_judge_invocation(self):
         for path in [ROOT / "search_cup/protocol_v23.py", *sorted((ROOT / "search_cup").glob("v23_*.py"))]:
             tree = ast.parse(path.read_text())
+            # User-approved JE1 scope amendment: only this executor needs local
+            # fsync/atomic writes and fixed read-only Git/source-context probes.
+            # Transport and provider bans still apply, including to JE1.
+            is_je1 = path.name == "v23_t4_je1.py"
+            forbidden = {"socket", "requests", "httpx", "os", "subprocess"}
+            if is_je1:
+                forbidden -= {"os", "subprocess"}
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
-                    self.assertFalse({a.name.split(".")[0] for a in node.names} & {"socket", "requests", "httpx", "os", "subprocess"})
+                    self.assertFalse({a.name.split(".")[0] for a in node.names} & forbidden)
                 if isinstance(node, ast.ImportFrom):
                     self.assertNotIn(node.module, ("runner", "judge", "providers", "search_pro", "urllib.request"))
+                    if is_je1:
+                        self.assertNotIn((node.module or "").split(".")[0], forbidden)
+                if is_je1 and isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                    if node.value.id == "os":
+                        self.assertIn(node.attr, {"environ", "open", "O_RDONLY", "O_DIRECTORY", "fsync", "close", "replace"})
+                    if node.value.id == "subprocess":
+                        self.assertEqual("run", node.attr)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,192 @@
+name: T4 JE1 Offline Replay
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t4_je1.py"
+      - "tests/test_search_cup_v23_t4_je1.py"
+      - "tests/test_search_cup_v23.py"
+      - "docs/search-cup-v23-t4-je1-offline-replay.md"
+      - ".github/workflows/t4-je1-offline-replay.yml"
+  workflow_dispatch:
+    inputs:
+      authority_receipt_id:
+        description: "Separate Board authorization for one formal JE1-001 replay"
+        type: string
+        required: true
+      expected_main_sha:
+        description: "Exact independently accepted and merged source SHA"
+        type: string
+        required: true
+      expected_execution_binding_fingerprint:
+        description: "Accepted JE0 execution-binding SHA-256"
+        type: string
+        required: true
+      exact_run_id:
+        description: "Exact frozen JE1-001 namespace"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      JE1_HEAD: ${{ github.event.pull_request.head.sha }}
+      JE1_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run test-only in-memory conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23_t4_je1.py' -v 2>&1 | tee "$RUNNER_TEMP/je1-focused-tests.log"
+      - name: Verify the amended protocol import boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23.py' -k test_new_modules_have_no_transport_environment_runner_or_judge_invocation -v 2>&1 | tee "$RUNNER_TEMP/je1-boundary-tests.log"
+      - name: Check approved five-path scope and author zero-execution run-ready bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          from search_cup.contracts import canonical_json
+          from search_cup.v23_t4_je1 import BASELINE, BINDING, PINS, RUN_ID, frozen_plan, preflight
+
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+
+          head = git('rev-parse', 'HEAD')
+          assert head == os.environ['JE1_HEAD']
+          assert os.environ['JE1_BASE'] == BASELINE, 'BASELINE_DRIFT'
+          added_paths = sorted([
+              'search_cup/v23_t4_je1.py', 'tests/test_search_cup_v23_t4_je1.py',
+              'docs/search-cup-v23-t4-je1-offline-replay.md',
+              '.github/workflows/t4-je1-offline-replay.yml',
+          ])
+          modified_paths = ['tests/test_search_cup_v23.py']
+          paths = sorted(added_paths + modified_paths)
+          expected_changes = sorted(['A\t' + p for p in added_paths] + ['M\t' + p for p in modified_paths])
+          assert sorted(git('diff', '--name-status', BASELINE, head).splitlines()) == expected_changes
+          receipt = preflight(BINDING)
+          assert receipt['terminal_status'] == 'PASS'
+          assert receipt['formal_execution_performed'] is False
+          assert receipt['formal_record_count'] == receipt['fixture_decision_calls'] == 0
+          assert receipt['source']['head'] == head and receipt['source']['clean']
+          log = (Path(os.environ['RUNNER_TEMP']) / 'je1-focused-tests.log').read_text()
+          assert log.rstrip().endswith('OK')
+          count = int(re.search(r'Ran (\d+) tests', log).group(1))
+          boundary_log = (Path(os.environ['RUNNER_TEMP']) / 'je1-boundary-tests.log').read_text()
+          assert boundary_log.rstrip().endswith('OK') and re.search(r'Ran 1 test\b', boundary_log)
+          source = {
+              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'), 'base': BASELINE,
+              'changed_paths': paths, 'added_paths': added_paths, 'modified_paths': modified_paths,
+              'no_unauthorized_path_changed': True,
+              'phase_a_authority': 'BOARD_ISSUED_WO_ENG_B1_SC_V23_T4_JE1_V01',
+              'scope_amendment': {
+                  'authority': 'USER_APPROVAL_IN_TASK_THREAD', 'reply': '批准',
+                  'approved_existing_path': 'tests/test_search_cup_v23.py',
+                  'scope': 'JE1 boundary checks only; retain network, credential and execution locks',
+              },
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'focused_tests': {'count': count, 'result': 'PASS'},
+              'amended_boundary_test': {'count': 1, 'result': 'PASS'},
+              'execution_binding_fingerprint': BINDING, 'planned_run_id': RUN_ID,
+              'formal_execution_performed': False, 'formal_record_count': 0,
+              'independent_acceptance': 'PENDING',
+          }
+          root = Path(os.environ['RUNNER_TEMP']) / 'je1-run-ready'
+          root.mkdir(exist_ok=False)
+          for name, value in [('preflight.json', receipt), ('first-pass-plan.json', frozen_plan(BINDING)),
+                              ('retained-pins.json', PINS), ('ci-source.json', source)]:
+              (root / name).write_text(canonical_json(value))
+          (root / 'focused-tests.log').write_text(log)
+          (root / 'boundary-tests.log').write_text(boundary_log)
+          manifest = '\n'.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name
+                               for p in sorted(root.iterdir())) + '\n'
+          (root / 'MANIFEST.sha256').write_text(manifest)
+          print('JE1_CI_SOURCE=' + canonical_json(source))
+          print('JE1_PREFLIGHT=' + canonical_json(receipt))
+          print('JE1_RUN_READY_MANIFEST\n' + manifest)
+          PY
+      - name: Upload immutable Phase A run-ready artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t4-je1-run-ready-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/je1-run-ready
+          if-no-files-found: error
+
+  formal-replay:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: t4-je1-001-formal-one-shot
+      cancel-in-progress: false
+    env:
+      JE1_AUTHORITY: ${{ inputs.authority_receipt_id }}
+      JE1_EXPECTED_MAIN: ${{ inputs.expected_main_sha }}
+      JE1_EXPECTED_BINDING: ${{ inputs.expected_execution_binding_fingerprint }}
+      JE1_EXACT_RUN_ID: ${{ inputs.exact_run_id }}
+    steps:
+      - name: Reject non-main, missing authority and all workflow reruns
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          assert os.environ['GITHUB_REF'] == 'refs/heads/main', 'MAIN_ONLY'
+          assert os.environ['GITHUB_RUN_ATTEMPT'] == '1', 'FORMAL_RERUN_FORBIDDEN'
+          expected = os.environ['JE1_EXPECTED_MAIN']
+          assert re.fullmatch('[0-9a-f]{40}', expected), 'EXACT_SHA_REQUIRED'
+          assert os.environ['GITHUB_SHA'] == expected, 'SOURCE_SHA_MISMATCH'
+          assert os.environ['JE1_AUTHORITY'].strip(), 'SEPARATE_BOARD_AUTHORITY_REQUIRED'
+          PY
+      - name: Check out main with no persisted credentials
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: One explicitly authorized local fixture replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m search_cup.v23_t4_je1 replay \
+            --authority-receipt "$JE1_AUTHORITY" \
+            --expected-source-sha "$JE1_EXPECTED_MAIN" \
+            --expected-binding "$JE1_EXPECTED_BINDING" \
+            --run-id "$JE1_EXACT_RUN_ID" \
+            --output-dir "$RUNNER_TEMP/je1-formal-output"
+      - name: Preserve started partial or complete formal artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t4-je1-001-${{ github.sha }}
+          path: ${{ runner.temp }}/je1-formal-output
+          if-no-files-found: ignore

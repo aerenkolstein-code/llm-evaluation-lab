@@ -1,0 +1,105 @@
+name: T4 JE0 Execution Readiness Offline
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t4_execution.py"
+      - "tests/test_search_cup_v23_t4_execution.py"
+      - "docs/search-cup-v23-t4-judgment-execution-readiness.md"
+      - ".github/workflows/t4-judgment-execution-readiness-offline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  je0-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      JE0_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      JE0_BASE: ${{ github.event.pull_request.base.sha || '82fcbe64027d94e0b5115d2ef412000c004c32e2' }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run focused offline conformance tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23_t4_execution.py' -v 2>&1 | tee "$RUNNER_TEMP/je0-focused-tests.log"
+
+      - name: Author readiness bundle and source receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          from search_cup.contracts import canonical_json
+          from search_cup.v23_t4_execution import BASELINE, FILENAMES, validate_bundle, write_bundle
+
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+
+          head = git('rev-parse', 'HEAD')
+          assert head == os.environ['JE0_HEAD']
+          assert os.environ['JE0_BASE'] == BASELINE, 'base drift requires review'
+          expected_paths = sorted([
+              'search_cup/v23_t4_execution.py',
+              'tests/test_search_cup_v23_t4_execution.py',
+              'docs/search-cup-v23-t4-judgment-execution-readiness.md',
+              '.github/workflows/t4-judgment-execution-readiness-offline.yml',
+          ])
+          changed = git('diff', '--name-status', BASELINE, head).splitlines()
+          assert sorted(changed) == ['A\t' + name for name in expected_paths], changed
+          root = Path(os.environ['RUNNER_TEMP']) / 'je0-readiness'
+          write_bundle(root)
+          bundle = {key: json.loads((root / name).read_bytes()) for key, name in FILENAMES.items()}
+          pin = bundle['execution_binding']['canonical_fingerprint']
+          validate_bundle(bundle, expected_fingerprint=pin)
+          assert bundle['receipt']['formal_execution_performed'] is False
+          assert bundle['first_pass_plan']['formal_record_count'] == 0
+          log = (Path(os.environ['RUNNER_TEMP']) / 'je0-focused-tests.log').read_text()
+          count = int(re.search(r'Ran (\d+) tests', log).group(1))
+          assert log.rstrip().endswith('OK')
+          (root / 'focused-tests.log').write_text(log)
+          receipt = {
+              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'), 'base': BASELINE,
+              'changed_paths': expected_paths, 'change_kind': 'FOUR_NEW_PATHS_ONLY',
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'workflow_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'execution_binding_fingerprint': pin,
+              'focused_tests': {'count': count, 'status': 'PASS', 'formal_records_exported': 0},
+              'no_touch_paths_unchanged': True,
+              'receipt_scope': 'SOURCE_AND_CI_TRANSPORT_SEPARATE_FROM_OFFLINE_AUTHORING_COUNTERS',
+              'independent_acceptance': 'PENDING',
+          }
+          (root / 'ci-source.json').write_text(canonical_json(receipt))
+          print('JE0_CI_SOURCE=' + canonical_json(receipt))
+          print('JE0_AUTHORING_RECEIPT=' + canonical_json(bundle['receipt']))
+          manifest = '\n'.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name
+                               for p in sorted(root.iterdir())) + '\n'
+          (root / 'MANIFEST.sha256').write_text(manifest)
+          print('JE0_BUNDLE_MANIFEST\n' + manifest)
+          PY
+
+      - name: Upload immutable exact-head readiness artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t4-je0-readiness-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/je0-readiness
+          if-no-files-found: error

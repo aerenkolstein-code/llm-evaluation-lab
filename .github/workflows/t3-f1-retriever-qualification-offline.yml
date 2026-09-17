@@ -1,0 +1,125 @@
+name: T3 F1 Retriever Qualification Offline
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t3_f1q.py"
+      - "tests/test_search_cup_v23_t3_f1q.py"
+      - "docs/search-cup-v23-t3-f1-retriever-qualification.md"
+      - ".github/workflows/t3-f1-retriever-qualification-offline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      F1Q_HEAD: ${{ github.event.pull_request.head.sha }}
+      F1Q_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run offline qualification method tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23_t3_f1q.py' -v 2>&1 | tee "$RUNNER_TEMP/f1q-focused-tests.log"
+      - name: Verify four-path scope and build qualification artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          from search_cup.contracts import canonical_json
+          from search_cup.v23_t3_f1q import (
+              BASELINE_SHA, BASELINE_TREE, CLAIMS, FILENAMES, WORK_ORDER,
+              validate_bundle, write_bundle,
+          )
+
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+
+          head = git('rev-parse', 'HEAD')
+          assert head == os.environ['F1Q_HEAD'], 'EXACT_PR_HEAD_REQUIRED'
+          assert os.environ['F1Q_BASE'] == BASELINE_SHA, 'BASELINE_DRIFT'
+          assert git('rev-parse', BASELINE_SHA + '^{tree}') == BASELINE_TREE
+          subprocess.run(['git', 'merge-base', '--is-ancestor', BASELINE_SHA, head], check=True)
+          paths = sorted([
+              'search_cup/v23_t3_f1q.py', 'tests/test_search_cup_v23_t3_f1q.py',
+              'docs/search-cup-v23-t3-f1-retriever-qualification.md',
+              '.github/workflows/t3-f1-retriever-qualification-offline.yml',
+          ])
+          assert sorted(git('diff', '--name-status', BASELINE_SHA, head).splitlines()) == ['A\t' + p for p in paths]
+          assert not git('status', '--porcelain'), 'CLEAN_CHECKOUT_REQUIRED'
+          log = (Path(os.environ['RUNNER_TEMP']) / 'f1q-focused-tests.log').read_text()
+          assert log.rstrip().endswith('OK')
+          count = int(re.search(r'Ran (\d+) tests', log).group(1))
+          assert count == 32
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'f1q-qualification'
+          receipt = write_bundle(root, expected_sha=BASELINE_SHA, expected_tree=BASELINE_TREE)
+          bundle = {key: json.loads((root / name).read_text()) for key, name in FILENAMES.items()}
+          validate_bundle(bundle, expected_sha=BASELINE_SHA, expected_tree=BASELINE_TREE)
+          assert receipt['package_conformance'] == 'PASS'
+          assert receipt['qualification_result'] == 'NOT_EVALUABLE'
+          assert receipt['reason_codes'] == ['CANDIDATE_AMBIGUOUS']
+          assert receipt['candidate_count'] == 2 and receipt['candidate_fingerprint'] is None
+          assert receipt['claims_ceiling'] == CLAIMS
+          assert receipt['t5_execution_authorized'] is False
+          assert receipt['live_execution_authorized'] is False
+          zero = bundle['resources']
+          assert all(zero[k] == 0 for k in (
+              'provider_calls', 'search_calls', 'network_search_calls', 'follow_links',
+              'automatic_retries', 'credential_reads', 'credit_consumption', 'model_calls',
+              'entrant_runs', 'e1_frozen_runs', 'e1_live_runs',
+          ))
+          assert zero['spend'] == {'currency': 'USD', 'value': 0}
+          assert all(zero[k] is False for k in (
+              'formal_retriever_execution_performed', 'official_prompt_consumed', 'hidden_registry_loaded',
+          ))
+          source = {
+              'work_order': WORK_ORDER, 'implementation_authority': 'USER_APPROVAL_IN_TASK_THREAD',
+              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'),
+              'base': BASELINE_SHA, 'base_tree': BASELINE_TREE,
+              'changed_paths': paths, 'added_paths': paths, 'modified_paths': [],
+              'baseline_is_ancestor': True, 'clean_checkout': True,
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'focused_tests': {'count': count, 'result': 'PASS'},
+              'package_fingerprint': receipt['package_fingerprint'],
+              'qualification_result': receipt['qualification_result'],
+              'independent_acceptance': 'PENDING', 't5_execution_authorized': False,
+              'live_execution_authorized': False, 'claims_ceiling': CLAIMS,
+          }
+          (root / 'ci-source.json').write_text(canonical_json(source), encoding='utf-8')
+          (root / 'focused-tests.log').write_text(log, encoding='utf-8')
+          manifest = ''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n'
+                             for p in sorted(root.iterdir()) if p.name != 'MANIFEST.sha256')
+          assert len(manifest.splitlines()) == 7
+          (root / 'MANIFEST.sha256').write_text(manifest, encoding='utf-8')
+          assert not git('status', '--porcelain'), 'AUTHORING_MUTATED_CHECKOUT'
+          print('F1Q_CI_SOURCE=' + canonical_json(source))
+          print('F1Q_RECEIPT=' + canonical_json(receipt))
+          print('F1Q_ZERO=' + canonical_json(zero))
+          print('F1Q_MANIFEST\n' + manifest)
+          PY
+      - name: Upload immutable qualification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t3-f1q-01-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/f1q-qualification
+          if-no-files-found: error

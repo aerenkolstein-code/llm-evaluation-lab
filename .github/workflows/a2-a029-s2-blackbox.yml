@@ -48,7 +48,7 @@ jobs:
         working-directory: /tmp
         run: |
           WHEEL=$(echo /tmp/a2s2-wheels/companion_mind-*.whl)
-          python "$GITHUB_WORKSPACE/tools/a2_owned_home_s2_blackbox_verify.py" \
+          python "$GITHUB_WORKSPACE/tools/a2_owned_home_s2_blackbox_verify_v2.py" \
             --python /tmp/a2s2-venv/bin/python \
             --node node \
             --browser-verifier "$GITHUB_WORKSPACE/tools/a2_owned_home_s2_browser_verify.mjs" \

@@ -10,7 +10,7 @@ permissions:
 jobs:
   blackbox:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out evaluation harness
         uses: actions/checkout@v4
@@ -27,6 +27,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Build and install exact candidate wheel
         run: |
           python -m pip install --upgrade pip
@@ -39,14 +44,23 @@ jobs:
           test "$(git -C Companion-Mind rev-parse HEAD)" = "ba40dd12d810bb02eb40f4e52ee8c4dec88ed0f5"
           test "$(git -C Companion-Mind rev-parse HEAD^{tree})" = "31bc1f2ea879095e3797f9342884046a2a694374"
 
-      - name: Run A2-S2 public TestPort probe outside runtime checkout
+      - name: Run final A2-S2 TS2 black-box verification outside runtime checkout
         working-directory: /tmp
         run: |
-          python "$GITHUB_WORKSPACE/tools/a2_owned_home_s2_probe.py" --python /tmp/a2s2-venv/bin/python --output /tmp/a2s2-probe.json
+          WHEEL=$(echo /tmp/a2s2-wheels/companion_mind-*.whl)
+          python "$GITHUB_WORKSPACE/tools/a2_owned_home_s2_blackbox_verify.py" \
+            --python /tmp/a2s2-venv/bin/python \
+            --node node \
+            --browser-verifier "$GITHUB_WORKSPACE/tools/a2_owned_home_s2_browser_verify.mjs" \
+            --wheel "$WHEEL" \
+            --candidate-sha ba40dd12d810bb02eb40f4e52ee8c4dec88ed0f5 \
+            --candidate-tree 31bc1f2ea879095e3797f9342884046a2a694374 \
+            --output /tmp/a2-a029-s2-blackbox-receipt.json
 
-      - name: Upload probe
+      - name: Upload exact-head A2-S2 receipt
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: a2-a029-s2-probe-${{ github.event.pull_request.head.sha || github.sha }}
-          path: /tmp/a2s2-probe.json
+          name: a2-a029-s2-blackbox-final-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/a2-a029-s2-blackbox-receipt.json
           if-no-files-found: error

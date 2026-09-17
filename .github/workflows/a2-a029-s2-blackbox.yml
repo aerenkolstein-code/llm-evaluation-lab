@@ -1,0 +1,52 @@
+name: A2 A029 S2 OwnedHome Black-box
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  blackbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out evaluation harness
+        uses: actions/checkout@v4
+
+      - name: Check out exact Companion-Mind candidate
+        uses: actions/checkout@v4
+        with:
+          repository: aerenkolstein-code/Companion-Mind
+          ref: ba40dd12d810bb02eb40f4e52ee8c4dec88ed0f5
+          path: Companion-Mind
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build and install exact candidate wheel
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip wheel --no-deps -w /tmp/a2s2-wheels ./Companion-Mind
+          python -m venv /tmp/a2s2-venv
+          /tmp/a2s2-venv/bin/python -m pip install --no-index --no-deps /tmp/a2s2-wheels/companion_mind-*.whl
+
+      - name: Verify exact candidate identity
+        run: |
+          test "$(git -C Companion-Mind rev-parse HEAD)" = "ba40dd12d810bb02eb40f4e52ee8c4dec88ed0f5"
+          test "$(git -C Companion-Mind rev-parse HEAD^{tree})" = "31bc1f2ea879095e3797f9342884046a2a694374"
+
+      - name: Run A2-S2 public TestPort probe outside runtime checkout
+        working-directory: /tmp
+        run: |
+          python "$GITHUB_WORKSPACE/tools/a2_owned_home_s2_probe.py" --python /tmp/a2s2-venv/bin/python --output /tmp/a2s2-probe.json
+
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2-a029-s2-probe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/a2s2-probe.json
+          if-no-files-found: error

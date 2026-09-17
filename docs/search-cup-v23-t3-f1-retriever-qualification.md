@@ -28,8 +28,8 @@ documents are not copied into the public qualification evidence.
 ## Discovery before assessment
 
 The frozen current-main backend surface is `search_cup/search_pro.py` and
-`search_cup/tools.py`. The builder parses their ASTs without importing or calling
-either module. A top-level class with a `__call__` method accepting a typed
+`search_cup/tools.py`. The builder parses their ASTs without dynamically loading
+or calling either candidate. A top-level class with a `__call__` method accepting a typed
 `SearchRequest`, or a top-level callable accepting that type, is inventoried.
 This criterion includes production and fake implementations. A proxy, HTTP
 transport helper, or URL reader is not itself such a backend.
@@ -167,8 +167,13 @@ receipt tampering, exact zeros, and manifest integrity. In-memory all-PASS fixtu
 test the method only; they do not execute or qualify a real retriever. The
 ordinary repository Test workflow remains a separate required regression gate.
 
-The package authoring path does not import a search backend, provider, entrant
-runner, or judge; it performs no search. GitHub checkout/setup/artifact transport
+The builder has no direct backend, provider, entrant-runner, or judge import and
+performs no search. The existing `search_cup/__init__.py` re-exports classes and
+functions from backend/runner/judge modules; those modules are consequently
+imported when Python loads the package. That existing initialization is unchanged
+and does not call a backend. Focused tests explicitly prohibit both backend
+callables, live transport, and credential-backed construction during authoring.
+GitHub checkout/setup/artifact transport
 and CI Git metadata reads are infrastructure, not candidate execution. The
 zero-operation receipt covers T3 qualification authoring, not the unrelated
 ordinary Test workflow's existing synthetic demos and local service checks.

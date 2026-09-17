@@ -254,7 +254,11 @@ class F1QualificationTests(unittest.TestCase):
         from unittest.mock import patch as guard_patch
         with ExitStack() as stack:
             mocks = [stack.enter_context(guard_patch(target, side_effect=AssertionError("forbidden capability")))
-                     for target in ("socket.socket", "urllib.request.urlopen", "subprocess.run", "os.getenv")]
+                     for target in ("socket.socket", "urllib.request.urlopen", "subprocess.run", "os.getenv",
+                                    "search_cup.search_pro.SearchProBackend.__call__",
+                                    "search_cup.search_pro.SearchProBackend.from_env",
+                                    "search_cup.search_pro._default_transport",
+                                    "search_cup.tools.FakeSearchBackend.__call__")]
             stack.enter_context(guard_patch("os.environ", NoEnvironment()))
             rebuilt = f1q.build_bundle()
         self.assertEqual(self.bundle, rebuilt)

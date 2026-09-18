@@ -1,0 +1,95 @@
+{
+  "schema_id": "search-cup-v23-retriever-test-fixture/v1",
+  "fixture_id": "nfr-synthetic-fixture-v1",
+  "purpose": "SYNTHETIC_TEST_FIXTURE_ONLY",
+  "e1_corpus_authority": false,
+  "d4_authority": false,
+  "benchmark_corpus": false,
+  "reference_set": false,
+  "documents": [
+    {
+      "doc_id": "lex-01",
+      "title": "Synthetic record 01",
+      "url": "https://fixture.example.test/lex-01",
+      "text": "alpha alpha alpha"
+    },
+    {
+      "doc_id": "lex-02",
+      "title": "Synthetic record 02",
+      "url": "https://fixture.example.test/lex-02",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-03",
+      "title": "Synthetic record 03",
+      "url": "https://fixture.example.test/lex-03",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-04",
+      "title": "Synthetic record 04",
+      "url": "https://fixture.example.test/lex-04",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-05",
+      "title": "Synthetic record 05",
+      "url": "https://fixture.example.test/lex-05",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-06",
+      "title": "Synthetic record 06",
+      "url": "https://fixture.example.test/lex-06",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-07",
+      "title": "Synthetic record 07",
+      "url": "https://fixture.example.test/lex-07",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-08",
+      "title": "Synthetic record 08",
+      "url": "https://fixture.example.test/lex-08",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-09",
+      "title": "Synthetic record 09",
+      "url": "https://fixture.example.test/lex-09",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-10",
+      "title": "Synthetic record 10",
+      "url": "https://fixture.example.test/lex-10",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-11",
+      "title": "Synthetic record 11",
+      "url": "https://fixture.example.test/lex-11",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-12",
+      "title": "Synthetic record 12",
+      "url": "https://fixture.example.test/lex-12",
+      "text": "alpha"
+    },
+    {
+      "doc_id": "lex-20",
+      "title": "Unicode fixture",
+      "url": "https://fixture.example.test/lex-20",
+      "text": "Café ABC 数据目录"
+    },
+    {
+      "doc_id": "lex-21",
+      "title": "Short span fixture",
+      "url": "https://fixture.example.test/lex-21",
+      "text": "ab 猫"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema_id": "search-cup-v23-frozen-retriever-config/v1",
+  "candidate_id": "search-cup-v23-frozen-lexical-raw-v1",
+  "retriever_class": "RAW_RETRIEVER",
+  "algorithm_id": "deterministic-character-ngram-overlap/v1",
+  "normalization_id": "unicode-nfkc-casefold-alnum-space/v1",
+  "ngram_size": 3,
+  "short_query_fallback_ngram_size": 1,
+  "score_id": "multiset-overlap-integer/v1",
+  "tie_break": "doc_id-ascending",
+  "result_limit": 10,
+  "zero_score_policy": "exclude",
+  "automatic_retries": 0,
+  "fallback_policy": "NONE",
+  "network_access": "FORBIDDEN",
+  "provider_access": "FORBIDDEN",
+  "credential_access": "FORBIDDEN",
+  "query_planning": "NONE",
+  "query_rewrite": "NONE",
+  "semantic_model": "NONE",
+  "semantic_reranker": "NONE",
+  "cross_query_memory": "NONE",
+  "entrant_specific_behavior": "NONE",
+  "indexed_fields": [
+    "title",
+    "text"
+  ],
+  "field_separator": "\n",
+  "snippet_policy": "text-prefix-240-unicode-codepoints/v1",
+  "normalization_runtime_binding": "candidate-descriptor-unicode-data-version"
+}

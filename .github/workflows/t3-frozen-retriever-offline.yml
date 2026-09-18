@@ -1,0 +1,125 @@
+name: T3 Frozen Retriever Offline
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_frozen_retriever.py"
+      - "configs/search-cup-v23-frozen-retriever-v1.json"
+      - "fixtures/search-cup/v23-frozen-retriever-test-corpus-v1.json"
+      - "tests/test_search_cup_v23_frozen_retriever.py"
+      - "docs/search-cup-v23-frozen-retriever.md"
+      - ".github/workflows/t3-frozen-retriever-offline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NFR_HEAD: ${{ github.event.pull_request.head.sha }}
+      NFR_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run focused implementation tests and count local fixture calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23_frozen_retriever.py' -v 2>&1 | tee "$RUNNER_TEMP/nfr-focused-tests.log"
+      - name: Check six-path scope and build deterministic candidate artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          from unittest.mock import patch
+          from search_cup.contracts import canonical_json
+          from search_cup import v23_frozen_retriever as nfr
+
+          # Git probes here are CI provenance infrastructure, never a retriever capability.
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+
+          head = git('rev-parse', 'HEAD')
+          assert head == os.environ['NFR_HEAD'], 'EXACT_PR_HEAD_REQUIRED'
+          assert os.environ['NFR_BASE'] == nfr.BASELINE_SHA, 'BASELINE_DRIFT'
+          assert git('rev-parse', nfr.BASELINE_SHA + '^{tree}') == nfr.BASELINE_TREE
+          subprocess.run(['git', 'merge-base', '--is-ancestor', nfr.BASELINE_SHA, head], check=True)
+          assert sorted(git('diff', '--name-status', nfr.BASELINE_SHA, head).splitlines()) == ['A\t' + p for p in nfr.APPROVED_PATHS]
+          assert not git('status', '--porcelain'), 'CLEAN_CHECKOUT_REQUIRED'
+          log = (Path(os.environ['RUNNER_TEMP']) / 'nfr-focused-tests.log').read_text()
+          assert re.search(r'^OK$', log, re.M)
+          test_count = int(re.search(r'Ran (\d+) tests', log).group(1))
+          focused_calls = int(re.search(r'^NFR_LOCAL_FIXTURE_RETRIEVER_CALLS=(\d+)$', log, re.M).group(1))
+          assert test_count == 35 and focused_calls == 73
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'nfr-candidate'
+          original = nfr.FrozenLexicalRetriever.__call__
+          package_calls = []
+          def counted(candidate, request):
+              package_calls.append(request.request_id)
+              return original(candidate, request)
+          with patch.object(nfr.FrozenLexicalRetriever, '__call__', counted):
+              report = nfr.write_bundle(root, expected_sha=nfr.BASELINE_SHA, expected_tree=nfr.BASELINE_TREE)
+              bundle = {key: json.loads((root / name).read_text()) for key, name in nfr.PAYLOADS.items()}
+              nfr.validate_bundle(bundle, expected_sha=nfr.BASELINE_SHA, expected_tree=nfr.BASELINE_TREE)
+          assert len(package_calls) == report['local_fixture_retriever_calls'] == 8
+          assert report['implementation_conformance'] == 'PASS'
+          assert report['independent_acceptance'] == report['candidate_identity_acceptance'] == 'PENDING'
+          assert all(report[k] is False for k in ('r1_r8_qualification_performed', 'f1_eligible_claimed', 't5_execution_authorized', 'live_execution_authorized'))
+          zero = bundle['resources']
+          assert all(zero[k] == 0 for k in ('live_search_calls', 'provider_calls', 'model_calls', 'network_calls',
+              'credential_reads', 'credit_consumption', 'automatic_retries', 'subprocess_calls', 'e1_frozen_runs', 'e1_live_runs', 't5_runs'))
+          assert zero['spend'] == {'currency': 'USD', 'value': 0}
+          assert zero['hidden_registry_loaded'] is False and zero['official_prompt_consumed'] is False
+          source = {
+              'work_order': nfr.WORK_ORDER, 'implementation_authority': 'USER_APPROVAL_IN_TASK_THREAD',
+              'base': nfr.BASELINE_SHA, 'base_tree': nfr.BASELINE_TREE,
+              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'),
+              'added_paths': list(nfr.APPROVED_PATHS), 'modified_paths': [],
+              'baseline_is_ancestor': True, 'clean_checkout': True,
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'focused_tests': {'count': test_count, 'result': 'PASS'},
+              'local_fixture_retriever_calls': {'focused_tests': focused_calls, 'package_build': len(package_calls),
+                                               'validation': 0, 'total': focused_calls + len(package_calls)},
+              'candidate_fingerprint': report['candidate_fingerprint'],
+              'code_content_sha256': report['code_content_sha256'],
+              'config_fingerprint': report['config_fingerprint'],
+              'test_corpus_fingerprint': report['test_corpus_fingerprint'],
+              'normalization_runtime': bundle['candidate']['normalization_runtime'],
+              'package_fingerprint': report['package_fingerprint'],
+              'independent_acceptance': 'PENDING', **nfr.claim_boundary(),
+          }
+          (root / 'ci-source.json').write_text(canonical_json(source), encoding='utf-8')
+          (root / 'focused-tests.log').write_text(log, encoding='utf-8')
+          manifest = ''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n'
+                             for p in sorted(root.iterdir()) if p.name != 'MANIFEST.sha256')
+          assert len(manifest.splitlines()) == 7
+          (root / 'MANIFEST.sha256').write_text(manifest, encoding='utf-8')
+          assert not git('status', '--porcelain'), 'AUTHORING_MUTATED_CHECKOUT'
+          print('NFR_CI_SOURCE=' + canonical_json(source))
+          print('NFR_CONFORMANCE=' + canonical_json(report))
+          print('NFR_ZERO=' + canonical_json(zero))
+          print('NFR_MANIFEST\n' + manifest)
+          PY
+      - name: Upload immutable exact-head candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t3-nfr-01-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/nfr-candidate
+          if-no-files-found: error

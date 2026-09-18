@@ -261,8 +261,7 @@ def ts5_08(py,root):
     assert reject(call(py,root/"human",extra))=="INVALID_REQUEST"
     tool_setup={"contract_version":CONTRACT,"scope":dict(SCOPE),"tool_targets":[TOOL_TARGET],"tool_grants":[TOOL_GRANT]}
     for n,skill in enumerate(("synthetic.consequential_send","synthetic.critical"),1):
-        req={**tool_setup,"op":"tool_execute","action":tool_action(skill,n)}
-        r=result(call(py,root/f"tool-{n}",req))
+        r=result(call(py,root/f"tool-{n}",{**tool_setup,"op":"tool_execute","action":tool_action(skill,1,action_id=f"held-{n}",request_id=f"held-req-{n}",turn_id=f"held-turn-{n}",idempotency_key=f"held-key-{n}")}))
         assert r["status"]=="REQUIRE_HUMAN" and r["tool_executions"]==0
     return {"model_ui_text_overrides":"DENY","human_override_flag":"DENY","p3_p4_executions":0}
 
@@ -354,7 +353,7 @@ def ts5_14(py,node,browser_verifier,root):
         assert field in tr
     scan_safe(tr,forbidden=(" CONTINUE ","raw_response","journal.sqlite3","hidden_reasoning"))
     bad=human_response(q,a,"secret="+SECRET)
-    assert reject(call(py,store,bad))=="INVALID_PUBLIC_COMMAND"
+    assert reject(call(py,store,bad))=="UNSAFE_INPUT"
     p,url=launch_shell(py,root/"shell")
     try:
         run=subprocess.run([node,browser_verifier,url],text=True,capture_output=True,timeout=60)
@@ -398,7 +397,7 @@ def ts5_15(py,root):
     p2=result(call(py,root/"s4", {**toolbase,"op":"tool_execute","action":tool_action("synthetic.reversible_write",1)}))
     assert p2["status"]=="SUCCESS" and p2["tool_receipt"]["readback"]["status"]=="VERIFIED"
     for n,skill in enumerate(("synthetic.consequential_send","synthetic.critical"),2):
-        held=result(call(py,root/f"held-{n}",{**toolbase,"op":"tool_execute","action":tool_action(skill,n)}))
+        held=result(call(py,root/f"held-{n}",{**toolbase,"op":"tool_execute","action":tool_action(skill,1,action_id=f"reg-held-{n}",request_id=f"reg-held-req-{n}",turn_id=f"reg-held-turn-{n}",idempotency_key=f"reg-held-key-{n}")}))
         assert held["status"]=="REQUIRE_HUMAN" and held["tool_executions"]==0
 
     exp=result(call(py,root/"s1",{"contract_version":CONTRACT,"scope":SCOPE,"fixtures":[OLD_FIXTURE],"grants":[OLD_GRANT],"op":"safe_export"}))["events"]

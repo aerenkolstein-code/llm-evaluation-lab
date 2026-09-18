@@ -1,0 +1,158 @@
+name: T3 F1 Retriever Qualification R2 Offline
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t3_f1q_r2.py"
+      - "configs/search-cup-v23-t3-f1q-r2-target.json"
+      - "tests/test_search_cup_v23_t3_f1q_r2.py"
+      - "docs/search-cup-v23-t3-f1q-r2.md"
+      - ".github/workflows/t3-f1-retriever-qualification-r2-offline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  exact-target-qualification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      F1QR2_HEAD: ${{ github.event.pull_request.head.sha }}
+      F1QR2_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up exact runtime family
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify baseline ancestry five-addition scope and runtime before probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import unicodedata
+          from search_cup import v23_t3_f1q_r2 as q
+
+          assert sys.version_info[:2] == (3, 11)
+          assert unicodedata.unidata_version == "14.0.0"
+          git_commands = []
+          def git(*args):
+              git_commands.append(list(args))
+              return subprocess.check_output(['git', *args], text=True).strip()
+          head = git('rev-parse', 'HEAD')
+          assert head == os.environ['F1QR2_HEAD'], 'EXACT_PR_HEAD_REQUIRED'
+          assert os.environ['F1QR2_BASE'] == q.BASELINE_SHA, 'BASELINE_DRIFT'
+          assert git('rev-parse', q.BASELINE_SHA + '^{tree}') == q.BASELINE_TREE, 'BASELINE_DRIFT'
+          git('merge-base', '--is-ancestor', q.BASELINE_SHA, head)
+          assert sorted(git('diff', '--name-status', q.BASELINE_SHA, head).splitlines()) == ['A\t' + p for p in q.APPROVED_PATHS], 'SCOPE_AMENDMENT_REQUIRED'
+          assert not git('status', '--porcelain'), 'CLEAN_CHECKOUT_REQUIRED'
+          source = {'work_order': q.WORK_ORDER, 'base': q.BASELINE_SHA, 'base_tree': q.BASELINE_TREE,
+              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'), 'added_paths': list(q.APPROVED_PATHS),
+              'modified_paths': [], 'baseline_is_ancestor': True, 'clean_checkout': True,
+              'runtime': q.runtime_identity(), 'python_patch_version': sys.version.split()[0],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'ci_provenance_git_commands': git_commands, 'ci_provenance_git_subprocess_calls': len(git_commands),
+              'infrastructure_scope': 'CHECKOUT_SETUP_GIT_AND_UPLOAD_ARE_NOT_QUALIFICATION_CAPABILITIES'}
+          (Path(os.environ['RUNNER_TEMP']) / 'f1qr2-preflight.json').write_text(q.canonical_json(source), encoding='utf-8')
+          PY
+      - name: Run focused qualification tests with explicit local accounting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23_t3_f1q_r2.py' -v 2>&1 | tee "$RUNNER_TEMP/f1qr2-focused-tests.log"
+      - name: Build and verify immutable exact-head qualification artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          from unittest.mock import patch
+          from search_cup import v23_t3_f1q_r2 as q
+          from search_cup import v23_frozen_retriever as nfr
+          from search_cup.tools import BudgetedSearchProxy
+          from search_cup.protocol_v23 import f1_eligibility
+
+          temp = Path(os.environ['RUNNER_TEMP'])
+          source = json.loads((temp / 'f1qr2-preflight.json').read_text())
+          log = (temp / 'f1qr2-focused-tests.log').read_text()
+          assert re.search(r'^OK$', log, re.M)
+          count = int(re.search(r'Ran (\d+) tests', log).group(1))
+          assert count == 46
+          focused = json.loads(re.search(r'^F1QR2_TEST_COUNTS=(.+)$', log, re.M).group(1))
+          assert focused == {'retriever': 97, 'proxy': 105, 'injected_failure': 9, 'negative_guard_blocked_attempts': 24}
+          counts = {'retriever': 0, 'proxy': 0, 'injected_failure': 0}
+          original_call, original_search = nfr.FrozenLexicalRetriever.__call__, BudgetedSearchProxy.search
+          def counted(candidate, request):
+              counts['retriever'] += 1
+              return original_call(candidate, request)
+          def searched(proxy, query):
+              before = len(proxy.traces)
+              try:
+                  return original_search(proxy, query)
+              finally:
+                  added = proxy.traces[before:]
+                  counts['proxy'] += len(added)
+                  counts['injected_failure'] += sum(t.error_code == 'INJECTED_LOCAL_FAILURE' for t in added)
+          root = temp / 'f1qr2-qualification'
+          with patch.object(nfr.FrozenLexicalRetriever, '__call__', counted), patch.object(BudgetedSearchProxy, 'search', searched):
+              report = q.write_bundle(root, expected_sha=q.BASELINE_SHA, expected_tree=q.BASELINE_TREE)
+              bundle = {key: json.loads((root / name).read_text()) for key, name in q.PAYLOADS.items()}
+              before = dict(counts)
+              q.validate_bundle(bundle, expected_sha=q.BASELINE_SHA, expected_tree=q.BASELINE_TREE)
+              assert counts == before, 'VALIDATOR_MUST_NOT_QUERY'
+          assert counts == {'retriever': 24, 'proxy': 26, 'injected_failure': 2}
+          assert report['package_conformance'] == 'PASS' and report['target_resolution'] == 'EXACT_MATCH'
+          assert report['method_qualification_result'] == 'F1_ELIGIBLE'
+          assert f1_eligibility(bundle['qualification']['protocol_retriever']) == report['protocol_gate_result'] == 'F1_ELIGIBLE'
+          assert all(c['status'] == 'PASS' for c in bundle['qualification']['criteria'].values())
+          assert report['independent_acceptance'] == 'PENDING'
+          assert report['formal_f1_status'] == 'PENDING_INDEPENDENT_ACCEPTANCE'
+          assert all(report[k] is False for k in ('t5_execution_authorized', 'e1_execution_authorized', 'live_execution_authorized'))
+          zero = bundle['resources']
+          assert all(type(zero[k]) is int and zero[k] == 0 for k in q.ZERO_FIELDS)
+          assert zero['spend'] == {'currency': 'USD', 'value': 0}
+          assert all(zero[k] is False for k in ('hidden_registry_loaded', 'official_prompt_consumed', 'production_corpus_loaded', 'reference_set_loaded'))
+          # This read-only Git invocation is outside the qualification guards/path.
+          assert not subprocess.check_output(['git', 'status', '--porcelain'], text=True).strip()
+          source['ci_provenance_git_commands'].append(['status', '--porcelain'])
+          source['ci_provenance_git_subprocess_calls'] += 1
+          source.update({'focused_tests': {'count': count, 'result': 'PASS', 'calls': focused},
+              'artifact_build_calls': counts, 'validation_calls': {'retriever': 0, 'proxy': 0, 'injected_failure': 0},
+              'total_qualification_calls': {k: counts[k] + focused[k] for k in counts},
+              'package_fingerprint': report['package_fingerprint'],
+              'candidate_descriptor_fingerprint': report['candidate_descriptor_fingerprint'],
+              'target_json_fingerprint': q.TARGET_JSON_FINGERPRINT,
+              'method_qualification_result': report['method_qualification_result'], **q.boundary()})
+          (root / 'ci-source.json').write_text(q.canonical_json(source), encoding='utf-8')
+          (root / 'focused-tests.log').write_text(log, encoding='utf-8')
+          manifest = ''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n'
+              for p in sorted(root.iterdir()) if p.name != 'MANIFEST.sha256')
+          assert len(manifest.splitlines()) == 8
+          (root / 'MANIFEST.sha256').write_text(manifest, encoding='utf-8')
+          print('F1QR2_CI_SOURCE=' + q.canonical_json(source))
+          print('F1QR2_RECEIPT=' + q.canonical_json(report))
+          print('F1QR2_CRITERIA=' + q.canonical_json(bundle['qualification']['criteria']))
+          print('F1QR2_ZERO=' + q.canonical_json(zero))
+          print('F1QR2_MANIFEST\n' + manifest)
+          PY
+      - name: Upload exact-head qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t3-f1q-r2-01-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/f1qr2-qualification
+          if-no-files-found: error

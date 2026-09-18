@@ -1,0 +1,205 @@
+name: T5 E1F EX1 Offline Executor
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t5_e1f_ex1.py"
+      - "tests/test_search_cup_v23_t5_e1f_ex1.py"
+      - "docs/search-cup-v23-t5-e1f-ex1-offline-replay.md"
+      - ".github/workflows/t5-e1f-ex1-offline-replay.yml"
+      - "tests/test_search_cup_v23.py"
+  workflow_dispatch:
+    inputs:
+      authority_receipt_id:
+        description: "Separately approved Phase B governance receipt (non-secret)"
+        required: true
+        type: string
+      expected_main_sha:
+        description: "Exact separately approved published main SHA"
+        required: true
+        type: string
+      expected_execution_binding_fingerprint:
+        description: "Exact retained EX0 execution binding"
+        required: true
+        type: string
+      exact_run_id:
+        description: "Exact frozen E1F-001 run identity"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  phase-a-conformance:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EX1_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      EX1_PR_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify exact source five-path scope and narrow boundary amendment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import unicodedata
+          from search_cup import v23_t5_e1f_ex1 as t
+          assert sys.version_info[:2] == (3, 11) and unicodedata.unidata_version == '14.0.0'
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          head = git('rev-parse', 'HEAD')
+          assert head == os.environ['EX1_PR_HEAD'], 'EXACT_HEAD_REQUIRED'
+          assert git('rev-parse', t.BASELINE_SHA + '^{tree}') == t.BASELINE_TREE, 'BASELINE_DRIFT'
+          git('merge-base', '--is-ancestor', t.BASELINE_SHA, head)
+          git('merge-base', '--is-ancestor', t.EX0_PUBLICATION, head)
+          # A concurrently advanced target must still contain the construction base.
+          git('merge-base', '--is-ancestor', t.BASELINE_SHA, os.environ['EX1_PR_BASE'])
+          before = subprocess.check_output(['git', 'show', t.BASELINE_SHA + ':' + t.BOUNDARY_PATH], text=True)
+          scope = t.scope_gate(git('diff', '--name-status', t.BASELINE_SHA, head).splitlines(),
+                               before, Path(t.BOUNDARY_PATH).read_text())
+          assert not git('status', '--porcelain=v1', '--untracked-files=all')
+          source = {'work_order': t.WORK_ORDER, 'construction_base': t.BASELINE_SHA, 'construction_tree': t.BASELINE_TREE,
+              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'), 'target_main_at_trigger': os.environ['EX1_PR_BASE'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'], 'runtime': t.ex0.parent.qualification.runtime_identity(),
+              'clean_checkout': True, 'baseline_is_ancestor': True, **scope,
+              'infrastructure_scope': 'CHECKOUT_SETUP_GIT_UPLOAD_AND_NEGATIVE_UNIT_PROBES_ARE_NOT_FORMAL_EXECUTION'}
+          (Path(os.environ['RUNNER_TEMP']) / 'ex1-ci-source.json').write_text(t.canonical_json(source))
+          PY
+      - name: Run focused RAM-only executor conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p test_search_cup_v23_t5_e1f_ex1.py -v 2>&1 | tee "$RUNNER_TEMP/ex1-focused-tests.log"
+      - name: Run existing global v23 boundary suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p test_search_cup_v23.py -v 2>&1 | tee "$RUNNER_TEMP/ex1-boundary-tests.log"
+      - name: Build deterministic zero-formal-execution run-ready package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          from unittest.mock import patch
+          from search_cup import v23_t5_e1f_ex1 as t
+          temp = Path(os.environ['RUNNER_TEMP'])
+          source = json.loads((temp / 'ex1-ci-source.json').read_text())
+          logs = {name: (temp / ('ex1-' + name + '-tests.log')).read_text() for name in ('focused', 'boundary')}
+          for log in logs.values():
+              assert re.search(r'^OK$', log, re.M), 'NO_SKIPPED_DEDICATED_TESTS'
+          counts = json.loads(re.search(r'^EX1_PHASE_A_TEST_COUNTS=(.+)$', logs['focused'], re.M).group(1))
+          assert counts['published_retriever_query_calls'] == counts['formal_replays'] == 0
+          assert counts['memory_simulations'] > 0 and counts['synthetic_backend_calls'] > 0
+          output, second = temp / 'ex1-run-ready', temp / 'ex1-repeat'
+          with patch('search_cup.v23_frozen_retriever.FrozenLexicalRetriever.__call__', side_effect=AssertionError('NO_QUERY')) as query, \
+               patch('search_cup.tools.BudgetedSearchProxy.search', side_effect=AssertionError('NO_PROXY')) as proxy, \
+               patch.object(t.ex0, 'visible_decision', side_effect=AssertionError('NO_FIXTURE')) as decision:
+              receipt = t.write_ready(output)
+              repeated = t.write_ready(second)
+              assert receipt['terminal_status'] == repeated['terminal_status'] == 'PASS'
+              assert {p.name: p.read_bytes() for p in output.iterdir()} == {p.name: p.read_bytes() for p in second.iterdir()}
+              query.assert_not_called()
+              proxy.assert_not_called()
+              decision.assert_not_called()
+          assert receipt['source']['head'] == source['head'] and receipt['source']['tree'] == source['tree']
+          assert not receipt['formal_execution_performed'] and not receipt['formal_e1_execution_performed']
+          assert not receipt['formal_execution_allowed'] and not receipt['phase_b_execution_authorized']
+          assert all(receipt[k] == 0 for k in t.ZERO_COUNTS)
+          assert set(receipt['I1_I10'].values()) == {'NOT_RUN'}
+          assert set(p.name for p in output.iterdir()) == set(t.READY_FILES.values()) | {'MANIFEST.sha256'}
+          source.update({'focused_tests': int(re.search(r'Ran (\d+) tests', logs['focused']).group(1)),
+              'global_boundary_tests': int(re.search(r'Ran (\d+) tests', logs['boundary']).group(1)),
+              'test_counts': counts, 'byte_identical_rebuild': True, 'formal_execution_performed': False,
+              'execution_binding_fingerprint': t.BINDING, 'exact_run_id': t.RUN_ID,
+              'source_preflight_fingerprint': receipt['source_preflight_fingerprint'],
+              'run_ready_package_fingerprint': receipt['run_ready_package_fingerprint']})
+          (output / 'ci-source.json').write_text(t.canonical_json(source))
+          for name, log in logs.items():
+              (output / (name + '-tests.log')).write_text(log)
+          manifest = t.ex0.parent.write_manifest(output)
+          assert len(manifest.splitlines()) == 7
+          print('EX1_CI_SOURCE=' + t.canonical_json(source))
+          print('EX1_RUN_READY_RECEIPT=' + t.canonical_json(receipt))
+          print('EX1_MANIFEST\n' + manifest)
+          PY
+      - name: Upload immutable exact-head zero-execution package
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t5-e1f-ex1-run-ready-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/ex1-run-ready
+          if-no-files-found: error
+
+  phase-b-separately-authorized-replay:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EX1_AUTHORITY: ${{ inputs.authority_receipt_id }}
+      EX1_EXPECTED_SHA: ${{ inputs.expected_main_sha }}
+      EX1_EXPECTED_BINDING: ${{ inputs.expected_execution_binding_fingerprint }}
+      EX1_EXACT_RUN_ID: ${{ inputs.exact_run_id }}
+    steps:
+      - name: Require separate authority exact main and first attempt before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EX1_AUTHORITY"
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$EX1_EXPECTED_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$EX1_EXPECTED_BINDING" = 7d4255fe28d0ee611465f88513d084c3371120d32afbc74d5cf4a3583d9082cb
+          test "$EX1_EXACT_RUN_ID" = "T5-E1FROZEN-PV-001-EXEC-V1:$EX1_EXPECTED_BINDING:E1F-001"
+      - name: Check out published main without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Execute separately authorized one-shot replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m search_cup.v23_t5_e1f_ex1 replay \
+            --authority-receipt "$EX1_AUTHORITY" --expected-main-sha "$EX1_EXPECTED_SHA" \
+            --expected-binding "$EX1_EXPECTED_BINDING" --run-id "$EX1_EXACT_RUN_ID" \
+            --output-dir "$RUNNER_TEMP/ex1-formal" > "$RUNNER_TEMP/ex1-replay-status.json"
+      - name: Detect durable STARTED evidence even after failure
+        if: always()
+        id: started
+        shell: bash
+        run: |
+          if test -f "$RUNNER_TEMP/ex1-formal/run-start.json"; then
+            echo "started=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Preserve actual complete or partial one-shot evidence
+        if: always() && steps.started.outputs.started == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t5-e1f-001-${{ inputs.expected_main_sha }}
+          path: ${{ runner.temp }}/ex1-formal
+          include-hidden-files: true
+          if-no-files-found: error

@@ -27,15 +27,11 @@ function makeElements(){
   return e;
 }
 const realFetch=globalThis.fetch;
-async function sandboxFetch(path,opts={}){
-  return realFetch(new URL(path, origin).toString(), opts);
-}
+async function sandboxFetch(path,opts={}){ return realFetch(new URL(path, origin).toString(), opts); }
 function makeSandbox(elements){
-  return {
-    document:{getElementById:id=>elements[id]}, localStorage, location:{origin},
-    crypto:{randomUUID:uuid}, fetch:sandboxFetch, addEventListener:()=>{}, console, JSON, RegExp, Number,
-    setTimeout, clearTimeout, Promise, Error
-  };
+  return {document:{getElementById:id=>elements[id]},localStorage,location:{origin},
+    crypto:{randomUUID:uuid},fetch:sandboxFetch,addEventListener:()=>{},console,JSON,RegExp,Number,
+    setTimeout,clearTimeout,Promise,Error};
 }
 function storageKey(){
   const k=[...backing.keys()].find(k=>k.startsWith('owned-home-v3:'));
@@ -54,13 +50,16 @@ function assertControl(label){
   return x;
 }
 async function settle(ms=120){ await new Promise(r=>setTimeout(r,ms)); }
+function startRealm(label){
+  const elements=makeElements();
+  const sandbox=makeSandbox(elements);
+  vm.createContext(sandbox);
+  vm.runInContext(script,sandbox,{filename:label});
+  return elements;
+}
 
-const elements=makeElements();
-const sandbox=makeSandbox(elements);
-vm.createContext(sandbox);
-vm.runInContext(script,sandbox,{filename:'models.js'});
+let elements=startRealm('models.js');
 await settle();
-
 const initial=assertControl('initial');
 const session=initial.session_id;
 if(initial.profile_key!=='synthetic-small' || initial.profile_version!=='v1') throw new Error('initial profile mismatch');
@@ -76,6 +75,14 @@ await settle();
 assertControl('after-secret');
 if([...backing.values()].some(v=>v.includes('SECRET_MODEL_BROWSER_SENTINEL'))) throw new Error('credential-shaped text persisted');
 if(elements.message.value!=='') throw new Error('secret message not cleared');
+
+// Recreate the page. Startup observe must turn the rejected opaque handle into NOT_FOUND,
+// enabling a new safe submission without ever persisting either message body.
+elements=startRealm('models-after-reject-reload.js');
+await settle(220);
+c=assertControl('after-reject-reload');
+if(c.session_id!==session || c.profile_key!=='synthetic-large') throw new Error('control drift after rejected-input reload');
+if(elements.submit.disabled) throw new Error('submit did not recover after NOT_FOUND observe');
 
 elements.message.value='ordinary model message';
 await elements.form.listeners.submit({preventDefault(){}});
@@ -104,10 +111,7 @@ c=assertControl('after-capable-turn');
 if(!elements['active-model'].textContent.includes('synthetic-capable')) throw new Error('server did not select capable profile');
 if(c.session_id!==session || c.topic_id!=='topic-b') throw new Error('session/topic drift after capable turn');
 
-const elements2=makeElements();
-const sandbox2=makeSandbox(elements2);
-vm.createContext(sandbox2);
-vm.runInContext(script,sandbox2,{filename:'models-reload.js'});
+const elements2=startRealm('models-final-reload.js');
 await settle(220);
 const reloaded=assertControl('reload');
 if(reloaded.session_id!==session || reloaded.topic_id!=='topic-b' || reloaded.profile_key!=='synthetic-capable' || reloaded.profile_version!=='v1')
@@ -116,8 +120,7 @@ if(!elements2.session.textContent.includes(session) || !elements2['active-topic'
   throw new Error('reload display identity drift');
 
 console.log(JSON.stringify({
-  status:'PASS', origin, control_fields:Object.keys(reloaded).sort(),
-  manual_profile_switches:2, raw_browser_writes:0, secret_persistence:0,
-  session_stable:true, topic_after_reload:'topic-b', profile_after_reload:'synthetic-capable/v1',
-  total_storage_writes:writes.length
+  status:'PASS',origin,control_fields:Object.keys(reloaded).sort(),manual_profile_switches:2,
+  raw_browser_writes:0,secret_persistence:0,session_stable:true,topic_after_reload:'topic-b',
+  profile_after_reload:'synthetic-capable/v1',total_storage_writes:writes.length
 }));

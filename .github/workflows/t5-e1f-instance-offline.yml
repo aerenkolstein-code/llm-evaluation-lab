@@ -1,0 +1,136 @@
+name: T5 E1 Frozen Instance Offline
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t5_e1f_instance.py"
+      - "configs/search-cup-v23-t5-e1f-pv-001.json"
+      - "fixtures/search-cup/v23-t5-e1f-pv-001-corpus.json"
+      - "fixtures/search-cup/v23-t5-e1f-pv-001-reference.json"
+      - "tests/test_search_cup_v23_t5_e1f_instance.py"
+      - "docs/search-cup-v23-t5-e1f-pv-001.md"
+      - ".github/workflows/t5-e1f-instance-offline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  author-frozen-instance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      T5PV_HEAD: ${{ github.event.pull_request.head.sha }}
+      T5PV_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up pinned runtime family
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify baseline ancestry seven additions clean checkout and Unicode
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import unicodedata
+          from search_cup import v23_t5_e1f_instance as t
+
+          assert sys.version_info[:2] == (3, 11)
+          assert unicodedata.unidata_version == '14.0.0'
+          commands = []
+          def git(*args):
+              commands.append(list(args))
+              return subprocess.check_output(['git', *args], text=True).strip()
+          head = git('rev-parse', 'HEAD')
+          assert head == os.environ['T5PV_HEAD'], 'EXACT_PR_HEAD_REQUIRED'
+          assert os.environ['T5PV_BASE'] == t.BASELINE_SHA, 'BASELINE_DRIFT'
+          assert git('rev-parse', t.BASELINE_SHA + '^{tree}') == t.BASELINE_TREE, 'BASELINE_DRIFT'
+          git('merge-base', '--is-ancestor', t.BASELINE_SHA, head)
+          assert sorted(git('diff', '--name-status', t.BASELINE_SHA, head).splitlines()) == ['A\t' + p for p in t.APPROVED_PATHS], 'SCOPE_AMENDMENT_REQUIRED'
+          assert not git('status', '--porcelain'), 'CLEAN_CHECKOUT_REQUIRED'
+          source = {'work_order': t.WORK_ORDER, 'base': t.BASELINE_SHA, 'base_tree': t.BASELINE_TREE,
+              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'), 'added_paths': list(t.APPROVED_PATHS),
+              'modified_paths': [], 'baseline_is_ancestor': True, 'clean_checkout': True,
+              'python_major_minor': '3.11', 'unicode_data_version': unicodedata.unidata_version,
+              'python_patch_version': sys.version.split()[0], 'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'ci_provenance_git_commands': commands, 'ci_provenance_git_subprocess_calls': len(commands),
+              'infrastructure_scope': 'CHECKOUT_SETUP_GIT_AND_UPLOAD_ARE_NOT_INSTANCE_EXECUTION'}
+          (Path(os.environ['RUNNER_TEMP']) / 't5pv-preflight.json').write_text(t.canonical_json(source), encoding='utf-8')
+          PY
+      - name: Run focused authoring and negative conformance tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23_t5_e1f_instance.py' -v 2>&1 | tee "$RUNNER_TEMP/t5pv-focused-tests.log"
+      - name: Build verify and seal the zero-execution authoring artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          from unittest.mock import patch
+          from search_cup import v23_t5_e1f_instance as t
+
+          temp = Path(os.environ['RUNNER_TEMP'])
+          source = json.loads((temp / 't5pv-preflight.json').read_text())
+          log = (temp / 't5pv-focused-tests.log').read_text()
+          counts = json.loads(re.search(r'^T5_TEST_COUNTS=(.+)$', log, re.M).group(1))
+          test_count = int(re.search(r'Ran (\d+) tests', log).group(1))
+          assert re.search(r'^OK$', log, re.M), 'NO_SKIPPED_DEDICATED_TESTS'
+          assert counts['local_fixture_retriever_calls'] == counts['proxy_calls'] == 0
+          assert counts['infrastructure_git_calls'] == 5
+          assert counts['negative_guard_blocked_attempts'] == 12
+          output = temp / 't5pv-instance'
+          # Independent outer tripwire: an unexpected query cannot silently succeed.
+          with patch('search_cup.v23_frozen_retriever.FrozenLexicalRetriever.__call__', side_effect=AssertionError('QUERY_FORBIDDEN')) as query, \
+               patch('search_cup.tools.BudgetedSearchProxy.search', side_effect=AssertionError('PROXY_FORBIDDEN')) as proxy:
+              report = t.write_bundle(output, expected_sha=source['base'], expected_tree=source['base_tree'])
+              second = t.build_bundle(expected_sha=source['base'], expected_tree=source['base_tree'])
+              on_disk = {k: json.loads((output / name).read_bytes()) for k, name in t.PAYLOADS.items()}
+              assert t.canonical_json(on_disk) == t.canonical_json(second), 'FULL_BUNDLE_DETERMINISM'
+              t.validate_directory(output)
+              query.assert_not_called()
+              proxy.assert_not_called()
+          assert report['instance_gate']['missing_decisions'] == []
+          assert report['instance_gate']['terminal_status'] == 'BLOCKED'
+          assert report['instance_gate']['reason_codes'] == ['T1_IMPLEMENTATION_ONLY']
+          assert report['execution_allowed'] is False
+          assert report['formal_e1_execution_performed'] is False
+          assert report['f1_eligibility'] == 'F1_ELIGIBLE'
+          assert all(report[k] == 0 for k in t.ZERO_FIELDS)
+          assert report['spend']['value'] == 0 and report['spend']['unit'] == 'USD'
+          assert not subprocess.check_output(['git', 'status', '--porcelain'], text=True).strip()
+          source['ci_provenance_git_commands'].append(['status', '--porcelain'])
+          source['ci_provenance_git_subprocess_calls'] += 1
+          source.update({'focused_tests': {'count': test_count, 'result': 'PASS', 'counts': counts},
+              'authoring_query_calls': 0, 'authoring_proxy_calls': 0, 'full_bundle_byte_identical': True,
+              'package_fingerprint': report['package_fingerprint'], 'instance_id': t.INSTANCE_ID,
+              'spec_fingerprint': report['spec_fingerprint'], 'instance_gate': report['instance_gate'], **t.boundary()})
+          (output / 'ci-source.json').write_text(t.canonical_json(source), encoding='utf-8')
+          (output / 'focused-tests.log').write_text(log, encoding='utf-8')
+          manifest = t.write_manifest(output)
+          assert len(manifest.splitlines()) == 17
+          t.validate_directory(output)
+          print('T5PV_CI_SOURCE=' + t.canonical_json(source))
+          print('T5PV_RECEIPT=' + t.canonical_json(report))
+          print('T5PV_MANIFEST\n' + manifest)
+          PY
+      - name: Upload exact-head instance for independent acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t5-e1f-pv-001-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/t5pv-instance
+          if-no-files-found: error

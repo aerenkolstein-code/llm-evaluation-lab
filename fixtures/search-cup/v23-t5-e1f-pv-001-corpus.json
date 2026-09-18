@@ -1,0 +1,151 @@
+{
+  "schema_id": "search-cup-t5-synthetic-corpus/v1",
+  "corpus_id": "t5-e1frozen-pv-001-corpus",
+  "version": "1",
+  "documents": [
+    {
+      "doc_id": "t5-pv-doc-001",
+      "title": "Synthetic opportunity 001",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-001",
+      "text": "Remote work is permitted. Python is required. Applications are open."
+    },
+    {
+      "doc_id": "t5-pv-doc-002",
+      "title": "Synthetic opportunity 002",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-002",
+      "text": "Working from home is allowed. Proficiency in Python is mandatory. We are accepting applications now."
+    },
+    {
+      "doc_id": "t5-pv-doc-003",
+      "title": "Synthetic opportunity 003",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-003",
+      "text": "Fully remote work is available. Applicants must use Python. Recruitment is currently open."
+    },
+    {
+      "doc_id": "t5-pv-doc-004",
+      "title": "Synthetic opportunity 004",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-004",
+      "text": "Location-independent work is permitted. Python is an essential requirement. Application submissions are welcome."
+    },
+    {
+      "doc_id": "t5-pv-doc-005",
+      "title": "Synthetic opportunity 005",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-005",
+      "text": "Telecommuting is allowed. Python is a required skill. Applications are currently accepted."
+    },
+    {
+      "doc_id": "t5-pv-doc-006",
+      "title": "Synthetic opportunity 006",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-006",
+      "text": "Home-based work is allowed. Python proficiency is necessary. Recruiting is open."
+    },
+    {
+      "doc_id": "t5-pv-doc-007",
+      "title": "Synthetic opportunity 007",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-007",
+      "text": "On-site attendance is mandatory; remote work is forbidden. Python is required. Applications are open."
+    },
+    {
+      "doc_id": "t5-pv-doc-008",
+      "title": "Synthetic opportunity 008",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-008",
+      "text": "Working from home is not allowed. Proficiency in Python is mandatory. We are accepting applications now."
+    },
+    {
+      "doc_id": "t5-pv-doc-009",
+      "title": "Synthetic opportunity 009",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-009",
+      "text": "This is an on-site-only role. Applicants must use Python. Recruitment is currently open."
+    },
+    {
+      "doc_id": "t5-pv-doc-010",
+      "title": "Synthetic opportunity 010",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-010",
+      "text": "Remote work is not permitted. Python is an essential requirement. Application submissions are welcome."
+    },
+    {
+      "doc_id": "t5-pv-doc-011",
+      "title": "Synthetic opportunity 011",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-011",
+      "text": "Telecommuting is forbidden. Python is a required skill. Applications are currently accepted."
+    },
+    {
+      "doc_id": "t5-pv-doc-012",
+      "title": "Synthetic opportunity 012",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-012",
+      "text": "All work must occur in the office; home-based work is not allowed. Python proficiency is necessary. Recruiting is open."
+    },
+    {
+      "doc_id": "t5-pv-doc-013",
+      "title": "Synthetic opportunity 013",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-013",
+      "text": "Remote work is permitted. Python is optional, not required. Applications are open."
+    },
+    {
+      "doc_id": "t5-pv-doc-014",
+      "title": "Synthetic opportunity 014",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-014",
+      "text": "Working from home is allowed. Python proficiency is welcomed but never mandatory. We are accepting applications now."
+    },
+    {
+      "doc_id": "t5-pv-doc-015",
+      "title": "Synthetic opportunity 015",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-015",
+      "text": "Fully remote work is available. Applicants need not know Python. Recruitment is currently open."
+    },
+    {
+      "doc_id": "t5-pv-doc-016",
+      "title": "Synthetic opportunity 016",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-016",
+      "text": "Location-independent work is permitted. Python is a bonus skill and is not an essential requirement. Application submissions are welcome."
+    },
+    {
+      "doc_id": "t5-pv-doc-017",
+      "title": "Synthetic opportunity 017",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-017",
+      "text": "Telecommuting is allowed. Python is not required for this role. Applications are currently accepted."
+    },
+    {
+      "doc_id": "t5-pv-doc-018",
+      "title": "Synthetic opportunity 018",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-018",
+      "text": "Home-based work is allowed. Python proficiency is optional. Recruiting is open."
+    },
+    {
+      "doc_id": "t5-pv-doc-019",
+      "title": "Synthetic opportunity 019",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-019",
+      "text": "Remote work is permitted. Python is required. Applications are closed."
+    },
+    {
+      "doc_id": "t5-pv-doc-020",
+      "title": "Synthetic opportunity 020",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-020",
+      "text": "Working from home is allowed. Proficiency in Python is mandatory. We are not accepting applications."
+    },
+    {
+      "doc_id": "t5-pv-doc-021",
+      "title": "Synthetic opportunity 021",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-021",
+      "text": "Fully remote work is available. Applicants must use Python. Recruitment has ended; submissions are closed."
+    },
+    {
+      "doc_id": "t5-pv-doc-022",
+      "title": "Synthetic opportunity 022",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-022",
+      "text": "Telecommuting is allowed. Python is a required skill. The application window is shut."
+    },
+    {
+      "doc_id": "t5-pv-doc-023",
+      "title": "Synthetic opportunity 023",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-023",
+      "text": "Work-location arrangements are unspecified. Python is required. Applications are open."
+    },
+    {
+      "doc_id": "t5-pv-doc-024",
+      "title": "Synthetic opportunity 024",
+      "url": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-024",
+      "text": "Remote work is permitted. Python is required. The current application status is unspecified."
+    }
+  ]
+}

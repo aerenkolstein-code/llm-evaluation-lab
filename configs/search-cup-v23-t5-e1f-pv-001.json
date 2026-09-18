@@ -1,0 +1,41 @@
+{
+  "schema_id": "search-cup-t5-e1f-instance-config/v1",
+  "work_order": "WO-ENG-B1-SC-V23-T5-E1F-PV-01 v0.1",
+  "instance_id": "T5-E1FROZEN-PV-001",
+  "searchspec_id": "SEARCH-CUP-V23-T5-E1FROZEN-PV-001",
+  "version": "1",
+  "freeze_timestamp": "2026-09-18T00:00:00Z",
+  "timestamp_semantics": "DECLARED_VERSION_DATE_NOT_EXECUTION_TIME",
+  "source_baseline": {
+    "sha": "4785c392eb0b9e5d04c8eef04289a4888c222839",
+    "tree": "07849a3696009c47d284b896fd3f1676f617e98b"
+  },
+  "runtime": {
+    "python_major_minor": "3.11",
+    "unicode_data_version": "14.0.0"
+  },
+  "candidate_descriptor_fingerprint": "6715a759a36dd3039dbf36bb15636eb683e107caec3953c68adb8e92c93d4281",
+  "retriever_config_fingerprint": "2f60df7627f611c29f425dfccb94936cf606774fc619e48fe34c650f738ac7ca",
+  "accepted_f1q_r2_package_fingerprint": "ff59157de522b8d7b17cea5908a094449b76be7f606b13bffb9b703285721886",
+  "corpus_input_fingerprint": "5727dfe10a55dc446663ed87242bfd7acd830d0110eb42d5ffa6ebe23c0fca4f",
+  "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+  "reference_input_fingerprint": "ae1329842c1bb5b9c7d0162801f5fb8f19fde1284bcae75497f3d29459f2e9d6",
+  "index_fingerprint": "f8093933ffed0c3859cae0728551d125a89fa88be5fa094a77e4b30fb01d5b6f",
+  "source_pins": {
+    "search_cup/v23_frozen_retriever.py": "0f87af3639d760c3dfad427f8d72f53f553a9c768d3f7b29d5b32cc8def95729",
+    "configs/search-cup-v23-frozen-retriever-v1.json": "773bc12c7b571d14119641a61aeba69a81776cd131d6926e813c3c09fecbed4c",
+    "fixtures/search-cup/v23-frozen-retriever-test-corpus-v1.json": "6f0a0121c9ebf95bbee8c0c36efdc1dd7558d42c29175959c452f63b4403ceca",
+    "search_cup/contracts.py": "e08fea09a5e66694079425648642ba7ad14076c977b19fc1a5771ee9b4bac184",
+    "search_cup/tools.py": "6bf6b34c651ca100c317f151a028ecf75d5ccdf53747df5c9152e900fa611af4",
+    "search_cup/protocol_v23.py": "50b6927bd1bc22ba42a40857f5e71658eae38aae0cc7d38fad5fa1b49396127b",
+    "search_cup/v23_schema.py": "8c34ffca7bb64a8c9c4ad0985290f4b41e9fb62baef6ec66066cd0e2a2af0fef",
+    "search_cup/v23_t3_f1q_r2.py": "71070250720c5269eac7ea6ab85c4c56e4072cb47a7931dc61102a5a9c721906",
+    "configs/search-cup-v23-t3-f1q-r2-target.json": "c554b4896d52ff20856cf612141ab0f16d9e03e68dc1303488dc0716a86d21fb",
+    "search_cup/v23_t4_instance.py": "a60de48ee7467922b0f0a19d78594fd0785ae427cef75bf7d938880f619f7ad6",
+    "search_cup/v23_t4_execution.py": "fbcdcd8b24d087bf9a26785773151fb8c23dd28a4107364d0c1d49a4ec71ea75",
+    "search_cup/v23_t4_je1.py": "7be87d913a6aba9f4af6587820f71751d88b8f2f10c75e5b5caa8e005c9efb63"
+  },
+  "instance_class": "SYNTHETIC_PROTOCOL_VALIDATION",
+  "claims_ceiling": "E1_FROZEN_PROTOCOL_VALIDATION_ONLY",
+  "execution_allowed": false
+}

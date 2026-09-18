@@ -1,0 +1,518 @@
+{
+  "schema_id": "search-cup-t5-synthetic-reference/v1",
+  "reference_set_id": "t5-e1frozen-pv-001-reference",
+  "version": "1",
+  "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+  "label_authority": "INDEPENDENTLY_AUTHORED_LITERAL_PROPOSITIONS_NOT_RETRIEVER_RANKINGS",
+  "labels": [
+    {
+      "doc_id": "t5-pv-doc-001",
+      "label": "RELEVANT",
+      "reason_code": "ALL_THREE_EXPLICIT",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-001#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Remote work is permitted."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is required."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Applications are open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-002",
+      "label": "RELEVANT",
+      "reason_code": "ALL_THREE_EXPLICIT",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-002#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Working from home is allowed."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Proficiency in Python is mandatory."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "We are accepting applications now."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-003",
+      "label": "RELEVANT",
+      "reason_code": "ALL_THREE_EXPLICIT",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-003#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Fully remote work is available."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Applicants must use Python."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Recruitment is currently open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-004",
+      "label": "RELEVANT",
+      "reason_code": "ALL_THREE_EXPLICIT",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-004#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Location-independent work is permitted."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is an essential requirement."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Application submissions are welcome."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-005",
+      "label": "RELEVANT",
+      "reason_code": "ALL_THREE_EXPLICIT",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-005#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Telecommuting is allowed."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is a required skill."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Applications are currently accepted."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-006",
+      "label": "RELEVANT",
+      "reason_code": "ALL_THREE_EXPLICIT",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-006#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Home-based work is allowed."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python proficiency is necessary."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Recruiting is open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-007",
+      "label": "NOT_RELEVANT",
+      "reason_code": "REMOTE_FORBIDDEN",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-007#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "FALSE",
+          "verbatim": "On-site attendance is mandatory; remote work is forbidden."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is required."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Applications are open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-008",
+      "label": "NOT_RELEVANT",
+      "reason_code": "REMOTE_FORBIDDEN",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-008#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "FALSE",
+          "verbatim": "Working from home is not allowed."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Proficiency in Python is mandatory."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "We are accepting applications now."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-009",
+      "label": "NOT_RELEVANT",
+      "reason_code": "REMOTE_FORBIDDEN",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-009#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "FALSE",
+          "verbatim": "This is an on-site-only role."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Applicants must use Python."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Recruitment is currently open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-010",
+      "label": "NOT_RELEVANT",
+      "reason_code": "REMOTE_FORBIDDEN",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-010#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "FALSE",
+          "verbatim": "Remote work is not permitted."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is an essential requirement."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Application submissions are welcome."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-011",
+      "label": "NOT_RELEVANT",
+      "reason_code": "REMOTE_FORBIDDEN",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-011#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "FALSE",
+          "verbatim": "Telecommuting is forbidden."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is a required skill."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Applications are currently accepted."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-012",
+      "label": "NOT_RELEVANT",
+      "reason_code": "REMOTE_FORBIDDEN",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-012#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "FALSE",
+          "verbatim": "All work must occur in the office; home-based work is not allowed."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python proficiency is necessary."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Recruiting is open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-013",
+      "label": "NOT_RELEVANT",
+      "reason_code": "PYTHON_NOT_REQUIRED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-013#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Remote work is permitted."
+        },
+        "python_required": {
+          "state": "FALSE",
+          "verbatim": "Python is optional, not required."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Applications are open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-014",
+      "label": "NOT_RELEVANT",
+      "reason_code": "PYTHON_NOT_REQUIRED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-014#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Working from home is allowed."
+        },
+        "python_required": {
+          "state": "FALSE",
+          "verbatim": "Python proficiency is welcomed but never mandatory."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "We are accepting applications now."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-015",
+      "label": "NOT_RELEVANT",
+      "reason_code": "PYTHON_NOT_REQUIRED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-015#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Fully remote work is available."
+        },
+        "python_required": {
+          "state": "FALSE",
+          "verbatim": "Applicants need not know Python."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Recruitment is currently open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-016",
+      "label": "NOT_RELEVANT",
+      "reason_code": "PYTHON_NOT_REQUIRED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-016#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Location-independent work is permitted."
+        },
+        "python_required": {
+          "state": "FALSE",
+          "verbatim": "Python is a bonus skill and is not an essential requirement."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Application submissions are welcome."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-017",
+      "label": "NOT_RELEVANT",
+      "reason_code": "PYTHON_NOT_REQUIRED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-017#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Telecommuting is allowed."
+        },
+        "python_required": {
+          "state": "FALSE",
+          "verbatim": "Python is not required for this role."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Applications are currently accepted."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-018",
+      "label": "NOT_RELEVANT",
+      "reason_code": "PYTHON_NOT_REQUIRED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-018#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Home-based work is allowed."
+        },
+        "python_required": {
+          "state": "FALSE",
+          "verbatim": "Python proficiency is optional."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Recruiting is open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-019",
+      "label": "NOT_RELEVANT",
+      "reason_code": "APPLICATIONS_CLOSED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-019#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Remote work is permitted."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is required."
+        },
+        "applications_open": {
+          "state": "FALSE",
+          "verbatim": "Applications are closed."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-020",
+      "label": "NOT_RELEVANT",
+      "reason_code": "APPLICATIONS_CLOSED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-020#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Working from home is allowed."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Proficiency in Python is mandatory."
+        },
+        "applications_open": {
+          "state": "FALSE",
+          "verbatim": "We are not accepting applications."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-021",
+      "label": "NOT_RELEVANT",
+      "reason_code": "APPLICATIONS_CLOSED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-021#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Fully remote work is available."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Applicants must use Python."
+        },
+        "applications_open": {
+          "state": "FALSE",
+          "verbatim": "Recruitment has ended; submissions are closed."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-022",
+      "label": "NOT_RELEVANT",
+      "reason_code": "APPLICATIONS_CLOSED",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-022#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Telecommuting is allowed."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is a required skill."
+        },
+        "applications_open": {
+          "state": "FALSE",
+          "verbatim": "The application window is shut."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-023",
+      "label": "UNKNOWN",
+      "reason_code": "REMOTE_UNKNOWN",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-023#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "UNKNOWN",
+          "verbatim": "Work-location arrangements are unspecified."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is required."
+        },
+        "applications_open": {
+          "state": "TRUE",
+          "verbatim": "Applications are open."
+        }
+      }
+    },
+    {
+      "doc_id": "t5-pv-doc-024",
+      "label": "UNKNOWN",
+      "reason_code": "APPLICATION_STATUS_UNKNOWN",
+      "evidence_locator": "https://example.invalid/t5-e1frozen-pv-001/t5-pv-doc-024#text",
+      "corpus_fingerprint": "71f1cca4e52d236bcdf948424b56a2710f364bdbf87d6351c68864c04a178a8d",
+      "condition_evidence": {
+        "remote": {
+          "state": "TRUE",
+          "verbatim": "Remote work is permitted."
+        },
+        "python_required": {
+          "state": "TRUE",
+          "verbatim": "Python is required."
+        },
+        "applications_open": {
+          "state": "UNKNOWN",
+          "verbatim": "The current application status is unspecified."
+        }
+      }
+    }
+  ],
+  "population": {
+    "RELEVANT": 6,
+    "NOT_RELEVANT": 16,
+    "UNKNOWN": 2
+  }
+}

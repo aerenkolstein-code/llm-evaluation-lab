@@ -1200,7 +1200,8 @@ class WindowsStorageAuthorityTests(unittest.TestCase):
     def test_real_parent_inherited_acl_rejected(self):
         # SetNamedSecurityInfo normalizes caller-written ID flags. Create actual
         # inherited ACEs from a parent and verify the native descriptor instead.
-        harden_test_directory(self.base, extra_aces="(A;OICI;FA;;;SY)")
+        sid = self.backend.runner_sid()
+        harden_test_directory(self.base, extra_aces=f"(A;OICI;FA;;;{sid})(A;OICI;FA;;;SY)")
         child = self.base / "inherited-child"
         child.mkdir()
         harden_test_directory(child, protected=False)

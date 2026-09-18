@@ -736,10 +736,10 @@ class OfflineBoundaryTests(unittest.TestCase):
     def test_new_modules_have_no_transport_environment_runner_or_judge_invocation(self):
         for path in [ROOT / "search_cup/protocol_v23.py", *sorted((ROOT / "search_cup").glob("v23_*.py"))]:
             tree = ast.parse(path.read_text())
-            # User-approved JE1 scope amendment: only this executor needs local
+            # User-approved JE1/EX1 scope: these local executors need only
             # fsync/atomic writes and fixed read-only Git/source-context probes.
             # Transport and provider bans still apply, including to JE1.
-            is_je1 = path.name == "v23_t4_je1.py"
+            is_je1 = path.name in {"v23_t4_je1.py", "v23_t5_e1f_ex1.py"}
             forbidden = {"socket", "requests", "httpx", "os", "subprocess"}
             if is_je1:
                 forbidden -= {"os", "subprocess"}

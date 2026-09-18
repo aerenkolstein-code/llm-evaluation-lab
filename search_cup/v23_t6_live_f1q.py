@@ -1,30 +1,16 @@
-"""Offline, evidence-bound T6 qualification. This is not a live runner.
+"""Pure T6 documentary qualification assembly, with no orchestration I/O.
 
-Documentary eligibility is separate from independent acceptance, publication,
-transport integration and live compatibility. All are reported separately.
+Runtime client behavior lives in the candidate adapter. Test execution, network
+denial, read-only Git probes and evidence publication belong to the separately
+reviewed offline test harness, not the protocol module. Public documentation and
+passed client tests do not establish opaque provider internals.
 """
 from __future__ import annotations
 
-import argparse
 import ast
-import contextlib
-from dataclasses import dataclass
-import hashlib
-import http.client
-import importlib.util
-import io
-import json
-import os
-from pathlib import Path
-import socket
-import subprocess
-import sys
-import unittest
-from unittest.mock import patch
-import urllib.request
 
-from .contracts import canonical_json, fingerprint
-from .protocol_v23 import assert_content_safe, f1_eligibility
+from .contracts import fingerprint
+from .protocol_v23 import f1_eligibility
 from .v23_t6_live_brave_retriever import API_VERSION, BACKEND_ID, CANDIDATE_ID, validate_config
 
 BASELINE_SHA = "72932d41c862753d489ef2d2e1c6a2619f34a2d9"
@@ -66,14 +52,6 @@ R_TEST_PREFIXES = {
 }
 
 
-def load_json(path: Path) -> dict:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if type(value) is not dict:
-        raise ValueError("INVALID_DOCUMENT")
-    assert_content_safe(value)
-    return value
-
-
 def validate_doc_evidence(document: dict) -> None:
     content = {k: v for k, v in document.items() if k != "canonical_fingerprint"}
     if (document.get("canonical_fingerprint") != fingerprint(content)
@@ -113,67 +91,6 @@ def inspect_adapter(source: str) -> dict:
             "no_default_transport": "transport: Transport | None = None" in source,
             "client_source_status": "PASS" if not forbidden and len(transport_calls) == 1
             and "transport: Transport | None = None" in source else "FAIL"}
-
-
-class OfflineSandbox:
-    """Deny socket creation/DNS and secret environment reads during qualification.
-
-    Git checkout/setup and artifact upload are outside this sandbox and are not
-    falsely counted as offline. Negative guard tests can record blocked attempts.
-    """
-    def __init__(self) -> None:
-        self.counts = {"blocked_network_attempts": 0, "blocked_secret_reads": 0}
-        self._stack = contextlib.ExitStack()
-
-    def __enter__(self) -> "OfflineSandbox":
-        def denied(*args, **kwargs):
-            self.counts["blocked_network_attempts"] += 1
-            raise RuntimeError("OFFLINE_NETWORK_FORBIDDEN")
-        original = type(os.environ).__getitem__
-        def guarded(env, key):
-            upper = str(key).upper()
-            if any(word in upper for word in ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "APIKEY")):
-                self.counts["blocked_secret_reads"] += 1
-                raise RuntimeError("OFFLINE_SECRET_READ_FORBIDDEN")
-            return original(env, key)
-        for target in ("socket.socket", "socket.create_connection", "socket.getaddrinfo",
-                       "urllib.request.urlopen", "urllib.request.OpenerDirector.open",
-                       "http.client.HTTPConnection.connect", "http.client.HTTPSConnection.connect"):
-            self._stack.enter_context(patch(target, side_effect=denied))
-        self._stack.enter_context(patch.object(type(os.environ), "__getitem__", guarded))
-        return self
-
-    def __exit__(self, *exc) -> None:
-        self._stack.close()
-
-
-def _git(root: Path, *args: str) -> str:
-    proc = subprocess.run(["git", *args], cwd=root, text=True, capture_output=True, check=False)
-    if proc.returncode:
-        raise ValueError("SOURCE_GIT_GUARD_FAILED")
-    return proc.stdout.strip()
-
-
-def source_guard(root: Path) -> dict:
-    head = _git(root, "rev-parse", "HEAD")
-    if _git(root, "rev-parse", BASELINE_SHA + "^{tree}") != BASELINE_TREE:
-        raise ValueError("BASELINE_DRIFT")
-    _git(root, "merge-base", "--is-ancestor", BASELINE_SHA, "HEAD")
-    changes = _git(root, "diff", "--name-status", "--no-renames", BASELINE_SHA, "HEAD").splitlines()
-    expected = sorted("A\t" + path for path in SCOPE)
-    if sorted(changes) != expected:
-        raise ValueError("SCOPE_AMENDMENT_REQUIRED")
-    if _git(root, "status", "--porcelain", "--untracked-files=normal"):
-        raise ValueError("DIRTY_QUALIFICATION_SOURCE")
-    hashes = {}
-    for path in SCOPE:
-        p = root / path
-        if not p.is_file() or p.is_symlink():
-            raise ValueError("INVALID_SOURCE_FILE")
-        hashes[path] = hashlib.sha256(p.read_bytes()).hexdigest()
-    return {"base_sha": BASELINE_SHA, "base_tree": BASELINE_TREE, "head_sha": head,
-            "head_tree": _git(root, "rev-parse", "HEAD^{tree}"), "changes": changes,
-            "source_sha256": hashes, "scope_status": "PASS"}
 
 
 def ref(identity: str, document: dict) -> dict:
@@ -218,97 +135,3 @@ def build_descriptor(config: dict, documents: dict, source: dict,
                         "live_behavior_verified": False,
                         "external_capability_attestations": documents.get("external_capability_attestations", {}),
                         "independent_qa": "PENDING", "server_internals_verified": False}
-
-
-class RecordingResult(unittest.TextTestResult):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.case_records = []
-    def addSuccess(self, test):
-        super().addSuccess(test)
-        self.case_records.append({"id": test.id(), "status": "PASS"})
-    def addFailure(self, test, err):
-        super().addFailure(test, err)
-        self.case_records.append({"id": test.id(), "status": "FAIL"})
-    def addError(self, test, err):
-        super().addError(test, err)
-        self.case_records.append({"id": test.id(), "status": "ERROR"})
-    def addSkip(self, test, reason):
-        super().addSkip(test, reason)
-        self.case_records.append({"id": test.id(), "status": "SKIP"})
-
-
-def run_qualification(root: Path, output: Path) -> dict:
-    root, output = root.resolve(), output.resolve()
-    if output.exists() or root == output or root in output.parents:
-        raise ValueError("FRESH_OUTPUT_OUTSIDE_REPOSITORY_REQUIRED")
-    before = source_guard(root)
-    config = load_json(root / SCOPE[2])
-    documents = load_json(root / SCOPE[3])
-    validate_config(config)
-    validate_doc_evidence(documents)
-    assessment = inspect_adapter((root / SCOPE[0]).read_text(encoding="utf-8"))
-    spec = importlib.util.spec_from_file_location("_t6_f1q_test", root / SCOPE[4])
-    if spec is None or spec.loader is None:
-        raise ValueError("TEST_MODULE_MISSING")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    stream = io.StringIO()
-    with OfflineSandbox() as sandbox:
-        spec.loader.exec_module(module)
-        suite = unittest.defaultTestLoader.loadTestsFromModule(module)
-        result = unittest.TextTestRunner(stream=stream, verbosity=2, resultclass=RecordingResult).run(suite)
-    after = source_guard(root)
-    if before != after:
-        raise ValueError("SOURCE_CHANGED_DURING_QUALIFICATION")
-    tests = {"tests_run": result.testsRun, "failures": len(result.failures), "errors": len(result.errors),
-             "skipped": len(result.skipped), "cases": result.case_records}
-    descriptor, matrix = build_descriptor(config, documents, before, tests, assessment)
-    bounds = {"scope": "Qualification Python process only; platform GitHub checkout/setup/upload are control-plane operations.",
-              "no_default_transport": True, "live_transport_qualification": "NOT_PERFORMED",
-              "live_api_calls": 0, "provider_calls": 0, "model_calls": 0,
-              "credential_reads": 0, "network_calls": 0, "search_credit_consumption": 0,
-              "automatic_retries": 0, "spend": {"currency": "USD", "amount": 0},
-              "t6_live_runs": 0, "official_prompt_consumed": False, "hidden_registry_loaded": False,
-              "guard_observations": sandbox.counts}
-    receipt = {"schema_id": "t6-live-f1q-receipt/v1", "work_order": "WO-ENG-B1-SC-V23-T6-LIVE-F1Q-01/v0.1",
-               "candidate_id": CANDIDATE_ID, "qualification_result": matrix["qualification_result"],
-               "source": before, "config_fingerprint": fingerprint(config),
-               "candidate_fingerprint": fingerprint(descriptor), "test_summary": {k: v for k, v in tests.items() if k != "cases"},
-               "r1_r8_status": {k: v["status"] for k, v in matrix["criteria"].items()},
-               **bounds, "independent_qa": "PENDING", "publication": "NOT_AUTHORIZED",
-               "parent_d6": "BLOCKED_NOT_F1_ELIGIBLE" if matrix["qualification_result"] != "F1_ELIGIBLE" else "AWAIT_INDEPENDENT_QA_AND_PUBLICATION", "live_execution_authorized": False}
-    manifest = {"schema_id": "t6-live-f1q-artifact/v1", "candidate_id": CANDIDATE_ID,
-                "source_sha": before["head_sha"], "source_tree": before["head_tree"], "api_version": API_VERSION,
-                "evidence_scope": matrix["basis"], "docs_fingerprint": documents["canonical_fingerprint"]}
-    payloads = {"manifest.json": manifest, "candidate-descriptor.json": descriptor, "config.json": config,
-                "official-doc-evidence.json": documents, "source-evidence.json": {**before, "adapter_assessment": assessment},
-                "r1-r8.json": matrix, "capability-boundary.json": bounds,
-                "request-response-contract.json": {"request": REQUEST_CONTRACT, "result": RESULT_CONTRACT},
-                "negative-tests.json": tests, "qualification-receipt.json": receipt}
-    output.mkdir(parents=True, exist_ok=False)
-    for name, payload in payloads.items():
-        assert_content_safe(payload)
-        (output / name).write_text(canonical_json(payload) + "\n", encoding="utf-8")
-    (output / "focused-tests.log").write_text(stream.getvalue(), encoding="utf-8")
-    lines = [hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name
-             for path in sorted(output.iterdir()) if path.is_file()]
-    (output / "MANIFEST.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return receipt
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    try:
-        receipt = run_qualification(Path(__file__).resolve().parents[1], args.output)
-    except (ValueError, OSError):
-        print("T6_QUALIFICATION_STOP: source/evidence/output prerequisite failed", file=sys.stderr)
-        return 2
-    print("T6_QUALIFICATION_RECEIPT=" + canonical_json(receipt))
-    return 0 if receipt["qualification_result"] == "F1_ELIGIBLE" else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

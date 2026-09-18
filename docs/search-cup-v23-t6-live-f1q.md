@@ -96,7 +96,7 @@ python -m unittest discover -s tests -p 'test_search_cup_v23_t6_live_f1q.py' -v
 Produce an artifact in a fresh directory outside the repository:
 
 ```sh
-python -m search_cup.v23_t6_live_f1q --output /tmp/t6-f1q-new-artifact
+python tests/test_search_cup_v23_t6_live_f1q.py --qualify --output /tmp/t6-f1q-new-artifact
 ```
 
 Exit codes: `0` eligible; `1` explicitly not eligible; `2` source/evidence/output
@@ -116,3 +116,17 @@ Return the Draft PR, exact source and CI/artifact evidence, then STOP. Independe
 review must decide whether more provider evidence is needed or a separately
 approved protocol clarification is appropriate. No R2/R7 waiver, live probe,
 merge, key provisioning, E1F rerun or successor execution is inferred here.
+
+## First-pass integration repair
+
+The first ordinary Test run detected `os` imported by the new `v23_` qualification
+module. The repository's existing inert-protocol guard is preserved unchanged.
+The bounded repair separates pure descriptor/evidence assembly from test harness
+orchestration: the former remains in `search_cup/v23_t6_live_f1q.py`, and the
+latter moves into the already-authorized focused test file. Read-only Git probes,
+network/secret denial, test execution and artifact writing are explicit harness
+operations. The protocol module does not dynamically import the harness or hide
+forbidden imports. A regression test verifies this separation.
+
+This repair changes only four of the seven newly added paths. It neither changes
+the baseline guard nor resolves the independent R2/R7 provider-evidence gaps.

@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m search_cup.v23_t6_live_f1q --output "$RUNNER_TEMP/t6-f1q-artifact"
+          python tests/test_search_cup_v23_t6_live_f1q.py --qualify --output "$RUNNER_TEMP/t6-f1q-artifact"
       - name: Preserve qualification evidence even when eligibility is blocked
         if: always()
         uses: actions/upload-artifact@v4

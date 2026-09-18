@@ -49,91 +49,204 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run test-only in-memory conformance
+      - name: Verify published T4 core and unchanged formal lane before tests
         shell: bash
         run: |
           set -euo pipefail
-          python -m unittest discover -s tests -p 'test_search_cup_v23_t4_je1.py' -v 2>&1 | tee "$RUNNER_TEMP/je1-focused-tests.log"
-      - name: Verify the amended protocol import boundary
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m unittest discover -s tests -p 'test_search_cup_v23.py' -k test_new_modules_have_no_transport_environment_runner_or_judge_invocation -v 2>&1 | tee "$RUNNER_TEMP/je1-boundary-tests.log"
-      - name: Check approved five-path scope and author zero-execution run-ready bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
+          # This helper exists only in RUNNER_TEMP; the repository patch is one YAML file.
+          cat > "$RUNNER_TEMP/je1-post-publication.py" <<'PY'
           import hashlib
           import json
           import os
           from pathlib import Path
           import re
           import subprocess
-          from search_cup.contracts import canonical_json
-          from search_cup.v23_t4_je1 import BASELINE, BINDING, PINS, RUN_ID, frozen_plan, preflight
+          import sys
+          import unicodedata
+
+          PUBLICATION = '6c1b664a2264a021dc9ebca26514eca130ceaaec'
+          PUBLICATION_TREE = '2fcc3b0f2bf641d01ab8a90ab6b771be4e5c7434'
+          HISTORICAL_BASELINE = 'c0e365360034ef5c45800563717bbffc7fc5c1b3'
+          BINDING = 'a87a0ad172d6292cc7be52580e1ed7d85615e1298582249f892032fea83fd11d'
+          CONSUMED_RUN = 'T4-JUDGMENT-PV-001-EXEC-V1:' + BINDING + ':JE1-001'
+          WORKFLOW = '.github/workflows/t4-je1-offline-replay.yml'
+          CORE = ('search_cup/v23_t4_je1.py', 'tests/test_search_cup_v23_t4_je1.py',
+                  'docs/search-cup-v23-t4-je1-offline-replay.md')
+          MARKER = b'\n  conformance:\n'
+          FORMAL = b'\n  formal-replay:\n'
+
+          class ConformanceError(ValueError):
+              pass
+
+          def require(condition, code):
+              if not condition:
+                  raise ConformanceError(code)
+
+          def digest(data):
+              return hashlib.sha256(data).hexdigest()
+
+          def canonical(value):
+              return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
 
           def git(*args):
-              return subprocess.check_output(['git', *args], text=True).strip()
+              result = subprocess.run(['git', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', *args],
+                  capture_output=True, timeout=15, env={'PATH': '/usr/local/bin:/usr/bin:/bin', 'LC_ALL': 'C',
+                  'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null',
+                  'GIT_TERMINAL_PROMPT': '0', 'GIT_OPTIONAL_LOCKS': '0'})
+              require(result.returncode == 0, 'SOURCE_PROOF_FAILED')
+              return result.stdout
 
-          head = git('rev-parse', 'HEAD')
-          assert head == os.environ['JE1_HEAD']
-          assert os.environ['JE1_BASE'] == BASELINE, 'BASELINE_DRIFT'
-          added_paths = sorted([
-              'search_cup/v23_t4_je1.py', 'tests/test_search_cup_v23_t4_je1.py',
-              'docs/search-cup-v23-t4-je1-offline-replay.md',
-              '.github/workflows/t4-je1-offline-replay.yml',
-          ])
-          modified_paths = ['tests/test_search_cup_v23.py']
-          paths = sorted(added_paths + modified_paths)
-          expected_changes = sorted(['A\t' + p for p in added_paths] + ['M\t' + p for p in modified_paths])
-          assert sorted(git('diff', '--name-status', BASELINE, head).splitlines()) == expected_changes
-          receipt = preflight(BINDING)
-          assert receipt['terminal_status'] == 'PASS'
-          assert receipt['formal_execution_performed'] is False
-          assert receipt['formal_record_count'] == receipt['fixture_decision_calls'] == 0
-          assert receipt['source']['head'] == head and receipt['source']['clean']
-          log = (Path(os.environ['RUNNER_TEMP']) / 'je1-focused-tests.log').read_text()
-          assert log.rstrip().endswith('OK')
-          count = int(re.search(r'Ran (\d+) tests', log).group(1))
-          boundary_log = (Path(os.environ['RUNNER_TEMP']) / 'je1-boundary-tests.log').read_text()
-          assert boundary_log.rstrip().endswith('OK') and re.search(r'Ran 1 test\b', boundary_log)
-          source = {
-              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'), 'base': BASELINE,
-              'changed_paths': paths, 'added_paths': added_paths, 'modified_paths': modified_paths,
-              'no_unauthorized_path_changed': True,
-              'phase_a_authority': 'BOARD_ISSUED_WO_ENG_B1_SC_V23_T4_JE1_V01',
-              'scope_amendment': {
-                  'authority': 'USER_APPROVAL_IN_TASK_THREAD', 'reply': '批准',
-                  'approved_existing_path': 'tests/test_search_cup_v23.py',
-                  'scope': 'JE1 boundary checks only; retain network, credential and execution locks',
-              },
-              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
-              'focused_tests': {'count': count, 'result': 'PASS'},
-              'amended_boundary_test': {'count': 1, 'result': 'PASS'},
-              'execution_binding_fingerprint': BINDING, 'planned_run_id': RUN_ID,
-              'formal_execution_performed': False, 'formal_record_count': 0,
-              'independent_acceptance': 'PENDING',
-          }
-          root = Path(os.environ['RUNNER_TEMP']) / 'je1-run-ready'
-          root.mkdir(exist_ok=False)
-          for name, value in [('preflight.json', receipt), ('first-pass-plan.json', frozen_plan(BINDING)),
-                              ('retained-pins.json', PINS), ('ci-source.json', source)]:
-              (root / name).write_text(canonical_json(value))
-          (root / 'focused-tests.log').write_text(log)
-          (root / 'boundary-tests.log').write_text(boundary_log)
-          manifest = '\n'.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name
-                               for p in sorted(root.iterdir())) + '\n'
-          (root / 'MANIFEST.sha256').write_text(manifest)
-          print('JE1_CI_SOURCE=' + canonical_json(source))
-          print('JE1_PREFLIGHT=' + canonical_json(receipt))
-          print('JE1_RUN_READY_MANIFEST\n' + manifest)
+          def core_check(current, published):
+              require(set(current) == set(published) == set(CORE), 'T4_CORE_DRIFT')
+              require(all(current[p] == published[p] for p in CORE), 'T4_CORE_DRIFT')
+              return {p: digest(current[p]) for p in CORE}
+
+          def lane_parts(raw):
+              require(raw.count(MARKER) == raw.count(FORMAL) == 1, 'FORMAL_LANE_DRIFT')
+              envelope, rest = raw.split(MARKER, 1)
+              require(FORMAL in rest, 'FORMAL_LANE_DRIFT')
+              formal = FORMAL + rest.split(FORMAL, 1)[1]
+              require(envelope.count(b'  workflow_dispatch:\n') == 1, 'FORMAL_LANE_DRIFT')
+              dispatch = envelope.split(b'  workflow_dispatch:\n', 1)[1].split(b'\npermissions:\n', 1)[0]
+              return {'workflow_envelope': envelope, 'workflow_dispatch_inputs': dispatch, 'formal_replay_job': formal}
+
+          def lane_check(current, published):
+              actual, expected = lane_parts(current), lane_parts(published)
+              # All bytes outside the PR conformance job remain frozen, including
+              # permissions, dispatch inputs and formal concurrency/upload logic.
+              require(actual == expected, 'FORMAL_LANE_DRIFT')
+              return {key: digest(value) for key, value in actual.items()}
+
+          def negative_probes(core, workflow):
+              cases = []
+              for path in CORE:
+                  cases.append(('T4_CORE_DRIFT', lambda path=path: core_check({**core, path: core[path] + b'\n'}, core)))
+              dispatch = workflow.replace(b'        required: true', b'        required: false', 1)
+              concurrency = workflow.replace(b'      cancel-in-progress: false', b'      cancel-in-progress: true', 1)
+              for changed in (dispatch, concurrency):
+                  require(changed != workflow, 'NEGATIVE_PROBE_SETUP_FAILED')
+                  cases.append(('FORMAL_LANE_DRIFT', lambda changed=changed: lane_check(changed, workflow)))
+              for expected, run in cases:
+                  try:
+                      run()
+                  except ConformanceError as error:
+                      require(str(error) == expected, 'NEGATIVE_PROBE_REASON_MISMATCH')
+                  else:
+                      raise ConformanceError('NEGATIVE_PROBE_ACCEPTED_DRIFT')
+              return {'count': len(cases), 'result': 'PASS', 'scope': 'IN_MEMORY_BYTE_MUTATIONS_ONLY'}
+
+          def source_proof():
+              require(sys.version_info[:2] == (3, 11) and unicodedata.unidata_version == '14.0.0', 'RUNTIME_MISMATCH')
+              head, base = os.environ['JE1_HEAD'], os.environ['JE1_BASE']
+              require(bool(re.fullmatch('[0-9a-f]{40}', head)) and bool(re.fullmatch('[0-9a-f]{40}', base)), 'EXACT_SOURCE_REQUIRED')
+              require(git('rev-parse', 'HEAD').decode().strip() == head, 'EXACT_PR_HEAD_REQUIRED')
+              require(git('rev-parse', base + '^{commit}').decode().strip() == base, 'PR_BASE_UNAVAILABLE')
+              require(git('rev-parse', PUBLICATION + '^{tree}').decode().strip() == PUBLICATION_TREE, 'PUBLICATION_DRIFT')
+              git('merge-base', '--is-ancestor', HISTORICAL_BASELINE, PUBLICATION)
+              git('merge-base', '--is-ancestor', PUBLICATION, head)
+              git('merge-base', '--is-ancestor', PUBLICATION, base)
+              require(not git('status', '--porcelain=v1', '--untracked-files=all').strip(), 'DIRTY_SOURCE')
+              published = {p: git('show', PUBLICATION + ':' + p) for p in CORE}
+              current = {}
+              for p in CORE:
+                  path = Path(p)
+                  require(path.is_file() and not path.is_symlink(), 'T4_CORE_DRIFT')
+                  current[p] = path.read_bytes()
+                  require(current[p] == git('show', head + ':' + p), 'T4_CORE_DRIFT')
+              core_hashes = core_check(current, published)
+              original_workflow = git('show', PUBLICATION + ':' + WORKFLOW)
+              path = Path(WORKFLOW)
+              require(path.is_file() and not path.is_symlink(), 'FORMAL_LANE_DRIFT')
+              workflow = path.read_bytes()
+              require(workflow == git('show', head + ':' + WORKFLOW), 'DIRTY_SOURCE')
+              lane_hashes = lane_check(workflow, original_workflow)
+              # No equality with HISTORICAL_BASELINE and no historical five-path
+              # diff assertion: each later PR has its own independently approved scope.
+              return {'head': head, 'tree': git('rev-parse', 'HEAD^{tree}').decode().strip(), 'base': base,
+                  'historical_construction_baseline': HISTORICAL_BASELINE,
+                  'published_t4_je1_commit': PUBLICATION, 'published_t4_je1_tree': PUBLICATION_TREE,
+                  'publication_is_ancestor_of_head_and_base': True, 'clean_checkout': True,
+                  'current_pr_changes': git('diff', '--name-status', base, head).decode().splitlines(),
+                  'protected_core': {'result': 'PASS', 'sha256': core_hashes},
+                  'formal_lane_immutability': {'result': 'PASS', 'sha256': lane_hashes},
+                  'workflow_sha256': digest(workflow), 'shared_boundary_sha256': digest(Path('tests/test_search_cup_v23.py').read_bytes()),
+                  'guard_negative_probes': negative_probes(published, original_workflow),
+                  'runtime': {'python_major_minor': '3.11', 'unicode_data_version': unicodedata.unidata_version}}
+
+          def test_result(log, expected):
+              counts = re.findall(r'^Ran (\d+) tests? in .+$', log, re.M)
+              require(len(counts) == 1 and int(counts[0]) == expected, 'TEST_COUNT_DRIFT')
+              require(log.rstrip().endswith('\nOK') and not re.search(r'^FAILED\b|^OK \(skipped', log, re.M), 'TESTS_NOT_ALL_PASS')
+              return {'count': expected, 'result': 'PASS', 'skipped': 0}
+
+          def main(mode):
+              require(mode in {'check', 'receipt'}, 'UNKNOWN_MODE')
+              temp = Path(os.environ['RUNNER_TEMP'])
+              proof = source_proof()
+              checkpoint = temp / 'je1-post-publication-source.json'
+              if mode == 'check':
+                  with checkpoint.open('x', encoding='utf-8') as stream:
+                      stream.write(canonical(proof))
+                  print('JE1_POST_PUBLICATION_SOURCE=' + canonical(proof))
+                  return
+              require(json.loads(checkpoint.read_text()) == proof, 'SOURCE_CHANGED_DURING_TESTS')
+              focused = (temp / 'je1-focused-tests.log').read_text()
+              boundary = (temp / 'je1-boundary-tests.log').read_text()
+              receipt = {'schema_id': 't4-je1-post-publication-conformance/v1',
+                  'maintenance_work_order': 'WO-ENG-B1-SC-V23-T4-JE1-WFM-01 v0.1',
+                  'phase': 'POST_PUBLICATION_REGRESSION', **proof,
+                  'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+                  'focused_tests': test_result(focused, 31), 'shared_boundary_test': test_result(boundary, 1),
+                  'execution_binding_fingerprint': BINDING, 'consumed_run_id': CONSUMED_RUN,
+                  'je1_001_state': 'CONSUMED / NOT RERUNNABLE',
+                  'formal_execution_allowed': False, 'formal_execution_performed': False,
+                  'formal_record_count': 0, 'formal_replay_dispatch_count': 0,
+                  'new_first_pass_plan_created': False, 'new_run_ready_authorization_created': False,
+                  'provider_calls': 0, 'model_calls': 0, 'live_search_calls': 0,
+                  'network_calls': 0, 'credential_reads': 0, 'credit_consumption': 0,
+                  'spend': {'unit': 'USD', 'value': 0}, 'official_prompt_consumed': False, 'hidden_registry_loaded': False,
+                  'counter_scope': 'MAINTENANCE_CONFORMANCE; CI_CHECKOUT_SETUP_UPLOAD_AND_TEST_ONLY_RAM_SIMULATIONS_ARE_SEPARATE',
+                  'regression_conformance': 'PASS', 'independent_acceptance': 'PENDING',
+                  'publication_blocker_cleared': False, 'merge_authorized': False,
+                  'claims_ceiling': 'POST_PUBLICATION_REGRESSION_ONLY / NOT_BENCHMARK / NO_MODEL_QUALITY'}
+              receipt['canonical_fingerprint'] = digest(canonical(receipt).encode('utf-8'))
+              root = temp / 'je1-post-publication-conformance'
+              root.mkdir(exist_ok=False)
+              (root / 'conformance-receipt.json').write_text(canonical(receipt), encoding='utf-8')
+              (root / 'focused-tests.log').write_text(focused, encoding='utf-8')
+              (root / 'boundary-tests.log').write_text(boundary, encoding='utf-8')
+              manifest = ''.join(digest(p.read_bytes()) + '  ' + p.name + '\n' for p in sorted(root.iterdir()))
+              (root / 'MANIFEST.sha256').write_text(manifest, encoding='utf-8')
+              print('JE1_POST_PUBLICATION_RECEIPT=' + canonical(receipt))
+              print('JE1_POST_PUBLICATION_MANIFEST\n' + manifest)
+
+          if __name__ == '__main__':
+              try:
+                  main(sys.argv[1])
+              except ConformanceError as error:
+                  raise SystemExit(str(error))
           PY
-      - name: Upload immutable Phase A run-ready artifact
+          python "$RUNNER_TEMP/je1-post-publication.py" check
+      - name: Run test-only in-memory T4 conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23_t4_je1.py' -v 2>&1 | tee "$RUNNER_TEMP/je1-focused-tests.log"
+      - name: Verify the shared protocol import boundary at current PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23.py' -k test_new_modules_have_no_transport_environment_runner_or_judge_invocation -v 2>&1 | tee "$RUNNER_TEMP/je1-boundary-tests.log"
+      - name: Emit zero-execution post-publication conformance receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/je1-post-publication.py" receipt
+      - name: Upload immutable post-publication regression evidence
         uses: actions/upload-artifact@v4
         with:
-          name: search-cup-v23-t4-je1-run-ready-${{ github.event.pull_request.head.sha }}
-          path: ${{ runner.temp }}/je1-run-ready
+          name: search-cup-v23-t4-je1-post-publication-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/je1-post-publication-conformance
           if-no-files-found: error
 
   formal-replay:

@@ -195,7 +195,8 @@ def _resolve_parent(root=None, *, expected_sha=BASELINE_SHA, expected_tree=BASEL
 def _profile(alias, name, queries, identity, policy):
     return _sealed("fixture-profile", entrant_id=alias, profile_id=name, version="1",
         program_class="DETERMINISTIC_LOCAL_FIXTURE_NOT_MODEL", parent_identity=identity,
-        decision_implementation=__name__ + ":visible_decision", decision_policy_fingerprint=policy["canonical_fingerprint"],
+        decision_implementation="search_cup.v23_t5_e1f_execution_readiness:visible_decision",
+        decision_policy_fingerprint=policy["canonical_fingerprint"],
         query_schedule=[{"query_number": i, "query": query} for i, query in enumerate(queries, 1)],
         all_queries_frozen_before_start=True, query_adaptation="NONE", input_fields=["title", "url", "snippet"],
         context_policy="OWN_ENTRANT_VISIBLE_TASK_CONTEXT_AND_OWN_SEARCHRESULTS_ONLY",

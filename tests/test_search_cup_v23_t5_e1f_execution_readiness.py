@@ -178,6 +178,13 @@ class ExecutionReadinessTests(unittest.TestCase):
             changed[key] = seal(changed[key])
             self.assertNotEqual(self.expected, t.execution_binding(changed, self.method_hash)["canonical_fingerprint"])
 
+    def test_cli_main_module_name_does_not_change_profile_identity(self):
+        expected = self.bundle["profile_a"]
+        alias, name, queries = t.QUERY_PROFILES[0]
+        with patch.object(t, "__name__", "__main__"):
+            actual = t._profile(alias, name, queries, expected["parent_identity"], self.bundle["policy"])
+        self.assertEqual(expected, actual)
+
     def test_all_nine_component_fingerprints_are_committed(self):
         self.assertEqual(9, len(t.COMPONENTS))
         for key in t.COMPONENTS:

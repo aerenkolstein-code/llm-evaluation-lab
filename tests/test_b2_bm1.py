@@ -45,9 +45,19 @@ def harden_test_directory(path, *, extra_aces="", protected=True, owner=None):
     sddl = f"O:{owner or sid}D:{'P' if protected else ''}(A;;FA;;;{sid}){extra_aces}"
     backend._require(backend.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(
         sddl, 1, c.byref(descriptor), None))
-    setter = backend._api(backend.advapi, "SetFileSecurityW", [w.LPCWSTR, w.DWORD, c.c_void_p], w.BOOL)
+    owner_reader = backend._api(backend.advapi, "GetSecurityDescriptorOwner",
+                               [c.c_void_p, c.POINTER(c.c_void_p), c.POINTER(w.BOOL)], w.BOOL)
+    acl_reader = backend._api(backend.advapi, "GetSecurityDescriptorDacl",
+                             [c.c_void_p, c.POINTER(w.BOOL), c.POINTER(c.c_void_p), c.POINTER(w.BOOL)], w.BOOL)
+    setter = backend._api(backend.advapi, "SetNamedSecurityInfoW",
+                         [w.LPWSTR, c.c_int, w.DWORD, c.c_void_p, c.c_void_p, c.c_void_p, c.c_void_p], w.DWORD)
     try:
-        backend._require(setter(str(path), 5 | (0x80000000 if protected else 0x20000000), descriptor))
+        owner_pointer, acl = c.c_void_p(), c.c_void_p()
+        present, defaulted = w.BOOL(), w.BOOL()
+        backend._require(owner_reader(descriptor, c.byref(owner_pointer), c.byref(defaulted)))
+        backend._require(acl_reader(descriptor, c.byref(present), c.byref(acl), c.byref(defaulted)))
+        backend._require(setter(str(path), 1, 5 | (0x80000000 if protected else 0x20000000),
+                                owner_pointer, None, acl, None) == 0)
     finally:
         backend.kernel.LocalFree(descriptor)
 

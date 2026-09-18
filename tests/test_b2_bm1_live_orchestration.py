@@ -1261,7 +1261,7 @@ class WindowsStorageAuthorityTests(unittest.TestCase):
         original = self.backend.kernel.GetVolumeInformationW
         def non_ntfs(*args):
             result = original(*args)
-            args[7].value = "exFAT"
+            args[6].value = "exFAT"
             return result
         with mock.patch.object(self.backend.kernel, "GetVolumeInformationW", side_effect=non_ntfs):
             with self.assertRaises(BM1AuthorizationError):

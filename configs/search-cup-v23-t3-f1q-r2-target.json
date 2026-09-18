@@ -1,0 +1,17 @@
+{
+  "schema_id": "search-cup-v23-t3-f1q-r2-target/v1",
+  "work_order": "WO-ENG-B1-SC-V23-T3-F1Q-R2-01 v0.1",
+  "source_main_sha": "34e147f26b582486474b4d4b29eae7494add2d4b",
+  "source_main_tree": "311b541fddf212060476a3f994581e06c71d98f0",
+  "candidate_id": "search-cup-v23-frozen-lexical-raw-v1",
+  "retriever_class": "RAW_RETRIEVER",
+  "module_class": "search_cup.v23_frozen_retriever:FrozenLexicalRetriever",
+  "backend_id": "search-cup-v23/frozen-lexical-raw-v1",
+  "selector_rule": "EXPLICIT_AUTHORITY_PIN_TO_CANDIDATE_ID",
+  "candidate_descriptor_fingerprint": "6715a759a36dd3039dbf36bb15636eb683e107caec3953c68adb8e92c93d4281",
+  "normalization_runtime": {"unicode_data_version": "14.0.0", "python_major_minor": "3.11"},
+  "code_content_sha256": "0f87af3639d760c3dfad427f8d72f53f553a9c768d3f7b29d5b32cc8def95729",
+  "config_fingerprint": "2f60df7627f611c29f425dfccb94936cf606774fc619e48fe34c650f738ac7ca",
+  "synthetic_fixture_corpus_fingerprint": "ec12c5e478b9b95c8f24104bca5147717ba7ca5018fea043cf8e9f658b7377d4",
+  "accepted_nfr_package_fingerprint": "ca6e7eb45499d3ab55cea7ecc16124bb05a09a11f4a13740d6b93b4ffcd7dd2f"
+}

@@ -82,6 +82,9 @@ jobs:
       - name: Assert native OS and architecture before private inputs
         run: |
           import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
           from b2.bm1_live import assert_private_runner
           assert_private_runner(os.environ)
 
@@ -110,6 +113,9 @@ jobs:
           PUBLIC_RESULT_FILE: ${{ runner.temp }}/bm1-live-public.json
         run: |
           import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
           from b2.bm1_live import main
           raise SystemExit(main(["execute-live", "--repo-root", ".",
                                  "--public-copy", os.environ["PUBLIC_RESULT_FILE"]]))
@@ -166,6 +172,9 @@ jobs:
       - name: Assert native OS and architecture before private inputs
         run: |
           import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
           from b2.bm1_live import assert_private_runner
           assert_private_runner(os.environ)
 
@@ -194,6 +203,9 @@ jobs:
           PUBLIC_RESULT_FILE: ${{ runner.temp }}/bm1-live-public.json
         run: |
           import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
           from b2.bm1_live import main
           raise SystemExit(main(["execute-live", "--repo-root", ".",
                                  "--public-copy", os.environ["PUBLIC_RESULT_FILE"]]))

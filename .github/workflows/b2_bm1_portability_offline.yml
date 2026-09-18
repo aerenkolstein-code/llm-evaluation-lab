@@ -33,6 +33,9 @@ jobs:
       - name: Native offline BM1 portability tests with network denied
         run: |
           import socket
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
           import unittest
           from unittest import mock
 

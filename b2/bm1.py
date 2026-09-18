@@ -10,9 +10,13 @@ import hashlib
 import json
 import os
 import re
+import stat
+import sys
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Protocol
 from urllib import error as urllib_error
@@ -624,6 +628,11 @@ def build_claim_store_fingerprint(store_id: str) -> str:
 
 def build_storage_authority_fingerprint(directory: str | Path, *, storage_kind: str) -> str:
     """Fingerprint the actual directory Authority without publishing its path."""
+    if sys.platform == "win32":
+        with _windows_storage().directory(Path(directory)) as (_, _, identity):
+            return sha256_json({"storage_kind": storage_kind, **identity})
+    if sys.platform != "linux":
+        raise BM1AuthorizationError("unsupported durable storage platform")
     path = Path(directory)
     if not path.is_dir():
         raise BM1AuthorizationError("durable storage directory must already exist")
@@ -864,11 +873,328 @@ class InMemoryAttemptClaimStore:
 
 
 def _fsync_dir(path: Path) -> None:
-    fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    # Windows commits file data AND NTFS metadata in exclusive_write; opening a
+    # directory with the POSIX CRT and calling fsync is not a Windows substitute.
+    if sys.platform != "linux":
+        raise BM1AuthorizationError("directory fsync requires the Linux backend")
+    fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
     try:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+class _WindowsStorage:
+    """Native local-NTFS backend. All diagnostics are deliberately path/SID-free.
+
+    Directory chains stay open without write/delete sharing during operations.
+    Every target and ancestor is opened as a reparse point, then inspected.
+    The ACL allowlist is deliberately smaller than general Windows ACL syntax:
+    protected DACL, explicit simple allow ACEs, runner + optional SYSTEM/Admins.
+    No inherited, deny, callback, object, broad-principal or inherit-only ACEs.
+    This backend never provisions directories or modifies an existing ACL.
+    """
+
+    def __init__(self) -> None:
+        import ctypes as c
+        from ctypes import wintypes as w
+
+        self.c, self.w = c, w
+        self.kernel = c.WinDLL("kernel32", use_last_error=True)
+        self.advapi = c.WinDLL("advapi32", use_last_error=True)
+        self._api(self.kernel, "CreateFileW", [w.LPCWSTR, w.DWORD, w.DWORD, c.c_void_p, w.DWORD, w.DWORD, w.HANDLE], w.HANDLE)
+        self._api(self.kernel, "CloseHandle", [w.HANDLE], w.BOOL)
+        self._api(self.kernel, "GetCurrentProcess", [], w.HANDLE)
+        self._api(self.kernel, "GetCurrentThread", [], w.HANDLE)
+        self._api(self.kernel, "IsWow64Process2", [w.HANDLE, c.POINTER(w.WORD), c.POINTER(w.WORD)], w.BOOL)
+        self._api(self.kernel, "GetFileInformationByHandle", [w.HANDLE, c.c_void_p], w.BOOL)
+        self._api(self.kernel, "GetFileInformationByHandleEx", [w.HANDLE, c.c_int, c.c_void_p, w.DWORD], w.BOOL)
+        self._api(self.kernel, "GetFinalPathNameByHandleW", [w.HANDLE, w.LPWSTR, w.DWORD, w.DWORD], w.DWORD)
+        self._api(self.kernel, "GetVolumePathNameW", [w.LPCWSTR, w.LPWSTR, w.DWORD], w.BOOL)
+        self._api(self.kernel, "GetDriveTypeW", [w.LPCWSTR], w.UINT)
+        self._api(self.kernel, "GetVolumeInformationW", [w.LPCWSTR, w.LPWSTR, w.DWORD, c.POINTER(w.DWORD), c.POINTER(w.DWORD), c.POINTER(w.DWORD), w.LPWSTR, w.DWORD], w.BOOL)
+        self._api(self.kernel, "WriteFile", [w.HANDLE, c.c_void_p, w.DWORD, c.POINTER(w.DWORD), c.c_void_p], w.BOOL)
+        self._api(self.kernel, "ReadFile", [w.HANDLE, c.c_void_p, w.DWORD, c.POINTER(w.DWORD), c.c_void_p], w.BOOL)
+        self._api(self.kernel, "FlushFileBuffers", [w.HANDLE], w.BOOL)
+        self._api(self.kernel, "LocalFree", [c.c_void_p], c.c_void_p)
+        self._api(self.advapi, "OpenProcessToken", [w.HANDLE, w.DWORD, c.POINTER(w.HANDLE)], w.BOOL)
+        self._api(self.advapi, "OpenThreadToken", [w.HANDLE, w.DWORD, w.BOOL, c.POINTER(w.HANDLE)], w.BOOL)
+        self._api(self.advapi, "GetTokenInformation", [w.HANDLE, c.c_int, c.c_void_p, w.DWORD, c.POINTER(w.DWORD)], w.BOOL)
+        self._api(self.advapi, "IsValidSid", [c.c_void_p], w.BOOL)
+        self._api(self.advapi, "GetLengthSid", [c.c_void_p], w.DWORD)
+        self._api(self.advapi, "ConvertSidToStringSidW", [c.c_void_p, c.POINTER(c.c_void_p)], w.BOOL)
+        self._api(self.advapi, "GetSecurityInfo", [w.HANDLE, c.c_int, w.DWORD, c.POINTER(c.c_void_p), c.c_void_p, c.POINTER(c.c_void_p), c.c_void_p, c.POINTER(c.c_void_p)], w.DWORD)
+        self._api(self.advapi, "GetSecurityDescriptorControl", [c.c_void_p, c.POINTER(w.WORD), c.POINTER(w.DWORD)], w.BOOL)
+        self._api(self.advapi, "GetAclInformation", [c.c_void_p, c.c_void_p, w.DWORD, c.c_int], w.BOOL)
+        self._api(self.advapi, "GetAce", [c.c_void_p, w.DWORD, c.POINTER(c.c_void_p)], w.BOOL)
+        self._api(self.advapi, "ConvertStringSecurityDescriptorToSecurityDescriptorW", [w.LPCWSTR, w.DWORD, c.POINTER(c.c_void_p), c.c_void_p], w.BOOL)
+
+        class FileInfo(c.Structure):
+            _fields_ = [("attributes", w.DWORD), ("creation", w.FILETIME),
+                        ("access", w.FILETIME), ("write", w.FILETIME),
+                        ("volume", w.DWORD), ("size_high", w.DWORD),
+                        ("size_low", w.DWORD), ("links", w.DWORD),
+                        ("id_high", w.DWORD), ("id_low", w.DWORD)]
+
+        class FileId(c.Structure):
+            _fields_ = [("volume", c.c_ulonglong), ("identifier", c.c_ubyte * 16)]
+
+        class SecurityAttributes(c.Structure):
+            _fields_ = [("length", w.DWORD), ("descriptor", c.c_void_p), ("inherit", w.BOOL)]
+
+        self.FileInfo, self.FileId, self.SecurityAttributes = FileInfo, FileId, SecurityAttributes
+        self.assert_x64()
+
+    @staticmethod
+    def _api(dll, name, arguments, result):
+        function = getattr(dll, name)
+        function.argtypes, function.restype = arguments, result
+        return function
+
+    @staticmethod
+    def _require(ok, message="Windows storage API failed"):
+        if not ok:
+            raise BM1AuthorizationError(message)
+
+    def assert_x64(self) -> None:
+        process, native = self.w.WORD(), self.w.WORD()
+        self._require(self.kernel.IsWow64Process2(self.kernel.GetCurrentProcess(), self.c.byref(process), self.c.byref(native)))
+        self._require(native.value == 0x8664 and process.value == 0 and self.c.sizeof(self.c.c_void_p) == 8,
+                      "Windows storage requires native x64")
+
+    def _close(self, handle) -> None:
+        self._require(self.kernel.CloseHandle(handle), "Windows storage handle close failed")
+
+    def _sid(self, pointer) -> str:
+        self._require(pointer and self.advapi.IsValidSid(pointer), "invalid Windows storage SID")
+        text = self.c.c_void_p()
+        self._require(self.advapi.ConvertSidToStringSidW(pointer, self.c.byref(text)))
+        try:
+            return self.c.wstring_at(text)
+        finally:
+            self.kernel.LocalFree(text)
+
+    def runner_sid(self) -> str:
+        # An impersonated thread is not the service-account security boundary.
+        token = self.w.HANDLE()
+        if self.advapi.OpenThreadToken(self.kernel.GetCurrentThread(), 8, True, self.c.byref(token)):
+            self._close(token)
+            raise BM1AuthorizationError("impersonated Windows storage identity rejected")
+        self._require(self.c.get_last_error() == 1008)
+        self._require(self.advapi.OpenProcessToken(self.kernel.GetCurrentProcess(), 8, self.c.byref(token)))
+        try:
+            needed = self.w.DWORD()
+            self.advapi.GetTokenInformation(token, 1, None, 0, self.c.byref(needed))
+            self._require(0 < needed.value < 65536)
+            buffer = self.c.create_string_buffer(needed.value)
+            self._require(self.advapi.GetTokenInformation(token, 1, buffer, needed, self.c.byref(needed)))
+            return self._sid(self.c.cast(buffer, self.c.POINTER(self.c.c_void_p))[0])
+        finally:
+            self._close(token)
+
+    def _security(self, handle) -> str:
+        c, w = self.c, self.w
+        owner, acl, descriptor = c.c_void_p(), c.c_void_p(), c.c_void_p()
+        self._require(self.advapi.GetSecurityInfo(handle, 1, 5, c.byref(owner), None, c.byref(acl), None, c.byref(descriptor)) == 0)
+        try:
+            runner = self.runner_sid()
+            self._require(self._sid(owner) == runner, "Windows storage owner mismatch")
+            control, revision = w.WORD(), w.DWORD()
+            self._require(self.advapi.GetSecurityDescriptorControl(descriptor, c.byref(control), c.byref(revision)))
+            self._require(acl and control.value & 0x1000, "Windows storage DACL must be protected")
+            info = (w.DWORD * 3)()
+            self._require(self.advapi.GetAclInformation(acl, info, c.sizeof(info), 2))
+            self._require(0 < info[0] <= 32, "Windows storage DACL is invalid")
+            aces = []
+            full_access = False
+            for index in range(info[0]):
+                ace = c.c_void_p()
+                self._require(self.advapi.GetAce(acl, index, c.byref(ace)))
+                header = c.string_at(ace, 4)
+                size = int.from_bytes(header[2:4], "little")
+                self._require(header[0] == 0 and header[1] & ~3 == 0 and size >= 16,
+                              "Windows storage ACE policy rejected")
+                mask = c.cast(ace.value + 4, c.POINTER(w.DWORD))[0]
+                sid_pointer = ace.value + 8
+                self._require(self.advapi.IsValidSid(sid_pointer))
+                self._require(8 + self.advapi.GetLengthSid(sid_pointer) == size)
+                sid = self._sid(sid_pointer)
+                self._require(sid in {runner, "S-1-5-18", "S-1-5-32-544"} and mask & ~0x1F01FF == 0,
+                              "Windows storage principal/access policy rejected")
+                full_access |= sid == runner and mask == 0x1F01FF
+                aces.append(c.string_at(ace, size).hex())
+            self._require(full_access, "Windows runner requires explicit full storage access")
+            return sha256_json({"policy": "bm1-windows-acl/v1", "owner": runner,
+                                "control": control.value, "revision": revision.value,
+                                "acl_revision": c.string_at(acl, 1).hex(), "aces": aces})
+        finally:
+            self.kernel.LocalFree(descriptor)
+
+    def _open(self, path: Path, *, directory: bool, create: bool = False, security=None):
+        flags = 0x00200000  # FILE_FLAG_OPEN_REPARSE_POINT
+        flags |= 0x02000000 if directory else 0
+        flags |= 0x80000000 if create else 0  # FILE_FLAG_WRITE_THROUGH
+        access = 0x20080 if directory else (0xC0000000 if create else 0x80000000)
+        handle = self.kernel.CreateFileW(str(path), access, 1 if not create else 0,
+                                        security, 1 if create else 3, flags, None)
+        if handle == self.c.c_void_p(-1).value:
+            if create and self.c.get_last_error() in {80, 183}:
+                raise FileExistsError("Windows exclusive file already exists")
+            raise BM1AuthorizationError("Windows storage open failed")
+        return handle
+
+    def _info(self, handle, *, directory: bool):
+        info, identity = self.FileInfo(), self.FileId()
+        self._require(self.kernel.GetFileInformationByHandle(handle, self.c.byref(info)))
+        self._require(bool(info.attributes & 0x10) == directory and not info.attributes & (0x400 | 0x100),
+                      "Windows storage reparse/type/temporary boundary rejected")
+        if not directory:
+            self._require(info.links == 1, "Windows storage hard links rejected")
+        self._require(self.kernel.GetFileInformationByHandleEx(handle, 18, self.c.byref(identity), self.c.sizeof(identity)))
+        self._require(any(identity.identifier), "Windows storage file identity unavailable")
+        return {"volume_serial": int(identity.volume), "file_id": bytes(identity.identifier).hex()}
+
+    def _canonical(self, handle) -> Path:
+        buffer = self.c.create_unicode_buffer(32768)
+        length = self.kernel.GetFinalPathNameByHandleW(handle, buffer, len(buffer), 0)
+        self._require(0 < length < len(buffer))
+        value = buffer.value
+        self._require(value.startswith("\\\\?\\") and not value.startswith("\\\\?\\UNC\\"), "Windows local path required")
+        return self._path(Path(value[4:]))
+
+    @staticmethod
+    def _path(path: Path) -> Path:
+        # Reject UNC/device/extended namespaces, ADS, relative paths and Win32
+        # trailing-dot/space aliases. Canonical spelling comes from the handle.
+        value = str(path)
+        if (not re.match(r"^[A-Za-z]:\\", value) or any(ch in value[2:] for ch in ':*?<>|"')
+                or any(ord(ch) < 32 for ch in value)
+                or any(part in {".", ".."} or part.endswith((".", " ")) for part in path.parts[1:])):
+            raise BM1AuthorizationError("Windows storage path form rejected")
+        return path
+
+    def _volume(self, path: Path) -> None:
+        c, w = self.c, self.w
+        root, filesystem = c.create_unicode_buffer(32768), c.create_unicode_buffer(64)
+        self._require(self.kernel.GetVolumePathNameW(str(path), root, len(root)))
+        self._require(self.kernel.GetDriveTypeW(root.value) == 3, "Windows storage requires a fixed local volume")
+        serial, maximum, flags = w.DWORD(), w.DWORD(), w.DWORD()
+        self._require(self.kernel.GetVolumeInformationW(root.value, None, 0, c.byref(serial), c.byref(maximum), c.byref(flags), filesystem, len(filesystem)))
+        self._require(filesystem.value == "NTFS" and flags.value & 8, "Windows storage requires NTFS persistent ACLs")
+
+    def _authority(self, handle) -> dict[str, Any]:
+        path = self._canonical(handle)
+        self._volume(path)
+        return {"platform": "windows", "resolved_path_fingerprint": _sha_text(str(path).casefold()),
+                **self._info(handle, directory=True), "security_descriptor_fingerprint": self._security(handle)}
+
+    @contextmanager
+    def directory(self, path: Path):
+        path = self._path(path)
+        handles = []
+        try:
+            for component in (*reversed(path.parents), path):
+                handle = self._open(component, directory=True)
+                handles.append(handle)
+                self._info(handle, directory=True)
+            identity = self._authority(handles[-1])
+            canonical = self._canonical(handles[-1])
+            # Short-name aliases cannot change either the path hash or policy.
+            self._require(str(canonical).casefold() == str(path).casefold(), "Windows storage path must be canonical")
+            yield canonical, handles[-1], identity
+            self._require(self._authority(handles[-1]) == identity, "Windows storage Authority drift")
+        finally:
+            for handle in reversed(handles):
+                self._close(handle)
+
+    def _read(self, path: Path, *, maximum: int | None = None):
+        handle = self._open(path, directory=False)
+        try:
+            identity = {**self._info(handle, directory=False), "acl": self._security(handle)}
+            chunks, total = [], 0
+            while True:
+                buffer, count = self.c.create_string_buffer(65536), self.w.DWORD()
+                self._require(self.kernel.ReadFile(handle, buffer, len(buffer), self.c.byref(count), None))
+                if not count.value:
+                    break
+                total += count.value
+                self._require(maximum is None or total <= maximum, "Windows archive readback size rejected")
+                chunks.append(buffer.raw[:count.value])
+            self._require(identity == {**self._info(handle, directory=False), "acl": self._security(handle)}, "Windows archive identity drift")
+            return b"".join(chunks), identity
+        finally:
+            self._close(handle)
+
+    def read(self, path: Path, *, maximum: int | None = None) -> bytes:
+        with self.directory(path.parent):
+            return self._read(path, maximum=maximum)[0]
+
+    def exclusive_write(self, path: Path, data: bytes) -> None:
+        if not data:
+            raise BM1AuthorizationError("Windows durable write must contain data")
+        c = self.c
+        with self.directory(path.parent):
+            # Owner and a protected runner-only DACL are set at CREATE_NEW, not
+            # repaired afterwards. Partial/failed writes remain one-shot tombstones.
+            descriptor = c.c_void_p()
+            sid = self.runner_sid()
+            self._require(self.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                f"O:{sid}D:P(A;;FA;;;{sid})", 1, c.byref(descriptor), None))
+            try:
+                attributes = self.SecurityAttributes(c.sizeof(self.SecurityAttributes), descriptor, False)
+                handle = self._open(path, directory=False, create=True, security=c.byref(attributes))
+            finally:
+                self.kernel.LocalFree(descriptor)
+            try:
+                identity = {**self._info(handle, directory=False), "acl": self._security(handle)}
+                for start in range(0, len(data), 65536):
+                    chunk, count = data[start:start + 65536], self.w.DWORD()
+                    self._require(self.kernel.WriteFile(handle, chunk, len(chunk), c.byref(count), None))
+                    self._require(count.value == len(chunk), "Windows durable short write")
+                self._require(self.kernel.FlushFileBuffers(handle), "Windows durable flush failed")
+            finally:
+                self._close(handle)
+            readback, reopened = self._read(path, maximum=len(data))
+            self._require(reopened == identity and readback == data, "Windows durable readback mismatch")
+
+
+@lru_cache(maxsize=1)
+def _windows_storage() -> _WindowsStorage:
+    if sys.platform != "win32":
+        raise BM1AuthorizationError("native Windows storage required")
+    try:
+        return _WindowsStorage()
+    except (OSError, AttributeError) as exc:
+        raise BM1AuthorizationError("required Windows storage APIs unavailable") from exc
+
+
+def _durable_exclusive_write(path: Path, data: bytes) -> None:
+    if sys.platform == "win32":
+        _windows_storage().exclusive_write(path, data)
+        return
+    if sys.platform != "linux":
+        raise BM1AuthorizationError("unsupported durable storage platform")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    with os.fdopen(os.open(path, flags, 0o600), "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    _fsync_dir(path.parent)
+    if _durable_read(path) != data:
+        raise BM1GlobalStop("durable file readback mismatch")
+
+
+def _durable_read(path: Path) -> bytes:
+    if sys.platform == "win32":
+        return _windows_storage().read(path)
+    if sys.platform != "linux":
+        raise BM1AuthorizationError("unsupported durable storage platform")
+    with os.fdopen(os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)), "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+            raise BM1AuthorizationError("durable file private boundary rejected")
+        return handle.read()
 
 
 class FileAttemptClaimStore:
@@ -900,16 +1226,12 @@ class FileAttemptClaimStore:
             raise BM1AuthorizationError("attempt claim storage Authority mismatch")
         path = self._path(attempt_id)
         try:
-            with path.open("x", encoding="utf-8", newline="\n") as handle:
-                handle.write(canonical_json(checked) + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
+            _durable_exclusive_write(path, (canonical_json(checked) + "\n").encode("utf-8"))
         except FileExistsError as exc:
             raise BM1AuthorizationError(
                 "attempt already durably claimed; new attempt_id+authorization required"
             ) from exc
-        _fsync_dir(self.directory)
-        if json.loads(path.read_text(encoding="utf-8")) != checked:
+        if json.loads(_durable_read(path)) != checked:
             raise BM1GlobalStop("durable claim readback mismatch")
         return checked
 
@@ -921,8 +1243,8 @@ class FileAttemptClaimStore:
         if not path.is_file():
             return False
         try:
-            stored = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            stored = json.loads(_durable_read(path))
+        except (OSError, BM1AuthorizationError, json.JSONDecodeError):
             return False
         return stored == dict(claim)
 
@@ -1133,14 +1455,10 @@ class FileRawEvidenceSink:
         }
         path = self._path(attempt_id)
         try:
-            with path.open("x", encoding="utf-8", newline="\n") as handle:
-                handle.write(canonical_json(private) + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
+            _durable_exclusive_write(path, (canonical_json(private) + "\n").encode("utf-8"))
         except FileExistsError as exc:
             raise BM1ContractError("raw evidence overwrite rejected") from exc
-        _fsync_dir(self.directory)
-        if json.loads(path.read_text(encoding="utf-8")) != private:
+        if json.loads(_durable_read(path)) != private:
             raise BM1GlobalStop("raw evidence readback mismatch")
         return _evidence_receipt(
             attempt_id, request, response, final_text, error_class,
@@ -1152,7 +1470,7 @@ class FileRawEvidenceSink:
         path = self._path(attempt_id)
         if not path.is_file():
             raise BM1ContractError("private replay not found")
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(_durable_read(path))
         return deepcopy(dict(_object(value, "private_replay")))
 
 

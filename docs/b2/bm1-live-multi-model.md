@@ -41,7 +41,7 @@ This is the R3-1 closure.
 
 ## 4. Round 3 repair: every committed claim receives a terminal account
 
-The durable claim is still exclusive-created, file-`fsync`ed, directory-`fsync`ed, and read back before provider traffic. Once that commit/readback succeeds, every later pre-provider failure is terminally accounted.
+The durable claim remains exclusive-created and read back before provider traffic. On Linux it uses file and directory `fsync`; native Windows x64 uses local fixed NTFS, `CREATE_NEW`, write-through, `FlushFileBuffers`, close/reopen and identity-checked readback. Once that commit/readback succeeds, every later pre-provider failure is terminally accounted.
 
 If final live-authorization, external-verifier, storage-Authority, or exact claim/request revalidation fails, `run_next()` appends an immutable `ERROR / LIVE_AUTHORIZATION_STOP` public receipt with `provider_terminal_status=RUNTIME_ERROR`, `provider_http_status=null`, and the exact durable `attempt_claim_fingerprint`. It then sets the global stop and re-raises the authorization error. Other post-claim request-construction failures close as `ERROR / LIVE_PRE_PROVIDER_STOP` before raising a global stop. In both cases the provider request counter and opener count remain zero, while the durable claim prevents restart/retry reuse.
 
@@ -70,7 +70,7 @@ RUN-READY advances to `b2-bm1-run-ready/v2`. It now freezes both storage Authori
 - `raw_bundle_destination`;
 - `attempt_claim_store`.
 
-Each binding contains an opaque label ID, a public-safe label fingerprint, and an `storage_authority_fingerprint` calculated from the **actual pre-existing directory Authority**: storage kind + SHA-256 of the resolved path + filesystem device + inode. The raw path itself is never published.
+Each binding contains an opaque label ID, a public-safe label fingerprint, and an `storage_authority_fingerprint` calculated from the **actual pre-existing directory Authority**: on Linux, the unchanged storage kind + SHA-256 of the resolved path + filesystem device + inode tuple; on native Windows x64, storage kind + platform + SHA-256 of the canonical path + volume serial + stable file ID + approved ACL fingerprint. Raw paths, SIDs and ACL bodies are never published. The [orchestration runbook](bm1-live-orchestration.md#6-storage-authority-and-durability) defines the private-directory policies and durability backends.
 
 `FileAttemptClaimStore(directory, store_id=...)` independently derives the same actual storage Authority. Its label fingerprint and actual storage fingerprint must both match RUN-READY and live authorization before any provider call. Attempt claims v3 also carry both claim-store and raw-store Authority fingerprints plus the exact request fingerprint.
 
@@ -87,7 +87,7 @@ This is the R2-3 closure.
 
 RUN-READY v2 and live authorization v3 bind both. A different directory that reuses the expected `destination_id` has the same label fingerprint but a different actual storage Authority fingerprint and is rejected before provider call.
 
-For a called attempt, the durable raw file is exclusive-created, file-`fsync`ed, directory-`fsync`ed, and read back. The public evidence projection remains body/path/secret-free while recording durability plus the public-safe destination and storage-Authority fingerprints. The runner rechecks those values after evidence write.
+For a called attempt, the durable raw file is exclusive-created and read back through the OS-specific backend: file/directory `fsync` on Linux, or native NTFS write-through/flush/close/reopen on Windows. The public evidence projection remains body/path/secret-free while recording durability plus the public-safe destination and storage-Authority fingerprints. The runner rechecks those values after evidence write.
 
 This is the R2-4 closure.
 

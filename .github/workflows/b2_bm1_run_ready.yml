@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      runner_os: ${{ steps.gate.outputs.runner_os }}
       comment_id: ${{ steps.gate.outputs.comment_id }}
       comment_fingerprint: ${{ steps.gate.outputs.comment_fingerprint }}
       execution_head_sha: ${{ steps.gate.outputs.execution_head_sha }}
@@ -43,12 +44,14 @@ jobs:
 
       - id: gate
         name: Validate exact canonical preparation comment
+        env:
+          B2_BM1_RUNNER_OS: ${{ vars.B2_BM1_RUNNER_OS }}
         run: python -m b2.bm1_live gate-run-ready --repo-root .
 
   private-run-ready:
     name: Private zero-provider RUN-READY preparation
     needs: public-gate
-    if: needs.public-gate.result == 'success' && github.run_attempt == 1
+    if: needs.public-gate.result == 'success' && github.run_attempt == 1 && needs.public-gate.outputs.runner_os == 'linux'
     environment: b2-bm1-live
     runs-on:
       - self-hosted
@@ -56,6 +59,13 @@ jobs:
       - x64
       - b2-bm1-private
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: python {0}
+    env:
+      B2_BM1_RUNNER_OS: ${{ vars.B2_BM1_RUNNER_OS }}
+      B2_BM1_GUARDED_RUNNER_OS: ${{ needs.public-gate.outputs.runner_os }}
+      B2_BM1_LANE_OS: linux
     outputs:
       run_ready_receipt_fingerprint: ${{ steps.prepare.outputs.run_ready_receipt_fingerprint }}
       run_ready_receipt_sha256: ${{ steps.prepare.outputs.run_ready_receipt_sha256 }}
@@ -67,6 +77,12 @@ jobs:
           ref: ${{ needs.public-gate.outputs.execution_head_sha }}
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Assert native OS and architecture before private inputs
+        run: |
+          import os
+          from b2.bm1_live import assert_private_runner
+          assert_private_runner(os.environ)
 
       - id: prepare
         name: Bind storage and prepare canonical RUN-READY
@@ -90,15 +106,16 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           PUBLIC_RESULT_FILE: ${{ runner.temp }}/bm1-run-ready-public.json
-        run: >-
-          python -m b2.bm1_live prepare-run-ready --repo-root .
-          --public-copy "$PUBLIC_RESULT_FILE"
+        run: |
+          import os
+          from b2.bm1_live import main
+          raise SystemExit(main(["prepare-run-ready", "--repo-root", ".",
+                                 "--public-copy", os.environ["PUBLIC_RESULT_FILE"]]))
 
       - name: Publish the public-safe canonical receipt and STOP
         env:
           PUBLIC_RESULT_FILE: ${{ runner.temp }}/bm1-run-ready-public.json
         run: |
-          python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -113,4 +130,86 @@ jobs:
               handle.write("- Provider requests: `0`\n- Spend: `USD 0`\n")
               handle.write("- Live authorization created: `false`\n\n")
               handle.write("```json\n" + canonical + "\n```\n")
-          PY
+
+  private-run-ready-windows:
+    name: Private zero-provider RUN-READY preparation
+    needs: public-gate
+    if: needs.public-gate.result == 'success' && github.run_attempt == 1 && needs.public-gate.outputs.runner_os == 'windows'
+    environment: b2-bm1-live
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - b2-bm1-private
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: python {0}
+    env:
+      B2_BM1_RUNNER_OS: ${{ vars.B2_BM1_RUNNER_OS }}
+      B2_BM1_GUARDED_RUNNER_OS: ${{ needs.public-gate.outputs.runner_os }}
+      B2_BM1_LANE_OS: windows
+    outputs:
+      run_ready_receipt_fingerprint: ${{ steps.prepare.outputs.run_ready_receipt_fingerprint }}
+      run_ready_receipt_sha256: ${{ steps.prepare.outputs.run_ready_receipt_sha256 }}
+      run_ready_receipt_b64: ${{ steps.prepare.outputs.run_ready_receipt_b64 }}
+    steps:
+      - name: Check out the exact gated main head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.public-gate.outputs.execution_head_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert native OS and architecture before private inputs
+        run: |
+          import os
+          from b2.bm1_live import assert_private_runner
+          assert_private_runner(os.environ)
+
+      - id: prepare
+        name: Bind storage and prepare canonical RUN-READY
+        env:
+          B2_BM1_GUARDED_COMMENT_ID: ${{ needs.public-gate.outputs.comment_id }}
+          B2_BM1_GUARDED_COMMENT_FINGERPRINT: ${{ needs.public-gate.outputs.comment_fingerprint }}
+          B2_BM1_GUARDED_EXECUTION_HEAD_SHA: ${{ needs.public-gate.outputs.execution_head_sha }}
+          B2_BM1_GUARDED_EXECUTION_TREE_SHA: ${{ needs.public-gate.outputs.execution_tree_sha }}
+          B2_BM1_GUARDED_WORKFLOW_RUN_ID: ${{ needs.public-gate.outputs.workflow_run_id }}
+          B2_BM1_PROVIDER_AUTHORITY_FINGERPRINT: ${{ vars.B2_BM1_PROVIDER_AUTHORITY_FINGERPRINT }}
+          B2_BM1_PROVIDER_REVIEWED_AT: ${{ vars.B2_BM1_PROVIDER_REVIEWED_AT }}
+          B2_BM1_GEMINI_KEY_AUTH_STATUS: ${{ vars.B2_BM1_GEMINI_KEY_AUTH_STATUS }}
+          B2_BM1_GEMINI_KEY_AUTH_ATTESTATION_FINGERPRINT: ${{ vars.B2_BM1_GEMINI_KEY_AUTH_ATTESTATION_FINGERPRINT }}
+          B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY: ${{ secrets.B2_BM1_GEMINI_KEY_AUTH_BINDING_HMAC_KEY }}
+          B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC: ${{ secrets.B2_BM1_GEMINI_KEY_AUTH_IDENTITY_HMAC }}
+          B2_BM1_RAW_BUNDLE_ID: ${{ vars.B2_BM1_RAW_BUNDLE_ID }}
+          B2_BM1_ATTEMPT_CLAIM_STORE_ID: ${{ vars.B2_BM1_ATTEMPT_CLAIM_STORE_ID }}
+          B2_BM1_RAW_BUNDLE_DIR: ${{ secrets.B2_BM1_RAW_BUNDLE_DIR }}
+          B2_BM1_ATTEMPT_CLAIM_DIR: ${{ secrets.B2_BM1_ATTEMPT_CLAIM_DIR }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          PUBLIC_RESULT_FILE: ${{ runner.temp }}/bm1-run-ready-public.json
+        run: |
+          import os
+          from b2.bm1_live import main
+          raise SystemExit(main(["prepare-run-ready", "--repo-root", ".",
+                                 "--public-copy", os.environ["PUBLIC_RESULT_FILE"]]))
+
+      - name: Publish the public-safe canonical receipt and STOP
+        env:
+          PUBLIC_RESULT_FILE: ${{ runner.temp }}/bm1-run-ready-public.json
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          result = json.loads(Path(os.environ["PUBLIC_RESULT_FILE"]).read_text(encoding="ascii"))
+          receipt = result["receipt"]
+          canonical = json.dumps(receipt, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
+              handle.write("## BM1 RUN-READY prepared — STOP\n\n")
+              handle.write(f"- Control Issue: `#50`\n")
+              handle.write(f"- Receipt fingerprint: `{receipt['receipt_fingerprint']}`\n")
+              handle.write("- Provider requests: `0`\n- Spend: `USD 0`\n")
+              handle.write("- Live authorization created: `false`\n\n")
+              handle.write("```json\n" + canonical + "\n```\n")

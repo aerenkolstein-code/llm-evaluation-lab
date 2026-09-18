@@ -1188,7 +1188,7 @@ class WindowsStorageAuthorityTests(unittest.TestCase):
                 bm1_live.storage_runtime(self.environment)
 
     def test_broad_and_inherited_aces_fail_closed(self):
-        for extra in ("(A;;FR;;;WD)", "(A;;FW;;;AU)", "(A;;SD;;;BU)", "(A;ID;FA;;;SY)"):
+        for extra in ("(A;;FR;;;WD)", "(A;;FW;;;AU)", "(A;;SD;;;BU)"):
             with self.subTest(policy=extra):
                 harden_test_directory(self.raw, extra_aces=extra)
                 with self.assertRaises(BM1AuthorizationError):
@@ -1196,6 +1196,33 @@ class WindowsStorageAuthorityTests(unittest.TestCase):
         harden_test_directory(self.raw, protected=False)
         with self.assertRaises(BM1AuthorizationError):
             build_storage_authority_fingerprint(self.raw, storage_kind=RAW_BUNDLE_STORAGE_KIND)
+
+    def test_real_parent_inherited_acl_rejected(self):
+        # SetNamedSecurityInfo normalizes caller-written ID flags. Create actual
+        # inherited ACEs from a parent and verify the native descriptor instead.
+        harden_test_directory(self.base, extra_aces="(A;OICI;FA;;;SY)")
+        child = self.base / "inherited-child"
+        child.mkdir()
+        harden_test_directory(child, protected=False)
+        c, w = self.backend.c, self.backend.w
+        owner, acl, descriptor = c.c_void_p(), c.c_void_p(), c.c_void_p()
+        handle = self.backend._open(child, directory=True)
+        try:
+            self.assertEqual(self.backend.advapi.GetSecurityInfo(handle, 1, 5, c.byref(owner), None,
+                             c.byref(acl), None, c.byref(descriptor)), 0)
+            info = (w.DWORD * 3)()
+            self.assertTrue(self.backend.advapi.GetAclInformation(acl, info, c.sizeof(info), 2))
+            flags = []
+            for index in range(info[0]):
+                ace = c.c_void_p()
+                self.assertTrue(self.backend.advapi.GetAce(acl, index, c.byref(ace)))
+                flags.append(c.string_at(ace, 2)[1])
+            self.assertTrue(any(flag & 0x10 for flag in flags), "fixture must contain inherited ACEs")
+        finally:
+            self.backend.kernel.LocalFree(descriptor)
+            self.backend._close(handle)
+        with self.assertRaises(BM1AuthorizationError):
+            build_storage_authority_fingerprint(child, storage_kind=RAW_BUNDLE_STORAGE_KIND)
 
     def test_wrong_owner_fails_closed(self):
         harden_test_directory(self.raw, owner="BA")

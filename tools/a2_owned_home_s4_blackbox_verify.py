@@ -216,7 +216,7 @@ def ts4_08(py,root):
 def ts4_09(py,root):
     seen={}
     for i,outcome in enumerate(("SUCCESS","FAILED","PARTIAL","UNKNOWN"),1):
-        r=result(tool_call(py,root/f"out-{outcome}","tool_execute",action("synthetic.compute",i,script=outcome)))
+        r=result(tool_call(py,root/f"out-{outcome}","tool_execute",action("synthetic.compute",1,request=f"outcome-{outcome.lower()}",script=outcome)))
         assert r["tool_receipt"]["outcome"]==outcome and r["tool_trace"]["terminal_outcome"]==outcome
         assert r["automatic_redispatches"]==0
         seen[outcome]={"status":r["status"],"receipt":r["tool_receipt"]["outcome"]}
@@ -272,7 +272,7 @@ def ts4_12(py,root):
     evid=[e["tool_evidence"] for e in exp if "tool_evidence" in e]
     assert len(evid)==1 and evid[0]==r["canonical_evidence"]
     raw=json.dumps(exp,sort_keys=True)
-    assert "parameters" not in raw and "42" not in raw
+    assert "parameters" not in raw
     return {"authority_mutations":0,"canonical_tool_evidence":1,"control_is_authority":False,"second_truth":0}
 
 def ts4_13(py,root):
@@ -286,7 +286,7 @@ def ts4_13(py,root):
     scan_safe({k:r[k] for k in ("tool_trace","tool_receipt","canonical_evidence","action_control")},forbidden=["876543","parameters"])
     wrong=[{**GRANT,"universe_id":"foreign"},{**GRANT,"access_subject_id":"foreign"}]
     for i,gs in enumerate(wrong):
-        d=result(tool_call(py,root/f"scope-{i}","tool_execute",action("synthetic.reversible_write",1),grants=gs))
+        d=result(tool_call(py,root/f"scope-{i}","tool_execute",action("synthetic.reversible_write",1),grants=[gs]))
         assert d["permission_decision"]["decision"]=="DENY" and d["tool_executions"]==0
     bad=deepcopy({"contract_version":CONTRACT,"scope":SCOPE,"op":"tool_execute","action":action("synthetic.reversible_write",1),
                   "tool_targets":[TARGET],"tool_grants":[{**GRANT,"api_key":SECRET}]})

@@ -4,7 +4,11 @@ import ast
 import copy
 import json
 import tempfile
+import os
+import sys
+import subprocess
 import unittest
+from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,7 +27,46 @@ from b2.bm1 import (
     validate_live_authorization, validate_manifest, validate_run_ready_receipt,
     validate_symbolic_credential_presence,
 )
+
 from b2.qa0 import sha256_json
+
+
+def harden_test_directory(path, *, extra_aces="", protected=True, owner=None):
+    """Test-only fixture provisioning; production never repairs store ACLs."""
+    if sys.platform != "win32":
+        os.chmod(path, 0o700)
+        return
+    import ctypes as c
+    from ctypes import wintypes as w
+    from b2.bm1 import _windows_storage
+    backend = _windows_storage()
+    sid = backend.runner_sid()
+    descriptor = c.c_void_p()
+    sddl = f"O:{owner or sid}D:{'P' if protected else ''}(A;;FA;;;{sid}){extra_aces}"
+    backend._require(backend.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        sddl, 1, c.byref(descriptor), None))
+    owner_reader = backend._api(backend.advapi, "GetSecurityDescriptorOwner",
+                               [c.c_void_p, c.POINTER(c.c_void_p), c.POINTER(w.BOOL)], w.BOOL)
+    acl_reader = backend._api(backend.advapi, "GetSecurityDescriptorDacl",
+                             [c.c_void_p, c.POINTER(w.BOOL), c.POINTER(c.c_void_p), c.POINTER(w.BOOL)], w.BOOL)
+    setter = backend._api(backend.advapi, "SetNamedSecurityInfoW",
+                         [w.LPWSTR, c.c_int, w.DWORD, c.c_void_p, c.c_void_p, c.c_void_p, c.c_void_p], w.DWORD)
+    try:
+        owner_pointer, acl = c.c_void_p(), c.c_void_p()
+        present, defaulted = w.BOOL(), w.BOOL()
+        backend._require(owner_reader(descriptor, c.byref(owner_pointer), c.byref(defaulted)))
+        backend._require(acl_reader(descriptor, c.byref(present), c.byref(acl), c.byref(defaulted)))
+        backend._require(setter(str(path), 1, 5 | (0x80000000 if protected else 0x20000000),
+                                owner_pointer, None, acl, None) == 0)
+    finally:
+        backend.kernel.LocalFree(descriptor)
+
+
+class PrivateTemporaryDirectory(tempfile.TemporaryDirectory):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = str(Path(self.name).resolve())
+        harden_test_directory(self.name)
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "cases/b2/public-safe/benchmark/bm1-live-smoke-manifest.json"
@@ -263,7 +306,7 @@ class BM1OfflineTests(unittest.TestCase):
 class BM1LiveTests(unittest.TestCase):
     def setUp(self):
         self.manifest = load_json(MANIFEST_PATH); self.cases = lookup()
-        self.raw = tempfile.TemporaryDirectory(); self.claim = tempfile.TemporaryDirectory()
+        self.raw = PrivateTemporaryDirectory(); self.claim = PrivateTemporaryDirectory()
         self.addCleanup(self.raw.cleanup); self.addCleanup(self.claim.cleanup)
         self.rr = make_run_ready(self.manifest, self.raw.name, self.claim.name)
         self.auth = make_auth(self.manifest, self.rr)
@@ -288,7 +331,7 @@ class BM1LiveTests(unittest.TestCase):
         self.assertEqual(checked["attempt_claim_store"]["storage_authority_fingerprint"], build_storage_authority_fingerprint(self.claim.name, storage_kind=CLAIM_STORE_STORAGE_KIND))
 
     def test_self_minted_complete_triplet_rejected_by_external_verifier(self):
-        with tempfile.TemporaryDirectory() as raw2, tempfile.TemporaryDirectory() as claim2:
+        with PrivateTemporaryDirectory() as raw2, PrivateTemporaryDirectory() as claim2:
             rr2 = make_run_ready(self.manifest, raw2, claim2, raw_id="MINTED-RAW", claim_id="MINTED-CLAIM")
             auth2 = make_auth(self.manifest, rr2, user_fp="sha256:" + "e" * 64, auth_id="MINTED-AUTH")
             with self.assertRaises(BM1AuthorizationError):
@@ -357,7 +400,7 @@ class BM1LiveTests(unittest.TestCase):
 
     def test_wrong_raw_directory_same_label_rejected(self):
         opener = Opener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        with tempfile.TemporaryDirectory() as wrong:
+        with PrivateTemporaryDirectory() as wrong:
             sink = FileRawEvidenceSink(wrong, destination_id=RAW_DEST_ID)
             self.assertEqual(sink.destination_fingerprint, self.rr["raw_bundle_destination"]["label_fingerprint"])
             self.assertNotEqual(sink.storage_authority_fingerprint, self.rr["raw_bundle_destination"]["storage_authority_fingerprint"])
@@ -369,7 +412,7 @@ class BM1LiveTests(unittest.TestCase):
         self.runner(first, Opener(response_for("google", GOOGLE_REQUESTED_MODEL_ID, "PROVIDE_BOUNDARY_COMPATIBLE_HELP"))).run_next(self.manifest["attempt_plan"][0]["attempt_id"])
         self.assertEqual(len(first.requests), 1)
         second = Opener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
-        with tempfile.TemporaryDirectory() as fresh:
+        with PrivateTemporaryDirectory() as fresh:
             store = FileAttemptClaimStore(fresh, store_id=CLAIM_STORE_ID)
             self.assertEqual(store.store_fingerprint, self.rr["attempt_claim_store"]["label_fingerprint"])
             self.assertNotEqual(store.storage_authority_fingerprint, self.rr["attempt_claim_store"]["storage_authority_fingerprint"])
@@ -399,6 +442,152 @@ class BM1LiveTests(unittest.TestCase):
         self.assertEqual(receipt["evidence_storage_authority_fingerprint"], self.rr["raw_bundle_destination"]["storage_authority_fingerprint"])
         self.assertEqual(len(opener.requests), 1); self.assertNotIn("unit-test-token", json.dumps(receipt))
         self.assertEqual(replay_scorer(manifest=self.manifest, case_lookup=self.cases, evidence_sink=sink, public_receipt=receipt)["terminal_status"], "PASS")
+
+
+    def test_duplicate_claim_rejected_in_a_fresh_process(self):
+        opener = Opener(response_for("openai", OPENAI_REQUESTED_MODEL_ID, "DECLINE_CONFLICTING_ASSISTANCE"))
+        self.runner(opener, Opener({})).run_next(self.manifest["attempt_plan"][0]["attempt_id"])
+        claim = next(Path(self.claim.name).glob("attempt-*.json")).read_text(encoding="utf-8")
+        code = (
+            "import json,sys; from b2.bm1 import FileAttemptClaimStore,BM1AuthorizationError; "
+            "store=FileAttemptClaimStore(sys.argv[1],store_id=sys.argv[2]); "
+            "claim=json.loads(sys.stdin.read())\n"
+            "try: store.claim(claim=claim)\n"
+            "except BM1AuthorizationError: sys.exit(0)\n"
+            "sys.exit(7)\n"
+        )
+        completed = subprocess.run([sys.executable, "-c", code, self.claim.name, CLAIM_STORE_ID],
+                                   input=claim, text=True, capture_output=True)
+        self.assertEqual(completed.returncode, 0, "fresh-process duplicate denial failed")
+        self.assertEqual(completed.stdout, "")
+
+    def test_post_claim_directory_drift_blocks_before_provider_send(self):
+        from b2 import bm1_live
+        selected = "windows" if sys.platform == "win32" else "linux"
+        env = {"B2_BM1_RUNNER_OS": selected, "B2_BM1_GUARDED_RUNNER_OS": selected,
+               "B2_BM1_LANE_OS": selected, "RUNNER_ARCH": "X64",
+               "RUNNER_OS": "Windows" if selected == "windows" else "Linux",
+               "B2_BM1_RAW_BUNDLE_DIR": self.raw.name, "B2_BM1_ATTEMPT_CLAIM_DIR": self.claim.name,
+               "B2_BM1_RAW_BUNDLE_ID": RAW_DEST_ID, "B2_BM1_ATTEMPT_CLAIM_STORE_ID": CLAIM_STORE_ID}
+        with mock.patch.object(bm1_live, "_forbidden_storage_roots", return_value=()):
+            runtime = bm1_live.storage_runtime(env)
+            opener = Opener({})
+            runner = self.runner(opener, Opener({}), sink=runtime.raw_sink, store=runtime.claim_store)
+            original_claim = runtime.claim_store.claim
+            old = Path(self.raw.name).with_name(Path(self.raw.name).name + "-replaced")
+            def replace_after_claim(**kwargs):
+                result = original_claim(**kwargs)
+                Path(self.raw.name).rename(old)
+                Path(self.raw.name).mkdir(mode=0o700)
+                harden_test_directory(self.raw.name)
+                return result
+            try:
+                with mock.patch.object(runtime.claim_store, "claim", side_effect=replace_after_claim):
+                    with self.assertRaises(BM1AuthorizationError):
+                        runner.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
+                self.assertEqual(opener.requests, [])
+                self.assertEqual(runner.provider_request_count, 0)
+                self.assertEqual(runner.receipts[0]["terminal_reason"], "LIVE_AUTHORIZATION_STOP")
+            finally:
+                if old.exists():
+                    import shutil
+                    shutil.rmtree(old)
+
+    @unittest.skipUnless(sys.platform == "win32", "native Windows ACL drift")
+    def test_post_claim_approved_acl_drift_blocks_before_provider_send(self):
+        from b2 import bm1_live
+        sink = bm1_live._RefreshingFileRawEvidenceSink(self.raw.name, destination_id=RAW_DEST_ID)
+        store = bm1_live._RefreshingFileAttemptClaimStore(self.claim.name, store_id=CLAIM_STORE_ID)
+        opener = Opener({})
+        runner = self.runner(opener, Opener({}), sink=sink, store=store)
+        original = store.claim
+        def drift(**kwargs):
+            result = original(**kwargs)
+            harden_test_directory(self.raw.name, extra_aces="(A;;FA;;;SY)")
+            return result
+        with mock.patch.object(store, "claim", side_effect=drift):
+            with self.assertRaises(BM1AuthorizationError):
+                runner.run_next(self.manifest["attempt_plan"][0]["attempt_id"])
+        self.assertEqual(opener.requests, [])
+        self.assertEqual(runner.provider_request_count, 0)
+        self.assertEqual(runner.receipts[0]["terminal_reason"], "LIVE_AUTHORIZATION_STOP")
+
+
+class DurableFilePortabilityTests(unittest.TestCase):
+    def test_exclusive_raw_roundtrip_rejects_overwrite(self):
+        with PrivateTemporaryDirectory() as root:
+            sink = FileRawEvidenceSink(root, destination_id=RAW_DEST_ID)
+            values = dict(attempt_id="portable", request_body={"synthetic": "unicode-测试"},
+                          raw_response={"value": 1}, final_text="private synthetic", error_class=None)
+            receipt = sink.write(**values)
+            self.assertEqual(sink.read_for_replay(attempt_id="portable")["raw_response"], {"value": 1})
+            with self.assertRaises(BM1ContractError):
+                sink.write(**values)
+            self.assertNotIn(root, json.dumps(receipt))
+            self.assertNotIn("private synthetic", json.dumps(receipt))
+            if sys.platform == "linux":
+                self.assertEqual(next(Path(root).glob("raw-*.json")).stat().st_mode & 0o777, 0o600)
+
+    @unittest.skipUnless(sys.platform == "linux", "Linux fingerprint and fsync contract")
+    def test_linux_authority_tuple_unchanged_and_fsync_covers_file_and_directory(self):
+        from b2 import bm1
+        import hashlib
+        import stat
+        with PrivateTemporaryDirectory() as root:
+            path = Path(root).resolve()
+            info = path.stat()
+            expected = sha256_json({"storage_kind": RAW_BUNDLE_STORAGE_KIND,
+                "resolved_path_fingerprint": "sha256:" + hashlib.sha256(str(path).encode()).hexdigest(),
+                "device": info.st_dev, "inode": info.st_ino})
+            self.assertEqual(build_storage_authority_fingerprint(root, storage_kind=RAW_BUNDLE_STORAGE_KIND), expected)
+            synced = []
+            original = os.fsync
+            def capture(fd):
+                synced.append(stat.S_ISDIR(os.fstat(fd).st_mode))
+                return original(fd)
+            with mock.patch.object(bm1.os, "fsync", side_effect=capture):
+                bm1._durable_exclusive_write(path / "synthetic", b"durable data")
+            self.assertEqual(synced, [False, True])
+
+    @unittest.skipUnless(sys.platform == "win32", "native Windows NTFS backend")
+    def test_windows_create_new_write_through_flush_close_reopen_readback(self):
+        from b2.bm1 import _windows_storage
+        backend = _windows_storage()
+        with PrivateTemporaryDirectory() as root:
+            events = []
+            create, flush = backend.kernel.CreateFileW, backend.kernel.FlushFileBuffers
+            def opening(*args):
+                if args[4] == 1:
+                    self.assertTrue(args[5] & 0x80000000)
+                    self.assertTrue(args[3])
+                    events.append("create-new-write-through")
+                elif str(args[0]).endswith("synthetic.bin"):
+                    events.append("reopen")
+                return create(*args)
+            def flushing(handle):
+                events.append("flush")
+                return flush(handle)
+            with mock.patch.object(backend.kernel, "CreateFileW", side_effect=opening), mock.patch.object(
+                    backend.kernel, "FlushFileBuffers", side_effect=flushing):
+                backend.exclusive_write(Path(root) / "synthetic.bin", b"synthetic durable data")
+            self.assertEqual(events, ["create-new-write-through", "flush", "reopen"])
+            with self.assertRaises(FileExistsError):
+                backend.exclusive_write(Path(root) / "synthetic.bin", b"cannot overwrite")
+
+    @unittest.skipUnless(sys.platform == "win32", "native Windows NTFS backend")
+    def test_windows_flush_failure_and_readback_corruption_fail_closed_with_tombstone(self):
+        from b2.bm1 import _windows_storage
+        backend = _windows_storage()
+        with PrivateTemporaryDirectory() as root:
+            path = Path(root) / "failed-flush"
+            with mock.patch.object(backend.kernel, "FlushFileBuffers", return_value=0):
+                with self.assertRaises(BM1AuthorizationError):
+                    backend.exclusive_write(path, b"synthetic")
+            with self.assertRaises(FileExistsError):
+                backend.exclusive_write(path, b"retry forbidden")
+            with mock.patch.object(backend, "_read", return_value=(b"corrupted", {})):
+                with self.assertRaises(BM1AuthorizationError):
+                    backend.exclusive_write(Path(root) / "bad-readback", b"synthetic")
 
 
 class BM1StaticTests(unittest.TestCase):

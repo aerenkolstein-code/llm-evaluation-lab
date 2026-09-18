@@ -1,0 +1,54 @@
+name: B2 BM1 Portability Offline
+
+on:
+  push:
+    branches: [main, 'agent/b2-bm1-portability-*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  portability:
+    name: Offline storage and orchestration (${{ matrix.os }}, x64)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: python {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Native offline BM1 portability tests with network denied
+        run: |
+          import socket
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
+          import unittest
+          from unittest import mock
+
+          def deny_network(*args, **kwargs):
+              raise AssertionError('OFFLINE_PORTABILITY_NETWORK_DENIED')
+
+          suite = unittest.TestSuite()
+          for pattern in ('test_b2_bm1.py', 'test_b2_bm1_live_orchestration.py'):
+              suite.addTests(unittest.defaultTestLoader.discover('tests', pattern=pattern))
+          with mock.patch.object(socket.socket, 'connect', deny_network), mock.patch.object(
+              socket.socket, 'connect_ex', deny_network
+          ), mock.patch.object(socket, 'create_connection', deny_network), mock.patch.object(
+              socket, 'getaddrinfo', deny_network
+          ):
+              result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(not result.wasSuccessful())

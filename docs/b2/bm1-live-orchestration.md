@@ -3,7 +3,8 @@
 Status: offline implementation surface only. This document does not authorize a
 RUN-READY preparation, provider request, spend, merge, or live execution.
 
-Authority: `WO-B2-BM1-RUNREADY-RECOVERY-01 v0.1`.
+Authority: `WO-B2-BM1-PORTABILITY-01 v0.1`, approved for implementation on
+2026-09-18; parent `WO-B2-BM1-RUNREADY-RECOVERY-01 v0.1`.
 
 Dedicated Control Issue: [#50](https://github.com/aerenkolstein-code/llm-evaluation-lab/issues/50).
 The issue number is an immutable code/workflow/test constant; it is not a
@@ -11,16 +12,20 @@ repository variable.
 
 ## 1. Refreshed admission baseline
 
-The work order was drafted against main `8a6582afbff96541030a997566966721f945fb11`.
-Before implementation, main was re-frozen at:
+The portability implementation fresh-pins:
 
-- commit `4b38aa52cc71f12c31b69a61b7737092144b912e`;
-- tree `61385d6a2eda8c7e800d3723440e4982f4b99c66`.
+- commit `a583f6042dbfd78d251434141cdbf9b86cb910a9`;
+- tree `669c6cb0785aaa5cead04d0b009c14f70a7d98af`.
 
-The intervening merge contains only the authorized R1b window-control surface
-and has no overlap with this work order's five new BM1 paths. The BM1 manifest,
-E11 TARGET/CONTROL pair, provider roster, scorer, oracle, attempt order, retry
-policy, fallback policy, token ceilings, and spend ceiling remain unchanged.
+This is the exact draft-time baseline; all six recorded workflow/module/test/
+runbook blobs match. The only changed paths are the two private workflows,
+new `.github/workflows/b2_bm1_portability_offline.yml`, `b2/bm1.py`,
+`b2/bm1_live.py`, their two existing test files, and the two existing BM1
+runbooks. No manifest, schema, fixture, provider/scorer, ordinary CI or Blind/
+B1/A2 path changes. A tenth path requires a separate scope approval.
+
+The parent implementation admission baseline was `4b38aa52...` / tree
+`61385d6...`; the current portability baseline above supersedes it for this PR.
 
 Provider facts were refreshed from official sources on 2026-09-05. The accepted
 provider-Authority fingerprint is
@@ -100,8 +105,30 @@ traffic.
 
 ## 4. Private runtime prerequisites
 
-The dedicated runner labels are `self-hosted`, `linux`, `x64`, and
-`b2-bm1-private`. Environment `b2-bm1-live` holds the protected configuration.
+The public-safe repository Actions variable `B2_BM1_RUNNER_OS` must equal
+exactly `linux` or `windows`. Missing/invalid values fail the public gate before
+any private job is eligible. It outputs the validated OS. Each workflow has two
+mutually exclusive private jobs with cumulative labels:
+
+| Selected OS | Required labels |
+|---|---|
+| `linux` | `self-hosted`, `linux`, `x64`, `b2-bm1-private` |
+| `windows` | `self-hosted`, `windows`, `x64`, `b2-bm1-private` |
+
+Both jobs use Python script steps, including summary publication, without bash
+or PowerShell interpolation of private inputs. A credential-free first step
+checks actual OS/architecture against the configured, gated and literal lane OS.
+The same check repeats at runtime entry before credential/storage reads. On
+Windows `IsWow64Process2` must confirm native AMD64, excluding x86 and ARM64
+emulation. Self-hosted labels alone are insufficient evidence.
+
+Changing the OS is configuration, never authorization. After RUN-READY, the
+selected lane rederives both storage Authorities and compares them to the
+archived receipt before creating transports. Changing platform/storage requires
+a new RUN-READY; schemas v2/v3 remain unchanged. There is no macOS, ARM64,
+Windows-as-WSL, or GitHub-hosted private execution lane.
+
+Environment `b2-bm1-live` holds the protected configuration.
 Provisioning or changing these values is a separate manual operation and is not
 authorized by this implementation work order.
 
@@ -121,8 +148,8 @@ Private secrets:
 
 | Name | Required contract |
 |---|---|
-| `B2_BM1_RAW_BUNDLE_DIR` | Absolute path of a pre-existing, owner-only `0700`, persistent raw-bundle directory |
-| `B2_BM1_ATTEMPT_CLAIM_DIR` | Absolute path of a separate pre-existing, owner-only `0700`, persistent claim directory |
+| `B2_BM1_RAW_BUNDLE_DIR` | Absolute path of a pre-existing persistent raw-bundle directory meeting the OS-specific policy below |
+| `B2_BM1_ATTEMPT_CLAIM_DIR` | Absolute path of a separate pre-existing persistent claim directory meeting the OS-specific policy below |
 | `OPENAI_API_KEY` | Present and non-empty |
 | `GEMINI_API_KEY` | Present and non-empty |
 | `GOOGLE_API_KEY` | Absent/empty; if present it creates forbidden ambiguity |
@@ -159,27 +186,78 @@ traffic. The runtime still never infers key type from a secret prefix.
 
 ## 6. Storage Authority and durability
 
-The runtime never creates replacement storage directories. It rejects missing,
-relative, symlinked, non-`0700`, wrong-owner, workspace, `/tmp`, `/var/tmp`,
-`/dev/shm`, overlapping, or nested roots.
+The runtime never creates or repairs storage directories/ACLs. Both OSes require
+pre-existing absolute, separate, non-nested roots outside the workspace and
+known temporary roots. Public receipts expose only opaque fingerprints.
 
-For both stores it binds:
+### Linux x64
 
-`storage kind + SHA-256(resolved path) + filesystem device + inode`.
+The original directory identity tuple remains byte-for-byte compatible:
+`storage_kind + SHA-256(resolved path) + device + inode`, using the same JSON
+keys and encoding. Effective UID ownership, exact `0700`, no target/ancestor
+symlinks, and workspace/`/tmp`/`/var/tmp`/`/dev/shm` exclusions remain required.
+Probes and archives are `0600`. One-shot files use exclusive create, file fsync,
+parent-directory fsync, and readback; reads reject symlinks, wrong owners/modes
+and hard links. The Linux probe retains durable deletion and directory fsync.
 
-Only the resulting Authority fingerprint and opaque label fingerprint enter the
-RUN-READY receipt. The path does not. File `fsync`, directory `fsync`, and
-readback probes run before use. Refreshing subclasses of the reviewed
-`FileRawEvidenceSink` and `FileAttemptClaimStore` rederive and probe Authority
-when `BM1Runner` reads it at construction, before a claim, immediately before a
-provider send, and after raw evidence persistence. Directory replacement,
-device/inode drift, probe failure, archive failure, or readback failure stops
-before the next provider boundary.
+### Native Windows x64
 
-The RUN-READY receipt is exclusive-created inside the private raw Authority,
-fsynced, and read back canonically. The claim store persists across workflow and
-process restarts; its reviewed BM1 claim semantics reject reuse of any frozen
-attempt ID.
+Only a fixed local NTFS volume with persistent ACL support is accepted.
+UNC/device paths, ADS, relative/trailing-dot/space aliases, remote/removable/
+non-NTFS volumes and temporary/workspace roots fail closed. Canonical spelling
+is checked using the opened handle; short-name aliases cannot hide a forbidden
+root. Every ancestor and target is opened with `FILE_FLAG_OPEN_REPARSE_POINT`
+and checked for reparse/temporary/type attributes. Junctions, mount points and
+other reparse points are rejected. Ancestor handles remain held without write
+or delete sharing throughout an operation, including close/reopen readback.
+
+Approved ACL policy `bm1-windows-acl/v1`:
+
+- Owner SID must equal the process token's runner service account SID;
+  impersonated threads are rejected.
+- DACL must be protected; only explicit simple allow ACEs are accepted.
+- The runner must have explicit `FILE_ALL_ACCESS`. Optional SYSTEM and BUILTIN
+  Administrators ACEs may grant only defined file rights. Every other SID,
+  including Everyone, Authenticated Users and BUILTIN Users, is rejected.
+- Inherited, inherit-only, deny, object and callback ACEs are rejected. Only
+  object/container inheritance flags are allowed on explicit ACEs.
+- Runtime reads security descriptors through Win32 APIs, never localized ACL
+  command output. No third-party runtime dependency is introduced.
+
+Windows Authority hashes `storage_kind`, platform `windows`, SHA-256 of the
+canonical case-normalized handle path, 64-bit volume serial, 128-bit file ID,
+and the validated owner/control/DACL fingerprint. SID, ACL and path bodies
+remain private. Directory replacement, file/volume-ID change or an otherwise
+approved ACL change produces a different Authority; unsafe ACL drift blocks.
+
+Critical files are created via `CreateFileW(CREATE_NEW)` with a runner-owned,
+protected runner-only DACL at creation, `FILE_FLAG_WRITE_THROUGH`, checked
+`WriteFile`, and checked `FlushFileBuffers`. The file closes, reopens, rechecks
+its identity/ACL and reads back all bytes. Failures leave an exclusive-create
+tombstone and never permit overwriting/retrying that attempt. Raw evidence and
+claim files reject hard links. No Windows directory-fsync surrogate is used.
+Tiny immutable probe files remain private in the store to avoid representing
+best-effort deletion as durable metadata. They must be included in future
+private-storage retention planning; this implementation does no production
+provisioning or deletion.
+
+[Microsoft's CreateFileW documentation](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)
+describes NTFS metadata flushing for write-through requests.
+[FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers),
+[GetSecurityInfo](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo)
+and [GetFileInformationByHandleEx](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getfileinformationbyhandleex)
+provide the flush, ACL and stable handle-identity interfaces used here.
+Hardware that does not honor flush/write-through guarantees is outside the
+accepted substrate; offline tests do not simulate sudden physical power loss.
+
+### Revalidation and restart
+
+Refreshing stores repeat private-boundary checks and durable probes when
+`BM1Runner` reads Authority at construction, before claim, before provider send,
+and after raw persistence. Replacement, identity/ACL drift, write/flush/readback
+failure stops before the next provider boundary. The archived RUN-READY is
+exclusive-created and read back. Reopening the same claim store in a fresh
+process still rejects a previously claimed frozen attempt ID.
 
 ## 7. External AuthorityVerifier
 
@@ -255,8 +333,8 @@ finding and no model ranking is authorized.
 
 The implementation gate requires:
 
-- exact five-new-path diff and no existing-path edit;
-- focused orchestration tests;
+- exact nine-path diff against the pinned portability baseline;
+- focused core/orchestration tests on native `ubuntu-latest` and `windows-latest` x64;
 - existing BM0/BM1 and complete repository tests;
 - workflow trigger/static parsing;
 - compile/static AST checks proving no wrapper network primitive or second send
@@ -268,3 +346,27 @@ The implementation gate requires:
 Passing these gates establishes only that the production surface is ready for
 independent review. It does not create a canonical RUN-READY receipt, authorize
 live execution, spend money, or authorize merge.
+
+## 11. Portability CI and handoff
+
+`.github/workflows/b2_bm1_portability_offline.yml` runs only offline tests on
+hosted Linux/Windows x64. It has no production Environment, repository provider
+secret reference, Issue #50 comment handling, or provider endpoint. The test
+process rejects socket connection and DNS operations. All credentials, bodies
+and events in tests are synthetic. Test-only ACL hardening never applies to
+production stores. Existing complete repository CI remains unchanged on Linux.
+
+Windows tests cover real NTFS handles/ACLs, broad/inherited and owner failures,
+junctions/ancestor reparse, disjoint roots, directory replacement, ACL drift,
+exclusive creation, flush/readback failure, cross-process claim reuse, and
+post-claim/pre-send rejection. Remote/removable/non-NTFS classification failures
+are fault-injected at the native API boundary. Actual attachment of these
+unsupported volume types is NOT_EVALUABLE on hosted CI; no network share is
+contacted. Non-native OS test groups are explicitly skipped on the other OS.
+
+After exact-head Linux/Windows CI and full regression results are published,
+STOP for distinct Independent QA. QA PASS does not authorize merge. A091 stays
+PAUSED until independent acceptance, separate merge approval, merge and
+post-merge CI. This work does not configure an Environment/runner/variable/
+secret, read production credential values, create a production HMAC/storage
+root, post an Issue #50 trigger, call a provider or incur spend.

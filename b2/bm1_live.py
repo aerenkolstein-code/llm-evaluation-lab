@@ -12,10 +12,13 @@ import hashlib
 import hmac
 import json
 import os
+import platform
 import re
 import stat
 import subprocess
 import sys
+import struct
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -45,6 +48,7 @@ from .bm1 import (
     load_manifest_from_repo_root,
     validate_run_ready_receipt,
     validate_symbolic_credential_presence,
+    _windows_storage,
 )
 from .qa0 import assert_public_safe, sha256_json
 
@@ -482,7 +486,14 @@ def credential_decision(
 
 
 def _forbidden_storage_roots(environ: Mapping[str, str]) -> tuple[Path, ...]:
-    candidates = ["/tmp", "/var/tmp", "/dev/shm"]
+    candidates = ["/tmp", "/var/tmp", "/dev/shm"] if sys.platform != "win32" else [
+        tempfile.gettempdir(), str(Path.cwd()),
+    ]
+    if sys.platform == "win32":
+        candidates.extend(environ[key] for key in ("TEMP", "TMP") if environ.get(key))
+        for key, suffix in (("SystemRoot", "Temp"), ("LOCALAPPDATA", "Temp")):
+            if environ.get(key):
+                candidates.append(str(Path(environ[key]) / suffix))
     candidates.extend(
         value for value in (
             environ.get("RUNNER_TEMP"),
@@ -493,10 +504,36 @@ def _forbidden_storage_roots(environ: Mapping[str, str]) -> tuple[Path, ...]:
     roots: list[Path] = []
     for value in candidates:
         try:
-            roots.append(Path(value).resolve(strict=True))
+            roots.append(Path(value).resolve(strict=sys.platform != "win32"))
         except (OSError, RuntimeError):
             continue
     return tuple(roots)
+
+
+def validate_runner_os_config(environ: Mapping[str, str]) -> str:
+    selected = environ.get("B2_BM1_RUNNER_OS")
+    if not isinstance(selected, str) or selected not in {"linux", "windows"}:
+        raise BM1LiveOrchestrationError("BM1 runner OS configuration is missing or invalid")
+    return selected
+
+
+def assert_private_runner(environ: Mapping[str, str]) -> str:
+    """Check the actual machine before any private storage/credential read."""
+    selected = validate_runner_os_config(environ)
+    if (
+        environ.get("B2_BM1_GUARDED_RUNNER_OS") != selected
+        or environ.get("B2_BM1_LANE_OS") != selected
+        or environ.get("RUNNER_OS") != {"linux": "Linux", "windows": "Windows"}[selected]
+        or environ.get("RUNNER_ARCH") != "X64"
+        or sys.platform != {"linux": "linux", "windows": "win32"}[selected]
+        or platform.system() != {"linux": "Linux", "windows": "Windows"}[selected]
+        or platform.machine().lower() not in {"amd64", "x86_64"}
+        or struct.calcsize("P") != 8
+    ):
+        raise BM1LiveOrchestrationError("BM1 selected lane and native OS/architecture disagree")
+    if selected == "windows":
+        _windows_storage().assert_x64()
+    return selected
 
 
 def _private_persistent_directory(
@@ -505,6 +542,12 @@ def _private_persistent_directory(
     if not isinstance(value, str) or not value or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise BM1LiveOrchestrationError(f"{label} storage configuration is missing")
     path = Path(value)
+    if sys.platform == "win32":
+        with _windows_storage().directory(path) as (resolved, _, _):
+            if any(resolved == root or resolved.is_relative_to(root) or root.is_relative_to(resolved)
+                   for root in _forbidden_storage_roots(environ)):
+                raise BM1LiveOrchestrationError("storage cannot use an ephemeral/workspace root")
+            return resolved
     try:
         info = path.lstat()
         resolved = path.resolve(strict=True)
@@ -536,6 +579,11 @@ def _fsync_probe(directory: Path, *, storage_kind: str) -> None:
         storage_kind.encode("ascii") + b"\0" + os.urandom(32)
     ).hexdigest()
     name = f".bm1-authority-probe-{token}"
+    if sys.platform == "win32":
+        # Retain this tiny private immutable probe: it proves creation/data/NTFS
+        # metadata durability without claiming durable deletion via directory fsync.
+        _windows_storage().exclusive_write(directory / name, b"BM1-STORAGE-PROBE/v1")
+        return
     directory_fd: int | None = None
     created = False
     completed = False
@@ -596,6 +644,9 @@ def _fsync_probe(directory: Path, *, storage_kind: str) -> None:
 class _RefreshingFileRawEvidenceSink(FileRawEvidenceSink):
     @property
     def storage_authority_fingerprint(self) -> str:
+        if hasattr(self, "_boundary_environ"):
+            assert_private_runner(self._boundary_environ)
+            _private_persistent_directory(str(self.directory), label="raw bundle", environ=self._boundary_environ)
         _fsync_probe(self.directory, storage_kind=RAW_BUNDLE_STORAGE_KIND)
         return build_storage_authority_fingerprint(
             self.directory, storage_kind=RAW_BUNDLE_STORAGE_KIND
@@ -609,6 +660,9 @@ class _RefreshingFileRawEvidenceSink(FileRawEvidenceSink):
 class _RefreshingFileAttemptClaimStore(FileAttemptClaimStore):
     @property
     def storage_authority_fingerprint(self) -> str:
+        if hasattr(self, "_boundary_environ"):
+            assert_private_runner(self._boundary_environ)
+            _private_persistent_directory(str(self.directory), label="attempt claim", environ=self._boundary_environ)
         _fsync_probe(self.directory, storage_kind=CLAIM_STORE_STORAGE_KIND)
         return build_storage_authority_fingerprint(
             self.directory, storage_kind=CLAIM_STORE_STORAGE_KIND
@@ -620,6 +674,7 @@ class _RefreshingFileAttemptClaimStore(FileAttemptClaimStore):
 
 
 def storage_runtime(environ: Mapping[str, str]) -> StorageRuntime:
+    assert_private_runner(environ)
     raw = _private_persistent_directory(
         environ.get("B2_BM1_RAW_BUNDLE_DIR"), label="raw bundle", environ=environ
     )
@@ -634,6 +689,13 @@ def storage_runtime(environ: Mapping[str, str]) -> StorageRuntime:
         raise BM1LiveOrchestrationError("storage opaque identifiers are invalid")
     sink = _RefreshingFileRawEvidenceSink(raw, destination_id=raw_id)
     store = _RefreshingFileAttemptClaimStore(claims, store_id=claim_id)
+    # Retain routing and public root-policy inputs only, never a credential map.
+    boundary = {key: value for key, value in environ.items() if key in {
+        "B2_BM1_RUNNER_OS", "B2_BM1_GUARDED_RUNNER_OS", "B2_BM1_LANE_OS",
+        "RUNNER_OS", "RUNNER_ARCH", "RUNNER_TEMP", "GITHUB_WORKSPACE",
+        "TEMP", "TMP", "SystemRoot", "LOCALAPPDATA",
+    }}
+    sink._boundary_environ = store._boundary_environ = boundary
     # Trigger the first durable re-derivation/probe now. Subsequent property reads
     # repeat it at the BM1 pre-claim and pre-send gates.
     sink.storage_authority_fingerprint
@@ -643,6 +705,12 @@ def storage_runtime(environ: Mapping[str, str]) -> StorageRuntime:
 
 def _write_exclusive_readback(directory: Path, name: str, value: Mapping[str, Any]) -> None:
     raw = canonical_ascii_json(value)
+    if sys.platform == "win32":
+        try:
+            _windows_storage().exclusive_write(directory / name, raw)
+        except FileExistsError as exc:
+            raise BM1LiveOrchestrationError("durable archive already exists") from exc
+        return
     directory_fd: int | None = None
     try:
         directory_fd = os.open(
@@ -681,16 +749,19 @@ def load_archived_run_ready(directory: Path, fingerprint: str) -> dict[str, Any]
     name = _run_ready_archive_name(fingerprint)
     directory_fd: int | None = None
     try:
-        directory_fd = os.open(
-            directory,
-            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
-        )
-        file_fd = os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory_fd)
-        with os.fdopen(file_fd, "rb") as handle:
-            info = os.fstat(handle.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_size < 2 or info.st_size > 65536:
-                raise BM1LiveOrchestrationError("RUN-READY archive boundary is invalid")
-            raw = handle.read(65537)
+        if sys.platform == "win32":
+            raw = _windows_storage().read(directory / name, maximum=65536)
+        else:
+            directory_fd = os.open(
+                directory,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+            )
+            file_fd = os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory_fd)
+            with os.fdopen(file_fd, "rb") as handle:
+                info = os.fstat(handle.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_size < 2 or info.st_size > 65536:
+                    raise BM1LiveOrchestrationError("RUN-READY archive boundary is invalid")
+                raw = handle.read(65537)
         value = json.loads(
             raw.decode("ascii"),
             object_pairs_hook=_reject_duplicate_keys,
@@ -714,6 +785,7 @@ def prepare_run_ready(
     environ: Mapping[str, str], *, repo_root: str | Path,
     now: datetime | None = None,
 ) -> RunReadyResult:
+    assert_private_runner(environ)
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     snapshot = github_event_snapshot(
         environ,
@@ -861,6 +933,7 @@ def execute_live(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Execute the exact BM1 plan; BM1Runner.run_all delegates sends to run_next."""
+    assert_private_runner(environ)
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     verifier = GitHubIssueCommentAuthorityVerifier.from_environment(
         environ, repo_root=repo_root
@@ -887,6 +960,11 @@ def execute_live(
         raise BM1LiveOrchestrationError("provider Authority changed after RUN-READY")
     if checked_run_ready["credential_decision_fingerprint"] != credential_public["credential_decision_fingerprint"]:
         raise BM1LiveOrchestrationError("credential decision changed after RUN-READY")
+    if (
+        checked_run_ready["raw_bundle_destination"]["storage_authority_fingerprint"] != storage.raw_sink.storage_authority_fingerprint
+        or checked_run_ready["attempt_claim_store"]["storage_authority_fingerprint"] != storage.claim_store.storage_authority_fingerprint
+    ):
+        raise BM1LiveOrchestrationError("storage Authority changed after RUN-READY")
     expires = snapshot.comment_created_at + timedelta(seconds=LIVE_AUTH_TTL_SECONDS)
     if current < snapshot.comment_created_at or current > expires:
         raise BM1LiveOrchestrationError("live approval comment is inactive or expired")
@@ -994,6 +1072,7 @@ def _cli(argv: Sequence[str] | None = None) -> int:
     environment: MutableMapping[str, str] = os.environ
     root = Path(args.repo_root)
     if args.command in {"gate-run-ready", "gate-live"}:
+        selected_os = validate_runner_os_config(environment)
         live = args.command == "gate-live"
         snapshot = github_event_snapshot(
             environment,
@@ -1002,6 +1081,7 @@ def _cli(argv: Sequence[str] | None = None) -> int:
             comment_kind="live" if live else "run-ready",
         )
         projection = gate_projection(snapshot)
+        projection["runner_os"] = selected_os
         if live:
             projection["authorization_id"] = str(snapshot.authorization_id)
             projection["run_ready_receipt_fingerprint"] = str(snapshot.run_ready_receipt_fingerprint)

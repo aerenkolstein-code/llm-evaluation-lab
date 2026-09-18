@@ -6,12 +6,15 @@ import hashlib
 import hmac
 import json
 import os
+import sys
 import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
+
+from test_b2_bm1 import harden_test_directory
 
 from b2 import bm1_live
 from b2.bm1 import (
@@ -38,6 +41,13 @@ ATT_FINGERPRINT = "sha256:" + "a" * 64
 RUN_READY_FINGERPRINT = "sha256:" + "b" * 64
 GEMINI_AUTH_BINDING_KEY = "synthetic-private-binding-key-at-least-32-bytes"
 FIXED_NOW = datetime(2026, 9, 5, 21, 20, tzinfo=timezone.utc)
+
+
+def runner_environment():
+    selected = "windows" if sys.platform == "win32" else "linux"
+    return {"B2_BM1_RUNNER_OS": selected, "B2_BM1_GUARDED_RUNNER_OS": selected,
+            "B2_BM1_LANE_OS": selected, "RUNNER_ARCH": "X64",
+            "RUNNER_OS": "Windows" if selected == "windows" else "Linux"}
 
 
 def gemini_identity_hmac(credential: str) -> str:
@@ -152,6 +162,7 @@ def add_guarded_binding(environment: dict[str, str], snapshot: bm1_live.GitHubEv
 def add_private_configuration(
     environment: dict[str, str], raw: Path, claims: Path,
 ) -> None:
+    environment.update(runner_environment())
     environment.update({
         "B2_BM1_PROVIDER_AUTHORITY_FINGERPRINT": (
             bm1_live.EXPECTED_PROVIDER_AUTHORITY_FINGERPRINT
@@ -619,17 +630,19 @@ class CredentialAndProviderTests(unittest.TestCase):
                     bm1_live.validate_provider_review(changed, now=FIXED_NOW)
 
 
+@unittest.skipUnless(sys.platform == "linux", "Linux UID/mode/fsync contract")
 class StorageAuthorityTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.base = Path(self.temp.name)
+        self.base = Path(self.temp.name).resolve()
         self.raw = self.base / "raw"
         self.claims = self.base / "claims"
         self.raw.mkdir(mode=0o700)
         self.claims.mkdir(mode=0o700)
-        os.chmod(self.raw, 0o700)
-        os.chmod(self.claims, 0o700)
+        harden_test_directory(self.raw)
+        harden_test_directory(self.claims)
         self.environment = {
+            **runner_environment(),
             "B2_BM1_RAW_BUNDLE_DIR": str(self.raw),
             "B2_BM1_ATTEMPT_CLAIM_DIR": str(self.claims),
             "B2_BM1_RAW_BUNDLE_ID": "BM1-RAW-TEST-001",
@@ -640,8 +653,10 @@ class StorageAuthorityTests(unittest.TestCase):
         self.temp.cleanup()
 
     def runtime(self):
-        with mock.patch("b2.bm1_live._forbidden_storage_roots", return_value=()):
-            return bm1_live.storage_runtime(self.environment)
+        patcher = mock.patch("b2.bm1_live._forbidden_storage_roots", return_value=())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return bm1_live.storage_runtime(self.environment)
 
     def test_actual_authority_binds_kind_resolved_path_device_and_inode(self):
         runtime = self.runtime()
@@ -667,7 +682,7 @@ class StorageAuthorityTests(unittest.TestCase):
         with mock.patch("b2.bm1_live._forbidden_storage_roots", return_value=()):
             with self.assertRaises(BM1AuthorizationError):
                 bm1_live.storage_runtime(self.environment)
-        os.chmod(self.raw, 0o700)
+        harden_test_directory(self.raw)
         overlapping = dict(self.environment, B2_BM1_ATTEMPT_CLAIM_DIR=str(self.raw))
         with mock.patch("b2.bm1_live._forbidden_storage_roots", return_value=()):
             with self.assertRaises(BM1AuthorizationError):
@@ -685,8 +700,8 @@ class StorageAuthorityTests(unittest.TestCase):
         claims_two = self.base / "claims-two"
         raw_two.mkdir(mode=0o700)
         claims_two.mkdir(mode=0o700)
-        os.chmod(raw_two, 0o700)
-        os.chmod(claims_two, 0o700)
+        harden_test_directory(raw_two)
+        harden_test_directory(claims_two)
         second_environment = dict(
             self.environment,
             B2_BM1_RAW_BUNDLE_DIR=str(raw_two),
@@ -706,7 +721,7 @@ class StorageAuthorityTests(unittest.TestCase):
         old = self.base / "raw-old"
         self.raw.rename(old)
         self.raw.mkdir(mode=0o700)
-        os.chmod(self.raw, 0o700)
+        harden_test_directory(self.raw)
         after = runtime.raw_sink.storage_authority_fingerprint
         self.assertNotEqual(before, after)
 
@@ -720,13 +735,13 @@ class StorageAuthorityTests(unittest.TestCase):
 class RunReadyPreparationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.base = Path(self.temp.name)
+        self.base = Path(self.temp.name).resolve()
         self.raw = self.base / "raw"
         self.claims = self.base / "claims"
         self.raw.mkdir(mode=0o700)
         self.claims.mkdir(mode=0o700)
-        os.chmod(self.raw, 0o700)
-        os.chmod(self.claims, 0o700)
+        harden_test_directory(self.raw)
+        harden_test_directory(self.claims)
         self.harness = EventHarness(self.base, live=False)
         self.environment = self.harness.environment()
         snapshot = bm1_live.github_event_snapshot(
@@ -806,7 +821,7 @@ class RunReadyPreparationTests(unittest.TestCase):
         )
         replacement = self.base / "raw-replacement"
         replacement.mkdir(mode=0o700)
-        os.chmod(replacement, 0o700)
+        harden_test_directory(replacement)
         self.assertNotEqual(
             result.receipt["raw_bundle_destination"]["storage_authority_fingerprint"],
             build_storage_authority_fingerprint(
@@ -903,13 +918,13 @@ class RunReadyPreparationTests(unittest.TestCase):
 class LiveCredentialIdentityBindingTests(unittest.TestCase):
     def test_post_run_ready_gemini_secret_swap_fails_before_transport_construction(self):
         with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
+            base = Path(temporary).resolve()
             raw = base / "raw"
             claims = base / "claims"
             raw.mkdir(mode=0o700)
             claims.mkdir(mode=0o700)
-            os.chmod(raw, 0o700)
-            os.chmod(claims, 0o700)
+            harden_test_directory(raw)
+            harden_test_directory(claims)
 
             run_ready_harness = EventHarness(base, live=False)
             run_ready_environment = run_ready_harness.environment()
@@ -1039,20 +1054,253 @@ class FrozenExecutionSemanticsTests(unittest.TestCase):
 
 
 class ChangedPathEnvelopeTests(unittest.TestCase):
-    def test_work_order_envelope_is_exactly_five_new_paths(self):
+    def test_portability_envelope_is_exactly_nine_paths(self):
         expected = {
             ".github/workflows/b2_bm1_run_ready.yml",
             ".github/workflows/b2_bm1_live.yml",
             "b2/bm1_live.py",
             "tests/test_b2_bm1_live_orchestration.py",
             "docs/b2/bm1-live-orchestration.md",
+            ".github/workflows/b2_bm1_portability_offline.yml",
+            "b2/bm1.py",
+            "tests/test_b2_bm1.py",
+            "docs/b2/bm1-live-multi-model.md",
         }
-        self.assertEqual(expected, {
-            str(RUN_READY_WORKFLOW), str(LIVE_WORKFLOW), str(MODULE_PATH),
-            str(Path(__file__).resolve().relative_to(Path.cwd().resolve())), str(DOC_PATH),
-        })
+        baseline = "a583f6042dbfd78d251434141cdbf9b86cb910a9"
+        # CI shallow clones may omit the baseline object. The exact diff is also
+        # checked before publication; use git when its object is present.
+        exists = subprocess.run(["git", "cat-file", "-e", baseline], capture_output=True)
+        if exists.returncode == 0:
+            changed = subprocess.check_output(["git", "diff", "--name-only", baseline], text=True).splitlines()
+            untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard"], text=True).splitlines()
+            self.assertTrue(set(changed + untracked).issubset(expected))
+        self.assertEqual(len(expected), 9)
         for path in expected:
             self.assertTrue(Path(path).is_file())
+
+
+class RunnerPortabilityTests(unittest.TestCase):
+    def test_config_accepts_only_two_exact_values(self):
+        for value in ("linux", "windows"):
+            self.assertEqual(bm1_live.validate_runner_os_config({"B2_BM1_RUNNER_OS": value}), value)
+        for value in (None, "", "Windows", "macos", "windows ", "linux,windows", ["linux"]):
+            with self.subTest(value=value), self.assertRaises((BM1AuthorizationError, TypeError)):
+                bm1_live.validate_runner_os_config({"B2_BM1_RUNNER_OS": value})
+
+    def test_native_lane_accepts_only_matching_platform_and_x64(self):
+        env = runner_environment()
+        self.assertEqual(bm1_live.assert_private_runner(env), env["B2_BM1_RUNNER_OS"])
+        changes = [("B2_BM1_RUNNER_OS", "linux" if sys.platform == "win32" else "windows"),
+                   ("B2_BM1_RUNNER_OS", "macos"), ("B2_BM1_RUNNER_OS", ""),
+                   ("B2_BM1_RUNNER_OS", "windows\n"), ("B2_BM1_GUARDED_RUNNER_OS", ""),
+                   ("B2_BM1_LANE_OS", ""), ("RUNNER_OS", "macOS"), ("RUNNER_ARCH", "ARM64")]
+        for key, value in changes:
+            with self.subTest(key=key, value=value), self.assertRaises(BM1AuthorizationError):
+                bm1_live.assert_private_runner(dict(env, **{key: value}))
+        with mock.patch.object(bm1_live.platform, "machine", return_value="aarch64"):
+            with self.assertRaises(BM1AuthorizationError):
+                bm1_live.assert_private_runner(env)
+
+    def test_actual_platform_is_checked_before_credentials_or_storage(self):
+        for operation in (bm1_live.prepare_run_ready, bm1_live.execute_live):
+            with mock.patch.object(bm1_live, "credential_decision") as credentials, mock.patch.object(
+                bm1_live, "storage_runtime"
+            ) as storage:
+                with self.assertRaises(BM1AuthorizationError):
+                    operation({}, repo_root=Path.cwd())
+                credentials.assert_not_called()
+                storage.assert_not_called()
+
+    def test_both_workflows_have_mutually_exclusive_exact_label_lanes(self):
+        for path, job in ((RUN_READY_WORKFLOW, "private-run-ready"), (LIVE_WORKFLOW, "private-live")):
+            text = path.read_text(encoding="utf-8")
+            gate = job_block(text, "public-gate")
+            self.assertIn("B2_BM1_RUNNER_OS: ${{ vars.B2_BM1_RUNNER_OS }}", gate)
+            self.assertIn("runner_os: ${{ steps.gate.outputs.runner_os }}", gate)
+            self.assertNotIn("secrets.", gate)
+            for selected, suffix in (("linux", ""), ("windows", "-windows")):
+                lane = job_block(text, job + suffix)
+                self.assertIn("needs.public-gate.result == 'success'", lane)
+                self.assertIn(f"needs.public-gate.outputs.runner_os == '{selected}'", lane)
+                self.assertIn(f"    runs-on:\n      - self-hosted\n      - {selected}\n      - x64\n      - b2-bm1-private", lane)
+                self.assertIn(f"B2_BM1_LANE_OS: {selected}", lane)
+                self.assertIn("B2_BM1_GUARDED_RUNNER_OS: ${{ needs.public-gate.outputs.runner_os }}", lane)
+                self.assertLess(lane.index("assert_private_runner(os.environ)"), lane.index("secrets."))
+                self.assertIn("shell: python {0}", lane)
+                for value in ("ubuntu-latest", "windows-latest", "macos", "curl ", "python - <<"):
+                    self.assertNotIn(value, lane)
+
+    def test_offline_matrix_has_no_production_authority_or_network_inputs(self):
+        text = Path(".github/workflows/b2_bm1_portability_offline.yml").read_text(encoding="utf-8")
+        self.assertIn("os: [ubuntu-latest, windows-latest]", text)
+        self.assertIn("architecture: x64", text)
+        self.assertIn("OFFLINE_PORTABILITY_NETWORK_DENIED", text)
+        for value in ("secrets.", "environment:", "b2-bm1-live", "issue_comment", "Issue #50",
+                      "OPENAI_API_KEY", "GEMINI_API_KEY", "execute-live", "https://api.",
+                      "generativelanguage", "workflow_dispatch", "schedule:"):
+            self.assertNotIn(value, text)
+
+    def test_cli_reports_only_exception_class_on_private_failure(self):
+        import contextlib
+        import io
+        output = io.StringIO()
+        marker = "private-path-S-1-5-123-synthetic-secret-and-body"
+        with mock.patch.object(bm1_live, "_cli", side_effect=BM1AuthorizationError(marker)), contextlib.redirect_stderr(output):
+            self.assertEqual(bm1_live.main([]), 2)
+        self.assertNotIn(marker, output.getvalue())
+
+
+@unittest.skipUnless(sys.platform == "win32", "native Windows x64 / NTFS required")
+class WindowsStorageAuthorityTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.base = Path(self.temp.name).resolve()
+        self.raw, self.claims = self.base / "raw", self.base / "claims"
+        for path in (self.raw, self.claims):
+            path.mkdir()
+            harden_test_directory(path)
+        self.environment = {**runner_environment(), "B2_BM1_RAW_BUNDLE_DIR": str(self.raw),
+                            "B2_BM1_ATTEMPT_CLAIM_DIR": str(self.claims),
+                            "B2_BM1_RAW_BUNDLE_ID": "BM1-RAW-TEST-001",
+                            "B2_BM1_ATTEMPT_CLAIM_STORE_ID": "BM1-CLAIM-TEST-001"}
+        self.backend = bm1_live._windows_storage()
+
+    def runtime(self):
+        patcher = mock.patch.object(bm1_live, "_forbidden_storage_roots", return_value=())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return bm1_live.storage_runtime(self.environment)
+
+    def test_hardened_local_ntfs_passes_and_fingerprint_has_no_private_bodies(self):
+        runtime = self.runtime()
+        fingerprint = runtime.raw_sink.storage_authority_fingerprint
+        self.assertRegex(fingerprint, r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(fingerprint, build_storage_authority_fingerprint(self.raw, storage_kind=RAW_BUNDLE_STORAGE_KIND))
+        for value in (str(self.raw), self.backend.runner_sid(), "D:P", "file_id"):
+            self.assertNotIn(value, fingerprint)
+
+    def test_default_temporary_and_workspace_roots_rejected(self):
+        with self.assertRaises(BM1AuthorizationError):
+            bm1_live.storage_runtime(self.environment)
+        with mock.patch.object(bm1_live, "_forbidden_storage_roots", return_value=(self.raw,)):
+            with self.assertRaises(BM1AuthorizationError):
+                bm1_live.storage_runtime(self.environment)
+
+    def test_broad_and_inherited_aces_fail_closed(self):
+        for extra in ("(A;;FR;;;WD)", "(A;;FW;;;AU)", "(A;;SD;;;BU)"):
+            with self.subTest(policy=extra):
+                harden_test_directory(self.raw, extra_aces=extra)
+                with self.assertRaises(BM1AuthorizationError):
+                    build_storage_authority_fingerprint(self.raw, storage_kind=RAW_BUNDLE_STORAGE_KIND)
+        harden_test_directory(self.raw, protected=False)
+        with self.assertRaises(BM1AuthorizationError):
+            build_storage_authority_fingerprint(self.raw, storage_kind=RAW_BUNDLE_STORAGE_KIND)
+
+    def test_real_parent_inherited_acl_rejected(self):
+        # SetNamedSecurityInfo normalizes caller-written ID flags. Create actual
+        # inherited ACEs from a parent and verify the native descriptor instead.
+        sid = self.backend.runner_sid()
+        harden_test_directory(self.base, extra_aces=f"(A;OICI;FA;;;{sid})(A;OICI;FA;;;SY)")
+        child = self.base / "inherited-child"
+        child.mkdir()
+        harden_test_directory(child, protected=False)
+        c, w = self.backend.c, self.backend.w
+        owner, acl, descriptor = c.c_void_p(), c.c_void_p(), c.c_void_p()
+        handle = self.backend._open(child, directory=True)
+        try:
+            self.assertEqual(self.backend.advapi.GetSecurityInfo(handle, 1, 5, c.byref(owner), None,
+                             c.byref(acl), None, c.byref(descriptor)), 0)
+            info = (w.DWORD * 3)()
+            self.assertTrue(self.backend.advapi.GetAclInformation(acl, info, c.sizeof(info), 2))
+            flags = []
+            for index in range(info[0]):
+                ace = c.c_void_p()
+                self.assertTrue(self.backend.advapi.GetAce(acl, index, c.byref(ace)))
+                flags.append(c.string_at(ace, 2)[1])
+            self.assertTrue(any(flag & 0x10 for flag in flags), "fixture must contain inherited ACEs")
+        finally:
+            self.backend.kernel.LocalFree(descriptor)
+            self.backend._close(handle)
+        with self.assertRaises(BM1AuthorizationError):
+            build_storage_authority_fingerprint(child, storage_kind=RAW_BUNDLE_STORAGE_KIND)
+
+    def test_wrong_owner_fails_closed(self):
+        harden_test_directory(self.raw, owner="BA")
+        with self.assertRaises(BM1AuthorizationError):
+            build_storage_authority_fingerprint(self.raw, storage_kind=RAW_BUNDLE_STORAGE_KIND)
+        harden_test_directory(self.raw)
+
+    def test_approved_admin_acl_drift_changes_authority(self):
+        runtime = self.runtime()
+        before = runtime.raw_sink.storage_authority_fingerprint
+        harden_test_directory(self.raw, extra_aces="(A;;FA;;;SY)(A;;FA;;;BA)")
+        self.assertNotEqual(before, runtime.raw_sink.storage_authority_fingerprint)
+
+    def test_same_label_different_directory_and_replacement_have_new_file_id(self):
+        runtime = self.runtime()
+        before = runtime.raw_sink.storage_authority_fingerprint
+        replacement = self.base / "replacement"
+        replacement.mkdir()
+        harden_test_directory(replacement)
+        from b2.bm1 import FileRawEvidenceSink
+        other = FileRawEvidenceSink(replacement, destination_id=runtime.raw_sink.destination_id)
+        self.assertEqual(runtime.raw_sink.destination_fingerprint, other.destination_fingerprint)
+        self.assertNotEqual(before, other.storage_authority_fingerprint)
+        self.raw.rename(self.base / "raw-old")
+        replacement.rename(self.raw)
+        self.assertNotEqual(before, runtime.raw_sink.storage_authority_fingerprint)
+
+    def test_same_and_nested_stores_rejected(self):
+        nested = self.raw / "nested"
+        nested.mkdir()
+        harden_test_directory(nested)
+        for path in (self.raw, nested):
+            with mock.patch.object(bm1_live, "_forbidden_storage_roots", return_value=()):
+                with self.assertRaisesRegex(BM1AuthorizationError, "disjoint"):
+                    bm1_live.storage_runtime(dict(self.environment, B2_BM1_ATTEMPT_CLAIM_DIR=str(path)))
+
+    def test_junction_target_and_ancestor_rejected(self):
+        # Shell is fixture construction only, never an ACL/security decision.
+        junction = self.base / "junction"
+        result = subprocess.run(["cmd", "/d", "/c", "mklink", "/J", str(junction), str(self.raw)], capture_output=True)
+        self.assertEqual(result.returncode, 0, "test junction creation failed")
+        self.addCleanup(lambda: os.rmdir(junction) if junction.exists() else None)
+        child = self.raw / "child"
+        child.mkdir()
+        harden_test_directory(child)
+        for path in (junction, junction / "child"):
+            with self.assertRaises(BM1AuthorizationError):
+                build_storage_authority_fingerprint(path, storage_kind=RAW_BUNDLE_STORAGE_KIND)
+
+    def test_unc_device_relative_ads_and_alias_paths_rejected_before_open(self):
+        for value in (r"\\server\share\private", r"\\?\C:\private", r"C:relative", "relative",
+                      str(self.raw) + ":stream", str(self.raw) + " ", str(self.raw) + "."):
+            with self.subTest(form=value.split(':')[0]), mock.patch.object(self.backend.kernel, "CreateFileW") as opener:
+                with self.assertRaises(BM1AuthorizationError):
+                    build_storage_authority_fingerprint(Path(value), storage_kind=RAW_BUNDLE_STORAGE_KIND)
+                opener.assert_not_called()
+
+    def test_remote_removable_and_non_ntfs_api_results_fail_closed(self):
+        for drive_type in (0, 1, 2, 4, 5, 6):
+            with mock.patch.object(self.backend.kernel, "GetDriveTypeW", return_value=drive_type):
+                with self.assertRaises(BM1AuthorizationError):
+                    build_storage_authority_fingerprint(self.raw, storage_kind=RAW_BUNDLE_STORAGE_KIND)
+        original = self.backend.kernel.GetVolumeInformationW
+        def non_ntfs(*args):
+            result = original(*args)
+            args[6].value = "exFAT"
+            return result
+        with mock.patch.object(self.backend.kernel, "GetVolumeInformationW", side_effect=non_ntfs):
+            with self.assertRaises(BM1AuthorizationError):
+                build_storage_authority_fingerprint(self.raw, storage_kind=RAW_BUNDLE_STORAGE_KIND)
+
+    def test_unavailable_native_identity_and_security_apis_fail_closed(self):
+        for dll, name, result in ((self.backend.kernel, "GetFileInformationByHandleEx", 0),
+                                  (self.backend.advapi, "GetSecurityInfo", 5)):
+            with mock.patch.object(dll, name, return_value=result):
+                with self.assertRaises(BM1AuthorizationError):
+                    build_storage_authority_fingerprint(self.raw, storage_kind=RAW_BUNDLE_STORAGE_KIND)
 
 
 if __name__ == "__main__":

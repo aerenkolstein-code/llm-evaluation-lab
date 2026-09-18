@@ -1,0 +1,133 @@
+name: T5 E1 Frozen Execution Readiness Offline
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t5_e1f_execution_readiness.py"
+      - "tests/test_search_cup_v23_t5_e1f_execution_readiness.py"
+      - "docs/search-cup-v23-t5-e1f-execution-readiness.md"
+      - ".github/workflows/t5-e1f-execution-readiness-offline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  execution-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EX0_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      EX0_PR_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify approved baseline ancestry four additions and clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import unicodedata
+          from search_cup import v23_t5_e1f_execution_readiness as t
+
+          assert sys.version_info[:2] == (3, 11)
+          assert unicodedata.unidata_version == '14.0.0'
+          commands = []
+          def git(*args):
+              commands.append(list(args))
+              return subprocess.check_output(['git', *args], text=True).strip()
+          head = git('rev-parse', 'HEAD')
+          assert head == os.environ['EX0_PR_HEAD'], 'EXACT_PR_HEAD_REQUIRED'
+          assert os.environ['EX0_PR_BASE'] == t.BASELINE_SHA, 'BASELINE_DRIFT'
+          assert git('rev-parse', t.BASELINE_SHA + '^{tree}') == t.BASELINE_TREE, 'BASELINE_DRIFT'
+          git('merge-base', '--is-ancestor', t.BASELINE_SHA, head)
+          scope = t.scope_gate(git('diff', '--name-status', t.BASELINE_SHA, head).splitlines())
+          assert not git('status', '--porcelain'), 'CLEAN_CHECKOUT_REQUIRED'
+          source = {'work_order': t.WORK_ORDER, 'base': t.BASELINE_SHA, 'base_tree': t.BASELINE_TREE,
+              'head': head, 'tree': git('rev-parse', 'HEAD^{tree}'), **scope,
+              'baseline_is_ancestor': True, 'clean_checkout': True,
+              'python_major_minor': '3.11', 'unicode_data_version': unicodedata.unidata_version,
+              'python_patch_version': sys.version.split()[0], 'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'ci_provenance_git_commands': commands, 'ci_provenance_git_subprocess_calls': len(commands),
+              'infrastructure_scope': 'CHECKOUT_SETUP_GIT_UPLOAD_AND_UNIT_TEST_NEGATIVE_PROBES_ARE_NOT_FORMAL_EXECUTION'}
+          (Path(os.environ['RUNNER_TEMP']) / 'ex0-ci-preflight.json').write_text(t.canonical_json(source), encoding='utf-8')
+          PY
+      - name: Run focused authoring and pure visible-evidence tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_search_cup_v23_t5_e1f_execution_readiness.py' -v 2>&1 | tee "$RUNNER_TEMP/ex0-focused-tests.log"
+      - name: Build twice verify exact pins and finalize zero-execution artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          from unittest.mock import patch
+          from search_cup import v23_t5_e1f_execution_readiness as t
+
+          temp = Path(os.environ['RUNNER_TEMP'])
+          source = json.loads((temp / 'ex0-ci-preflight.json').read_text())
+          log = (temp / 'ex0-focused-tests.log').read_text()
+          assert re.search(r'^OK$', log, re.M), 'NO_SKIPPED_DEDICATED_TESTS'
+          counts = json.loads(re.search(r'^EX0_TEST_COUNTS=(.+)$', log, re.M).group(1))
+          test_count = int(re.search(r'Ran (\d+) tests', log).group(1))
+          assert counts['retriever_query_calls'] == counts['proxy_calls'] == 0
+          assert counts['pure_synthetic_decisions'] > 0 and counts['negative_guard_blocked_attempts'] > 0
+          output, second = temp / 'ex0-readiness', temp / 'ex0-repeat'
+          with patch('search_cup.v23_frozen_retriever.FrozenLexicalRetriever.__call__', side_effect=AssertionError('QUERY_FORBIDDEN')) as query, \
+               patch('search_cup.tools.BudgetedSearchProxy.search', side_effect=AssertionError('PROXY_FORBIDDEN')) as proxy:
+              receipt = t.write_bundle(output, expected_sha=source['base'], expected_tree=source['base_tree'])
+              t.write_bundle(second, expected_sha=source['base'], expected_tree=source['base_tree'])
+              assert {p.name: p.read_bytes() for p in output.iterdir()} == {p.name: p.read_bytes() for p in second.iterdir()}, 'BYTE_IDENTITY_REQUIRED'
+              pin = receipt['execution_binding_fingerprint']
+              t.validate_directory(output, expected_fingerprint=pin)
+              query.assert_not_called()
+              proxy.assert_not_called()
+          parts = {k: json.loads((output / name).read_bytes()) for k, name in t.PAYLOADS.items()}
+          assert parts['parent']['exact_pins'] == t.PARENT_PINS
+          assert parts['parent']['published_main'] == source['base']
+          assert parts['parent']['published_tree'] == source['base_tree']
+          for k in t.COMPONENTS:
+              assert receipt['component_fingerprints'][t.PAYLOADS[k]] == parts[k]['canonical_fingerprint']
+          assert receipt['planned_run_namespace'] == t.EXECUTION_ID + ':' + pin + ':E1F-001'
+          assert all(receipt[k] == 0 for k in t.ZERO_FIELDS)
+          assert all(receipt[k] == v for k, v in t.boundary().items())
+          assert receipt['spend']['value'] == 0 and receipt['spend']['unit'] == 'USD'
+          assert not subprocess.check_output(['git', 'status', '--porcelain'], text=True).strip()
+          source['ci_provenance_git_commands'].append(['status', '--porcelain'])
+          source['ci_provenance_git_subprocess_calls'] += 1
+          source.update({'focused_tests': {'count': test_count, 'result': 'PASS', 'counts': counts},
+              'full_bundle_byte_identical': True, 'authoring_retriever_query_calls': 0, 'authoring_proxy_calls': 0,
+              'execution_binding_fingerprint': pin, 'component_fingerprints': receipt['component_fingerprints'],
+              'planned_run_namespace': receipt['planned_run_namespace'], **t.boundary()})
+          (output / 'ci-source.json').write_text(t.canonical_json(source), encoding='utf-8')
+          (output / 'focused-tests.log').write_text(log, encoding='utf-8')
+          manifest = t.parent.write_manifest(output)
+          assert len(manifest.splitlines()) == 13
+          t.validate_directory(output, expected_fingerprint=pin)
+          print('EX0_CI_SOURCE=' + t.canonical_json(source))
+          print('EX0_RECEIPT=' + t.canonical_json(receipt))
+          print('EX0_MANIFEST\n' + manifest)
+          PY
+      - name: Upload exact-head immutable readiness package
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t5-e1f-ex0-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/ex0-readiness
+          if-no-files-found: error

@@ -1,0 +1,55 @@
+name: T6 Live F1 Retriever Qualification (Offline)
+
+on:
+  pull_request:
+    paths:
+      - "search_cup/v23_t6_live_brave_retriever.py"
+      - "search_cup/v23_t6_live_f1q.py"
+      - "configs/search-cup-v23-t6-live-brave-raw-v1.json"
+      - "fixtures/search-cup/v23-t6-live-brave-public-doc-evidence.json"
+      - "tests/test_search_cup_v23_t6_live_f1q.py"
+      - "docs/search-cup-v23-t6-live-f1q.md"
+      - ".github/workflows/t6-live-f1-retriever-qualification.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  offline-qualification:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      T6_HEAD: ${{ github.event.pull_request.head.sha }}
+      T6_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Guard the approved construction base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$T6_BASE" = 72932d41c862753d489ef2d2e1c6a2619f34a2d9
+          test "$(git rev-parse HEAD)" = "$T6_HEAD"
+          test "$(git rev-parse "$T6_BASE^{tree}")" = 05c0953bfe67f9d684160a79ef7c9307dcd2a3a4
+      - name: Build offline qualification evidence (negative verdict remains a failure)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m search_cup.v23_t6_live_f1q --output "$RUNNER_TEMP/t6-f1q-artifact"
+      - name: Preserve qualification evidence even when eligibility is blocked
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-cup-v23-t6-live-f1q-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/t6-f1q-artifact/
+          if-no-files-found: warn
+          retention-days: 30

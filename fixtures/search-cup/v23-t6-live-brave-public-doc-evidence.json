@@ -1,0 +1,73 @@
+{
+  "api_version": "2023-01-01",
+  "candidate_id": "search-cup-v23-live-brave-web-raw-v1",
+  "canonical_fingerprint": "3cc49d22414614d9bacc857a70021a4b24f72ee83bec3389b3378bf9e937b38d",
+  "evidence_scope": "Documented API surface plus inspected adapter behavior; not server source inspection or live response verification.",
+  "external_capability_attestations": {
+    "R2": {
+      "reason": "Inspected documentation defines a Web Search request, but does not explicitly attest the absence of all server-side decomposition, expansion or hidden follow-up queries required by the strict WO text. Client single-call tests do not establish this server-side property.",
+      "status": "UNKNOWN"
+    },
+    "R7": {
+      "reason": "Optional enhanced product surfaces can be excluded in the request. The inspected documents do not establish the stronger absence-of-undeclared-stack guarantee; a mock does not close that evidence gap.",
+      "status": "UNKNOWN"
+    }
+  },
+  "hash_scope": "Fingerprints cover these compact paraphrased records, not the complete provider webpages.",
+  "kind": "SOURCE_REVIEWED_OFFICIAL_PUBLIC_DOCUMENTATION",
+  "limitations": [
+    "Live index, ranking and pages can drift even with an API contract version pinned.",
+    "Optional server-side additions can appear; non-web/enhanced material is excluded or rejected by this adapter.",
+    "A mock response cannot establish deployed behavior, availability, latency, pricing or account entitlement.",
+    "US locale is a candidate profile, not approval of the parent T6 task geography.",
+    "Public documentation is not proof about undisclosed provider internals."
+  ],
+  "live_api_verification": "NOT_PERFORMED",
+  "records": [
+    {
+      "criteria": ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"],
+      "id": "BRAVE-WEB-CONTRACT",
+      "observation_qualification": "Observation-date anchor; not asserted as the server modification time.",
+      "observed_at": "2026-09-18T18:00:00+00:00",
+      "propositions": [
+        "Web Search is a GET endpoint with an explicit q input and configurable count.",
+        "spellcheck can be disabled; enabled correction can use an altered query.",
+        "result_filter can select web results while query metadata is still returned.",
+        "Goggles reranking, summaries and extra snippets are optional surfaces, not necessary to request ordinary web results.",
+        "A caller can select an Api-Version date; omission uses the latest version.",
+        "The documented request includes locale, language, safety and optional enhancement controls."
+      ],
+      "record_fingerprint": "3e725a1a70d57240c5313c804baa0f5dc9439564d9c09aeb7feda069e6100ad9",
+      "url": "https://api-dashboard.search.brave.com/api-reference/web/search/get"
+    },
+    {
+      "api_version": "2023-01-01",
+      "criteria": ["R4"],
+      "id": "BRAVE-VERSIONING",
+      "observation_qualification": "Observation-date anchor; not asserted as the server modification time.",
+      "observed_at": "2026-09-18T18:00:00+00:00",
+      "propositions": [
+        "The official versioning example explicitly sends Api-Version with value 2023-01-01.",
+        "The guide describes a header-selected API contract; an omitted header selects latest.",
+        "Optional additions may be backward compatible; removals and type changes require a breaking-version change."
+      ],
+      "record_fingerprint": "25ab9024bad73e203087764d0048a873c09822efc1fd811816c2faf013c2fb27",
+      "url": "https://api-dashboard.search.brave.com/documentation/guides/versioning"
+    },
+    {
+      "api_version": "2023-01-01",
+      "criteria": ["R4", "R5"],
+      "id": "BRAVE-WEB-CHANGELOG",
+      "observation_qualification": "Observation-date anchor; not asserted as the server modification time.",
+      "observed_at": "2026-09-18T18:00:00+00:00",
+      "propositions": [
+        "The Web Search changelog dates the addition of this API resource to 2023-01-01.",
+        "The Web Search example exposes results with title, URL and description fields.",
+        "This changelog corroborates the initial Web Search contract date rather than borrowing a version from the Summarizer or LLM Context products."
+      ],
+      "record_fingerprint": "dd6b9835ee57837d6898a3a1ea3103093d1494c08cc26b8ff8cf10a497a2dced",
+      "url": "https://api-dashboard.search.brave.com/app/documentation/web-search"
+    }
+  ],
+  "schema_id": "search-cup-v23-live-public-doc-evidence/v1"
+}

@@ -1,0 +1,76 @@
+name: T6 CSLIVE Offline Components
+
+on:
+  pull_request:
+    paths:
+      - search_cup/v23_t6_cslive_source.py
+      - search_cup/v23_t6_cslive_retriever.py
+      - search_cup/v23_t6_cslive_evidence.py
+      - configs/search-cup-v23-t6-controlled-source-v1.json
+      - fixtures/search-cup/v23-t6-controlled-source-synthetic.json
+      - tests/test_search_cup_v23_t6_cslive.py
+      - docs/search-cup-v23-t6-cslive.md
+      - .github/workflows/t6-cslive-offline.yml
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      EXPECTED_BASE: 72932d41c862753d489ef2d2e1c6a2619f34a2d9
+      PYTHONPATH: ${{ github.workspace }}/evaluation
+    steps:
+      - name: Check out exact candidate without saved credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: evaluation
+      - name: Guard approved construction base and candidate
+        working-directory: evaluation
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$EXPECTED_BASE"
+          test "$(git rev-parse "$EXPECTED_BASE^{tree}")" = "05c0953bfe67f9d684160a79ef7c9307dcd2a3a4"
+          git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Execute synthetic-only tests and preserve scoped evidence
+        working-directory: evaluation
+        run: python tests/test_search_cup_v23_t6_cslive.py --artifact "$RUNNER_TEMP/t6-cslive-evidence"
+      - name: Upload offline evidence including negative admission fields
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t6-cslive-offline-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/t6-cslive-evidence/
+          if-no-files-found: error
+      - name: Check out the existing full-regression dependency
+        uses: actions/checkout@v4
+        with:
+          repository: aerenkolstein-code/Companion-Mind
+          ref: c6a2128271532746a5570b99ce0ccdea4618db4e
+          fetch-depth: 0
+          persist-credentials: false
+          path: Companion-Mind
+      - name: Package read-only exact source bundles for disconnected local regression
+        run: |
+          mkdir "$RUNNER_TEMP/t6-cslive-sources"
+          git -C evaluation bundle create "$RUNNER_TEMP/t6-cslive-sources/evaluation.bundle" HEAD
+          test "$(git -C Companion-Mind rev-parse HEAD)" = "c6a2128271532746a5570b99ce0ccdea4618db4e"
+          git -C Companion-Mind bundle create "$RUNNER_TEMP/t6-cslive-sources/companion.bundle" HEAD
+          cd "$RUNNER_TEMP/t6-cslive-sources"
+          sha256sum evaluation.bundle companion.bundle > MANIFEST.sha256
+      - name: Upload Git-object source bundles (no checkout credentials)
+        uses: actions/upload-artifact@v4
+        with:
+          name: t6-cslive-sources-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/t6-cslive-sources/
+          if-no-files-found: error

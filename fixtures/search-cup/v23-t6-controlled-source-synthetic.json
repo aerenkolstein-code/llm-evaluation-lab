@@ -1,0 +1,31 @@
+{
+  "schema_id": "t6-cslive-synthetic/v1",
+  "synthetic": true,
+  "provenance": "Self-authored fictional jobs, reserved .invalid domains. No source content copied.",
+  "epochs": [
+    {
+      "epoch_id": "synthetic-epoch-1",
+      "captured_at": "2026-09-19T00:00:00Z",
+      "rss": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><rss version=\"2.0\"><channel><title>Self-authored synthetic RSS; no real jobs</title><ttl>1440</ttl><item><guid isPermaLink=\"false\">opaque:a</guid><title>Synthetic Alpha remote Python</title><description>&lt;p&gt;Remote work permitted. Python required. Applications open.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/a</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item><item><guid isPermaLink=\"false\">opaque:b</guid><title>Synthetic Beta engineer</title><description>&lt;p&gt;On-site only. Python required. Applications closed.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/b</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item><item><guid isPermaLink=\"false\">opaque:c</guid><title>Synthetic Gamma remote</title><description>&lt;p&gt;Working from home permitted. Python mandatory. Accepting applications.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/c</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item><item><guid isPermaLink=\"false\">opaque:d</guid><title>Synthetic Delta unknown</title><description>&lt;p&gt;Remote work permitted. General software skills. Application status unavailable.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/d</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item><item><guid isPermaLink=\"false\">opaque:e</guid><title>Synthetic Epsilon remote Python</title><description>&lt;p&gt;Remote work permitted. Python required. Applications open.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/e</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item></channel></rss>"
+    },
+    {
+      "epoch_id": "synthetic-epoch-2",
+      "captured_at": "2026-09-20T00:00:00Z",
+      "rss": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><rss version=\"2.0\"><channel><title>Self-authored synthetic RSS; no real jobs</title><ttl>1440</ttl><item><guid isPermaLink=\"false\">opaque:a</guid><title>Synthetic Alpha remote Python</title><description>&lt;p&gt;Remote work permitted. Python required. Applications open.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/a</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item><item><guid isPermaLink=\"false\">opaque:b</guid><title>Synthetic Beta engineer</title><description>&lt;p&gt;Remote work permitted. Python required. Applications open.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/b</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item><item><guid isPermaLink=\"false\">opaque:c</guid><title>Synthetic Gamma remote</title><description>&lt;p&gt;Working from home permitted. Python mandatory. Accepting applications.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/c</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item><item><guid isPermaLink=\"false\">opaque:d</guid><title>Synthetic Delta unknown</title><description>&lt;p&gt;Remote work permitted. General software skills. Application status unavailable.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/d</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item><item><guid isPermaLink=\"false\">opaque:f</guid><title>Synthetic Zeta remote Python</title><description>&lt;p&gt;Fully remote role. Python mandatory. Recruitment open.&lt;/p&gt;</description><link>https://source.example.invalid/jobs/f</link><pubDate>2026-09-01T00:00:00Z</pubDate><expiryDate>2026-10-01T00:00:00Z</expiryDate></item></channel></rss>"
+    }
+  ],
+  "queries": {
+    "fixture-a": [
+      "remote",
+      "python",
+      "applications",
+      "remote python applications"
+    ],
+    "fixture-b": [
+      "\"working from home\" python",
+      "\"fully remote\" python",
+      "recruitment open",
+      "python mandatory"
+    ]
+  }
+}

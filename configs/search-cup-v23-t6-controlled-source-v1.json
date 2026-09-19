@@ -1,0 +1,48 @@
+{
+  "schema_id": "t6-cslive-config/v1",
+  "candidate_id": "t6-controlled-source-fts5-v1",
+  "mode": "SYNTHETIC_ONLY",
+  "source_policy": {
+    "source_id": "synthetic-rss",
+    "source_url": "https://source.example.invalid/jobs/rss",
+    "allowed_item_host": "source.example.invalid",
+    "max_input_bytes": 2097152,
+    "max_items": 100,
+    "max_body_bytes": 32768,
+    "min_interval_seconds": 86400,
+    "mode": "SYNTHETIC_ONLY"
+  },
+  "production_source": {
+    "candidate": "Himalayas RSS",
+    "url": "https://himalayas.app/jobs/rss",
+    "admission": "NOT_ADMITTED",
+    "live_access": "NOT_RUN",
+    "rights": "NOT_VERIFIED"
+  },
+  "budget": {
+    "epochs": 2,
+    "entrants": [
+      "fixture-a",
+      "fixture-b"
+    ],
+    "calls_per_entrant_per_epoch": 4,
+    "results_per_call": 10,
+    "automatic_retries": 0,
+    "follow_links": 0,
+    "fallback": false
+  },
+  "query": {
+    "tokenizer": "unicode61 remove_diacritics 0",
+    "title_weight": 1,
+    "body_weight": 1,
+    "order": [
+      "bm25 ASC",
+      "source_id ASC",
+      "item_id ASC"
+    ],
+    "raw_match_parameter": true
+  },
+  "claims": [
+    "SYNTHETIC_OFFLINE_COMPONENT_VALIDATION_ONLY"
+  ]
+}

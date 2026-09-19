@@ -1,0 +1,76 @@
+name: A2 A029 S5 OwnedHome Black-box
+
+on:
+  pull_request:
+    paths:
+      - "tools/a2_owned_home_s5_blackbox_verify.py"
+      - "tools/a2_owned_home_s5_browser_verify.mjs"
+      - ".github/workflows/a2-a029-s5-blackbox.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  blackbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out evaluation harness
+        uses: actions/checkout@v4
+
+      - name: Check out exact Companion-Mind candidate
+        uses: actions/checkout@v4
+        with:
+          repository: aerenkolstein-code/Companion-Mind
+          ref: 584c9957e8645d7ab5615c1b9a56bc46c90b71ee
+          path: Companion-Mind
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build and install exact candidate wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip wheel --no-deps -w /tmp/a2s5-wheels ./Companion-Mind
+          python -m venv /tmp/a2s5-venv
+          /tmp/a2s5-venv/bin/python -m pip install --no-index --no-deps /tmp/a2s5-wheels/companion_mind-*.whl
+
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C Companion-Mind rev-parse HEAD)" = "584c9957e8645d7ab5615c1b9a56bc46c90b71ee"
+          test "$(git -C Companion-Mind rev-parse HEAD^{tree})" = "e475e939e4e48f2d731d7bc0265c4ab36d569a9c"
+
+      - name: Run final A2-S5 TS5 black-box verification outside runtime checkout
+        working-directory: /tmp
+        shell: bash
+        run: |
+          set -euo pipefail
+          WHEEL=$(echo /tmp/a2s5-wheels/companion_mind-*.whl)
+          python "$GITHUB_WORKSPACE/tools/a2_owned_home_s5_blackbox_verify.py" \
+            --python /tmp/a2s5-venv/bin/python \
+            --node node \
+            --browser-verifier "$GITHUB_WORKSPACE/tools/a2_owned_home_s5_browser_verify.mjs" \
+            --wheel "$WHEEL" \
+            --candidate-sha 584c9957e8645d7ab5615c1b9a56bc46c90b71ee \
+            --candidate-tree e475e939e4e48f2d731d7bc0265c4ab36d569a9c \
+            --output /tmp/a2-a029-s5-blackbox-receipt.json
+
+      - name: Upload exact-head A2-S5 receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2-a029-s5-blackbox-final
+          path: /tmp/a2-a029-s5-blackbox-receipt.json
+          if-no-files-found: error

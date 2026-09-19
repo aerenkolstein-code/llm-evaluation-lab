@@ -236,3 +236,100 @@ PR #32 and PR #33 were different engineering problems, but they converged on one
 > **Do not only verify what the system did. Verify that what it did is actually equivalent to what the system claims to measure, prove, or authorize.**
 
 That is the difference between a green implementation and an auditable evaluation system.
+
+---
+
+## Addendum: PR #43 and the missing transaction boundary
+
+[PR #43](https://github.com/aerenkolstein-code/llm-evaluation-lab/pull/43) extended the same lesson into a live-evaluation harness. The code had to do more than prepare valid requests. It had to make a stronger claim: within the BM1 execution surface, a live provider request must be reachable only through an authorized, one-shot, storage-bound, auditable transaction.
+
+The change took four Independent QA rounds because each repair removed one layer of bypass and exposed the next one.
+
+### Round 1: API boundaries were not enough
+
+The first review found that the public HTTP transport could still be called directly, bypassing runner-level durable claims and request ceilings. It also found that an internally consistent authorization object was not the same thing as externally trusted authorization, that expiry needed to be checked at the provider boundary, and that live raw evidence needed a durable destination contract.
+
+The reusable lesson is that documentation saying "call this only through the runner" is not a security property. A forbidden side effect must be unreachable through the exposed execution surface.
+
+### Round 2: capability and storage labels were still forgeable proxies
+
+After direct transport calls were closed, the next review attacked the new prepared-call and authority abstractions. A structurally valid prepared capability could still be forged; an authority anchor could still be minted by the same caller whose receipts it was supposed to validate; and claim/raw stores could still reuse an approved label while pointing at a different actual directory.
+
+This exposed two broader rules:
+
+> **A trust root cannot be established by self-consistency alone.**
+
+and
+
+> **A label that names a resource is not proof that the same resource is being used.**
+
+For durable one-shot execution, restart safety must bind to the actual storage authority, not merely to a caller-provided identifier.
+
+### Round 3: even genuine capabilities were reachable outside the canonical transaction
+
+The third review found a subtler bypass. The prepared capability no longer had to be forged: a separately callable helper could create a genuine durable claim and a genuine registered capability outside the canonical `run_next()` flow, leaving network execution separable from the transaction that was supposed to own evidence and receipts.
+
+The same round found an accounting gap after the irreversible point. A durable claim could be committed, then a final pre-provider authorization check could fail, leaving a consumed attempt without a terminal public receipt.
+
+This was the point where the design problem became explicitly transactional.
+
+A one-shot contract is not just:
+
+```text
+claim before call
+```
+
+It is closer to:
+
+```text
+select exact attempt
+→ validate order and limits
+→ validate authority and storage
+→ durably claim and read back
+→ revalidate exact authority/claim/request
+→ perform the provider side effect
+→ persist evidence
+→ emit exactly one terminal account
+```
+
+Once the durable claim has committed, every later exit path must be reconcilable. A prevented provider call can still be a failed transaction that requires an immutable terminal record.
+
+### Round 4: the side effect finally had one owner
+
+The fourth review passed after the live opener became lexically owned by the canonical `BM1Runner.run_next()` transaction. The separately callable prepare/consume/send helper surface was removed, public transport calls remained fail-closed, and post-claim failures acquired typed claim-bound terminal receipts.
+
+The resulting invariant is stronger than "the happy path works":
+
+> **Inside BM1, the wrong path cannot reach the provider side effect without passing through the same claim, authority, ordering, storage, evidence, and terminal-accounting boundary.**
+
+### Why repeated repairs were useful
+
+The four rounds can be read as an attack-surface descent:
+
+```text
+Round 1: API boundary
+Round 2: capability / trust / storage-identity boundary
+Round 3: transaction / accounting boundary
+Round 4: sealed canonical side-effect path
+```
+
+The lesson is not that high-stakes PRs should require four reviews. The lesson is that these questions should move earlier into design.
+
+Before implementing an authorized one-shot live path, write an adversarial state machine that asks:
+
+- Who can reach the external side effect?
+- Which callable surfaces can prepare, authorize, or send independently?
+- Which objects can be self-minted or structurally forged?
+- Which identities are labels, and which are bound to actual authorities?
+- What state becomes irreversible first?
+- After that irreversible point, does every exception path produce a terminal accounting record?
+- Can a restart, replay, alternate directory, stale authorization, or direct helper recover the right to call again?
+- Is there a test that proves each forbidden path cannot reach the side effect?
+
+That turns adversarial review from a late bug-discovery activity into part of the original contract.
+
+### Additional closing principle
+
+The earlier reviews established that green tests do not rescue a wrong measurement or proof contract. PR #43 adds the execution-side counterpart:
+
+> **Do not only prove that the correct path works. Prove that every forbidden path fails before the protected side effect, and that every irreversible state transition remains auditable.**
